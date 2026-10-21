@@ -1,0 +1,143 @@
+{
+  "project_name": "Maestria",
+  "legacy_language": "Dart/Flutter",
+  "user": "lucas",
+  "model": null,
+  "source_url": "",
+  "scope_summary": "",
+  "started_at_epoch": 1792592787.7103658,
+  "completed_at": null,
+  "_active_bucket": {
+    "name": "rewrite",
+    "started_at": 1792593451.9838746
+  },
+  "_bucket_seconds": {
+    "discovery": 124.92693972587585,
+    "blueprint": 105.89466190338135,
+    "rewrite": 0.0,
+    "test_heal": 0.0,
+    "parity": 0.0,
+    "pgo_bench": 0.0
+  },
+  "story": {
+    "headline": "",
+    "intro": "",
+    "ch1_narrative": "",
+    "ch2_narrative": "",
+    "ch3_narrative": "",
+    "ch4_narrative": "",
+    "ch5_narrative": ""
+  },
+  "census": {
+    "before": {
+      "scanned": true,
+      "files": 51,
+      "code_loc": 26273,
+      "comment_loc": 8364,
+      "comment_pct": 31.8,
+      "max_file_loc": 4773,
+      "avg_file_loc": 679,
+      "files_under_400_pct": 52.9,
+      "doc_tests": 0,
+      "max_nesting_depth": 6,
+      "avg_fn_loc": 22,
+      "hazards_count": 307,
+      "latent_bugs_found": 5
+    },
+    "after": {
+      "scanned": false,
+      "files": 0,
+      "code_loc": 0,
+      "comment_loc": 0,
+      "comment_pct": null,
+      "max_file_loc": 0,
+      "avg_file_loc": 0,
+      "files_under_400_pct": null,
+      "doc_tests": 0,
+      "max_nesting_depth": null,
+      "avg_fn_loc": null,
+      "unsafe_blocks": null,
+      "forbid_unsafe": false,
+      "branch_coverage_pct": null,
+      "clippy_warnings": null
+    }
+  },
+  "opportunities": [
+    {
+      "category": "latent_bug",
+      "title": "Config load aborts on one bad entry, then save overwrites with partial state",
+      "file": "lib/services/store.dart",
+      "description": "A wrong field type in a workspace/group/launcher throws during load; the next debounced save writes the partial state over config.json, losing user data. Rust skips only the bad entry."
+    },
+    {
+      "category": "latent_bug",
+      "title": "Hook payload with non-string session_id/permission_mode crashes the reducer",
+      "file": "lib/services/hooks.dart",
+      "description": "Dart casts as String; Rust treats non-strings as absent."
+    },
+    {
+      "category": "latent_bug",
+      "title": "Alt+1..9 leaks ESC+digit to the program on Linux",
+      "file": "lib/ui/terminal_pane.dart",
+      "description": "Session switch keys are not intercepted inside the terminal on Linux."
+    },
+    {
+      "category": "latent_bug",
+      "title": "TERM inherited from launching terminal",
+      "file": "lib/services/pty.dart",
+      "description": "Maestria never sets TERM; app launched from a terminal passes that TERM through. Rust sets xterm-256color explicitly."
+    },
+    {
+      "category": "latent_bug",
+      "title": "Mouse wheel cell mapping used window coordinates",
+      "file": "lib/ui/terminal_pane.dart",
+      "description": "Point-to-cell mapping must be pane-local."
+    },
+    {
+      "category": "performance",
+      "title": "944MB RSS / 169 threads / 10% avg CPU in the Flutter app",
+      "file": "/opt/maestria/maestria",
+      "description": "Flutter engine + Skia/Impeller per window, Dart isolates and xterm.dart cell objects. Target: gpui single process, alacritty grid, async I/O on a small tokio pool."
+    },
+    {
+      "category": "safety",
+      "title": "Six xterm.dart emulator bugs patched by hand in vt.dart",
+      "file": "lib/services/vt.dart",
+      "description": "alacritty_terminal fixes most natively; keep the byte-level CSI > m scrubber and port the tests."
+    },
+    {
+      "category": "architecture",
+      "title": "5200-line god object store.dart",
+      "file": "lib/services/store.dart",
+      "description": "Split into ~25 store modules <=400 LOC behind port traits (Term, Notifier, PluginBus, Clock, CommandRunner) for testability."
+    },
+    {
+      "category": "hygiene",
+      "title": "Max file 4773 LOC, 47% files over 400 LOC",
+      "file": "lib/",
+      "description": "Target <=400 LOC per Rust file."
+    }
+  ],
+  "test_iterations": [],
+  "parity_iterations": [],
+  "benchmarks": [
+    {
+      "stage": "legacy_baseline",
+      "label": "1. Legacy Dart/Flutter 2.7.0 (live instance)",
+      "wall_time_ms": 101.0,
+      "peak_rss_mb": 1074.0,
+      "speedup": 1.0,
+      "notes": "Metric = CPU ms consumed per wall-clock second averaged over 5d23h of real use (10.1% CPU); RSS 944MB current / 1074MB peak; 169 threads. Measured on the user's running /opt/maestria/maestria 2.7.0."
+    }
+  ],
+  "time_buckets": [],
+  "scorecard": [],
+  "roi": {},
+  "spotlight": {
+    "explanation": "",
+    "legacy_file": "",
+    "legacy_code": "",
+    "rust_file": "",
+    "rust_code": ""
+  }
+}
