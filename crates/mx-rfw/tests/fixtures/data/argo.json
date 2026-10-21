@@ -1,0 +1,11 @@
+{"notice": {"text": "sincronizando", "tone": "yellow"},
+ "crumb": {"cluster": "prod"},
+ "clusters": [{"a": "c:prod", "status": "green", "name": "prod", "sub": "3 apps", "subTone": "dim",
+   "buttons": [{"icon": "refresh", "tip": "atualizar", "a": "refresh:prod"}]}],
+ "apps": [{"a": "app:web", "health": "Healthy", "icon": "icons/argo.svg", "name": "web", "healthText": "saudável",
+   "sync": "Synced", "syncText": "sincronizado", "op": "", "opTone": "dim", "rows": [{"k": "repo", "v": "git"}],
+   "sync_a": "sync:web", "refresh_a": "refresh:web", "browser_a": "browser:web"}],
+ "graph": {"w": 640.0, "h": 320.5, "svg": "<svg/>", "nodes": [
+   {"x": 10.0, "y": 20.0, "sel": true, "a": "node:1", "health": "Healthy", "abbr": "deploy", "title": "web", "sub": "Deployment", "sync": "Synced"}]},
+ "head": {"title": "Argo CD", "sub": "prod", "buttons": [{"icon": "refresh", "tip": "atualizar", "tone": "accent", "a": "refresh"}]},
+ "stats": [{"a": "filter:ok", "tone": "green", "text": "3 ok"}]}

@@ -3671,6 +3671,16 @@ dependencies = [
 [[package]]
 name = "mx-store"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "mx-claude",
+ "mx-core",
+ "mx-sys",
+ "mx-theme",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "mx-sys"

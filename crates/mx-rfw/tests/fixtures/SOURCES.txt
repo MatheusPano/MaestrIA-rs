@@ -1,0 +1,10 @@
+argocd-plugin__ui__argo.rfwtxt <- /home/lucas/maestria/argocd-plugin/ui/argo.rfwtxt
+maestria-plugins__argocd__argo.rfwtxt <- /home/lucas/maestria/maestria-plugins/argocd/ui/argo.rfwtxt
+maestria-plugins__docker__sidebar.rfwtxt <- /home/lucas/maestria/maestria-plugins/docker/ui/sidebar.rfwtxt
+maestria-plugins__flutter__devtools.rfwtxt <- /home/lucas/maestria/maestria-plugins/flutter/ui/devtools.rfwtxt
+maestria-plugins__pomodoro_dart__float.rfwtxt <- /home/lucas/maestria/maestria-plugins/pomodoro_dart/ui/float.rfwtxt
+maestria-plugins__pomodoro_dart__sidebar.rfwtxt <- /home/lucas/maestria/maestria-plugins/pomodoro_dart/ui/sidebar.rfwtxt
+maestria-plugins__pomodoro__float.rfwtxt <- /home/lucas/maestria/maestria-plugins/pomodoro/ui/float.rfwtxt
+maestria-plugins__pomodoro__sidebar.rfwtxt <- /home/lucas/maestria/maestria-plugins/pomodoro/ui/sidebar.rfwtxt
+maestria-plugins__ssh__hosts.rfwtxt <- /home/lucas/maestria/maestria-plugins/ssh/ui/hosts.rfwtxt
+maestria-plugins__wiboor__kanban.rfwtxt <- /home/lucas/maestria/maestria-plugins/wiboor/ui/kanban.rfwtxt
