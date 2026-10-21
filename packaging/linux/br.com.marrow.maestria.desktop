@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MaestrIA
+Comment=Cockpit para sessões do Claude Code
+Exec=/opt/maestria/maestria
+Icon=br.com.marrow.maestria
+Terminal=false
+Categories=Development;
+StartupWMClass=br.com.marrow.maestria

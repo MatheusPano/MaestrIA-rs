@@ -1,0 +1,106 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'a tag a empacotar (ex.: v1.0.3)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  versao:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.rust.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
+      - name: a tag bate com o Cargo.toml?
+        run: |
+          set -euo pipefail
+          v=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          if [ "$TAG" != "v$v" ]; then
+            echo "::error::a tag é $TAG e o Cargo.toml diz $v -- rode 'make bump V=...' antes de taguear."
+            exit 1
+          fi
+          echo "maestria $v"
+      - id: rust
+        run: echo "version=$(sed -n 's/^RUST_VERSION ?= *//p' Makefile)" >> "$GITHUB_OUTPUT"
+
+  deb:
+    needs: versao
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            target-deb/cargo-home/registry
+            target-deb/cargo-home/git
+            target-deb/target
+          key: deb-${{ needs.versao.outputs.rust }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: deb-${{ needs.versao.outputs.rust }}-
+      - run: ./packaging/linux/build-deb.sh
+        env:
+          RUST_VERSION: ${{ needs.versao.outputs.rust }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: packaging/linux/dist/*.deb
+          if-no-files-found: error
+
+  dmg:
+    needs: versao
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.versao.outputs.rust }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-bundle
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: dmg-${{ needs.versao.outputs.rust }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: dmg-${{ needs.versao.outputs.rust }}-
+      - run: command -v cargo-bundle || cargo install cargo-bundle --locked
+      - run: ./packaging/macos/make-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: packaging/macos/dist/*.dmg
+          if-no-files-found: error
+
+  publicar:
+    needs: [deb, dmg]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
+      - uses: actions/download-artifact@v4
+        with: { path: anexos, merge-multiple: true }
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -lh anexos
+          gh release view "$TAG" >/dev/null 2>&1 \
+            && gh release upload "$TAG" anexos/* --clobber \
+            || gh release create "$TAG" anexos/* \
+                 --title "maestria ${TAG#v}" \
+                 --notes-file packaging/NOTAS-DA-RELEASE.md
