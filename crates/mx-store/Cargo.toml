@@ -6,6 +6,18 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+mx-core.workspace = true
+mx-sys.workspace = true
+mx-claude.workspace = true
+mx-theme.workspace = true
+mx-plugins.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+serde_json.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "test-util"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true
