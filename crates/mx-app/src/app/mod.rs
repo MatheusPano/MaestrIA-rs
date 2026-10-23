@@ -48,9 +48,16 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
             title: Some("MaestrIA".into()),
             ..Default::default()
         }),
-        app_id: Some("br.com.marrow.maestria".into()),
+        app_id: Some(app_id()),
         ..Default::default()
     };
     cx.open_window(options, |window, cx| cx.new(|cx| Root::new(host, window, cx)))?;
     Ok(())
+}
+
+pub fn app_id() -> String {
+    std::env::var("MAESTRIA_APP_ID")
+        .ok()
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| "br.com.marrow.maestria".into())
 }

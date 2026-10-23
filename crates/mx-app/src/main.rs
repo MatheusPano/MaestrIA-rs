@@ -74,7 +74,7 @@ fn main() {
                 title: Some("MaestrIA".into()),
                 ..Default::default()
             }),
-            app_id: Some("br.com.marrow.maestria".into()),
+            app_id: Some(app::app_id()),
             ..Default::default()
         };
         let spawn = SpawnOptions {

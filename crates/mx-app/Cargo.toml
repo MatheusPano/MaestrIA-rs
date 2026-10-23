@@ -62,6 +62,19 @@ assets = [
   ["assets/icons/512.png", "usr/share/icons/hicolor/512x512/apps/br.com.marrow.maestria.png", "644"],
 ]
 
+[package.metadata.deb.variants.rs]
+name = "maestria-rs"
+assets = [
+  ["target/release/maestria", "opt/maestria-rs/maestria-rs", "755"],
+  ["../../packaging/linux/maestria-rs-launcher.sh", "usr/bin/maestria-rs", "755"],
+  ["../../packaging/linux/br.com.marrow.maestria-rs.desktop", "usr/share/applications/br.com.marrow.maestria-rs.desktop", "644"],
+  ["assets/icons/32.png", "usr/share/icons/hicolor/32x32/apps/br.com.marrow.maestria-rs.png", "644"],
+  ["assets/icons/64.png", "usr/share/icons/hicolor/64x64/apps/br.com.marrow.maestria-rs.png", "644"],
+  ["assets/icons/128.png", "usr/share/icons/hicolor/128x128/apps/br.com.marrow.maestria-rs.png", "644"],
+  ["assets/icons/256.png", "usr/share/icons/hicolor/256x256/apps/br.com.marrow.maestria-rs.png", "644"],
+  ["assets/icons/512.png", "usr/share/icons/hicolor/512x512/apps/br.com.marrow.maestria-rs.png", "644"],
+]
+
 [package.metadata.bundle]
 name = "MaestrIA"
 identifier = "br.com.marrow.maestria"
