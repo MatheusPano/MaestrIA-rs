@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -38,6 +39,9 @@ nix = { version = "0.29", features = ["signal", "process"] }
 dirs = "6"
 proptest = "1"
 tempfile = "3"
+
+[patch.crates-io]
+gpui = { path = "vendor/gpui" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

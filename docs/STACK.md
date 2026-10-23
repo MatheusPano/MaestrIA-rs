@@ -37,6 +37,28 @@ Dev profile: `opt-level=1` for workspace crates, `opt-level=2` for all deps (kee
 - `cx.activate(true)` is a no-op on Linux (logged at info).
 - The workspace builds a 560 MB debug binary (debuginfo); measure memory on release builds.
 
+## Patched gpui (vendor/gpui)
+
+`gpui` is gpui 0.2.2 copied from crates.io into `vendor/gpui` and wired with
+`[patch.crates-io]` in the root `Cargo.toml` (`exclude = ["vendor"]` keeps it out of the workspace,
+so it builds with the deps profile and without our lints). One change, in
+`src/platform/linux/x11/client.rs` `X11Client::run`:
+
+- **Bug:** the X11 loop is a calloop `Generic` source on the xcb fd, so it only wakes when the
+  socket has new bytes. Any reply wait outside `process_x11_events` (runnables, window creation,
+  randr queries) makes xcb read pending events into its own queue; the socket is then empty and
+  those events (MapNotify, Expose, input) sit there until some unrelated X event arrives. On a quiet
+  display the window stays black: MapNotify is never handled, so the refresh loop never starts.
+  Repro: start the app on Xvfb and touch nothing; 10 s later the window is still one color with 0 CPU,
+  and a single `xprop -set` on the window makes it paint.
+- **Fix:** the `event_loop.run` callback (runs after each dispatch, right before calloop sleeps)
+  calls `process_x11_events`, which drains `poll_for_event` until empty. Costs one non-blocking
+  read per wake; no timer, idle CPU unchanged.
+- Not fixed upstream: no gpui release after 0.2.2 (checked 2026-10-23) and Zed `main`
+  (`crates/gpui_linux/src/linux/x11/client.rs`) has the same fd-only source. Drop the patch when
+  a release fixes it.
+- The e2e harness no longer needs `nudge`; `E2E_NUDGE=0` disables it.
+
 ## How the terminal works
 
 `mx-term` (no gpui dependency):
