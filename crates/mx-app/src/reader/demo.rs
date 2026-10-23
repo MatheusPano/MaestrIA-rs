@@ -22,7 +22,7 @@ pub fn open(path: String, cx: &mut App) {
         ..Default::default()
     };
     let actions = ReaderActions {
-        follow: Some(Rc::new(|action, _, _| log::info!("reader link: {action:?}"))),
+        follow: Some(Rc::new(|href, base, _, _| log::info!("reader link: {href} from {base:?}"))),
         banner: Some(Rc::new(|text, _, _| log::info!("reader banner: {text}"))),
         reveal: Some(Rc::new(|path, _, _| log::info!("reader reveal: {path}"))),
         open_in_editor: Some(Rc::new(|path, _, _| log::info!("reader editor: {path}"))),

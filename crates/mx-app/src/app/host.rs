@@ -17,7 +17,7 @@ pub struct StoreHost {
     pub terms: TermRegistry,
     timer: Option<Task<()>>,
     armed: Option<Time>,
-    _rt: Arc<Runtime>,
+    rt: Arc<Runtime>,
 }
 
 impl EventEmitter<StoreChanged> for StoreHost {}
@@ -80,6 +80,7 @@ impl StoreHost {
         store.load();
         store.attach_plugins(plugins);
         store.start();
+        store.start_plugins();
 
         Ok(cx.new(|cx| {
             cx.spawn(async move |this, cx| {
@@ -100,11 +101,15 @@ impl StoreHost {
                 terms,
                 timer: None,
                 armed: None,
-                _rt: rt,
+                rt,
             };
             host.arm(cx);
             host
         }))
+    }
+
+    pub fn rt(&self) -> tokio::runtime::Handle {
+        self.rt.handle().clone()
     }
 
     pub fn act<R>(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Store) -> R) -> R {

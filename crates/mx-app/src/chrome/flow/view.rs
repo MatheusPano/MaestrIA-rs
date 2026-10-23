@@ -107,13 +107,6 @@ impl FlowEditor {
         cx.notify();
     }
 
-    pub fn set_text(&mut self, i: usize, text: &str, cx: &mut Context<Self>) {
-        if let Some(s) = self.steps.get_mut(i) {
-            s.draft.text = text.to_owned();
-            s.field.update(cx, |f, cx| f.set_text(text, cx));
-        }
-    }
-
     pub fn drafts(&self) -> Vec<Draft> {
         self.steps.iter().map(|s| s.draft.clone()).collect()
     }

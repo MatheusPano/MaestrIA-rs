@@ -170,10 +170,6 @@ impl FormDialog {
         self.fields.get(index).map(|f| f.read(cx).text().to_owned()).unwrap_or_default()
     }
 
-    pub fn field(&self, index: usize) -> Option<&Entity<TextField>> {
-        self.fields.get(index)
-    }
-
     fn ready(&self, cx: &App) -> bool {
         self.spec.required.iter().all(|i| !self.field_text(*i, cx).trim().is_empty())
     }

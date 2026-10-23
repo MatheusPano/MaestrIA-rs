@@ -79,7 +79,7 @@ impl Store {
         let due: Vec<String> = self
             .tabs
             .iter()
-            .filter(|t| t.can_hibernate() && !self.is_open(&t.id))
+            .filter(|t| t.can_hibernate() && !self.placed(t))
             .filter(|t| {
                 let st = t.status();
                 st == ClaudeStatus::Ready || st.at_rest()

@@ -26,13 +26,18 @@ use std::rc::Rc;
 use gpui::{App, Window};
 
 #[allow(unused_imports)]
-pub use blocks::BlocksView;
+pub use blocks::{BlocksMode, BlocksView};
 #[allow(unused_imports)]
 pub use demo::{DEMO_ENV, open_demo};
 #[allow(unused_imports)]
 pub use style::rfw_theme;
 #[allow(unused_imports)]
 pub use view::RfwView;
+pub use icons::named as named_icon;
+
+pub fn plugin_glyph(icon: Option<&str>, dir: Option<&std::path::Path>, size: f32, color: gpui::Hsla) -> gpui::AnyElement {
+    icons::glyph(icon, dir, size, color, 0.0)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewAction {

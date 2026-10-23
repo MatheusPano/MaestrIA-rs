@@ -62,12 +62,9 @@ impl NoticeCenter {
         cx.notify();
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.notices.len()
-    }
-
-    pub fn clearing(&self) -> bool {
-        self.clearing.is_some()
     }
 
     pub fn clear_all(&mut self, cx: &mut Context<Self>) {

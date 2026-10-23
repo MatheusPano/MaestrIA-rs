@@ -52,6 +52,7 @@ impl Store {
         if hibernated {
             self.wake(id);
         }
+        self.enter_screen_of(id);
         let active = self.active_group().map(|g| g.id.clone());
         let any_pinned = self.open_pane_ids().iter().any(|t| self.is_pinned(t));
         match active {
@@ -66,20 +67,23 @@ impl Store {
     }
 
     pub(crate) fn place(&mut self, id: &str) {
+        self.enter_screen_of(id);
         match self.panes.take() {
             None => self.panes = Some(PaneNode::leaf(id)),
             Some(tree) if tree.has(id) => self.panes = Some(tree),
             Some(tree) => {
                 self.panes = Some(tree);
-                let focused = self
-                    .focused_tab_id()
-                    .filter(|f| self.is_open(f) && !self.is_pinned(f));
-                let loose = focused.or_else(|| {
+                let focused = self.focused_tab_id().filter(|f| self.is_open(f));
+                let free = |t: &str| !self.is_pinned(t) && !self.keeps_place(t, id);
+                let loose = focused.clone().filter(|f| free(f)).or_else(|| {
                     self.open_pane_ids()
                         .into_iter()
-                        .find(|t| !self.is_pinned(t))
+                        .find(|t| free(t))
                 });
-                if let Some(loose) = loose {
+                let host = focused.filter(|f| loose.is_none() && !self.is_pinned(f) && self.keeps_place(f, id));
+                if let Some(host) = host {
+                    self.panes = self.panes.take().map(|p| p.insert(id, &host, DropSide::Right));
+                } else if let Some(loose) = loose {
                     if let Some(p) = self.panes.as_mut() {
                         p.swap(&loose, id);
                     }
@@ -106,6 +110,7 @@ impl Store {
     }
 
     pub(crate) fn place_beside(&mut self, id: &str, beside: Option<&str>) {
+        self.enter_screen_of(id);
         let mut beside = beside.map(str::to_owned);
         if beside.as_deref().is_some_and(|b| self.is_pinned(b)) {
             beside = self
@@ -124,6 +129,7 @@ impl Store {
     }
 
     pub(crate) fn drop_from_tree(&mut self, id: &str) {
+        self.drop_parked(id);
         let loose = self.is_open(id) && !self.is_pinned(id);
         let tree = if loose { self.panes.clone() } else { None };
         let before = self.order();

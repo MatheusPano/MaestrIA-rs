@@ -111,6 +111,7 @@ impl TermRegistry {
             Err(_) => (TerminalPalette::default(), None),
         };
         let session = TerminalSession::with_palette(palette);
+        session.set_tab_id(tab_id);
         if let Some(hook) = hook {
             let id = tab_id.to_owned();
             session.set_exit_hook(Arc::new(move |code| hook(&id, code)));

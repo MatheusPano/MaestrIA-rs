@@ -26,6 +26,10 @@ impl Store {
         self.open_panes().into_iter().find(|t| t.is_reader())?.doc.as_ref()
     }
 
+    pub fn reveal_file(&self, path: &str) {
+        self.p.notifier.reveal(path);
+    }
+
     pub fn readable(path: &str) -> bool {
         is_markdown_path(path)
     }

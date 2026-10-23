@@ -11,7 +11,6 @@ use crate::chrome::icon::{self, icon};
 use crate::chrome::style::{Callback, alpha, hsla, shadow, theme};
 use crate::chrome::widgets::IconButton;
 
-pub const BANNER_LIFE: Duration = Duration::from_secs(6);
 pub const ENTER: Duration = Duration::from_millis(160);
 
 #[derive(IntoElement)]

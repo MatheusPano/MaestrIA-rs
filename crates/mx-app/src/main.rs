@@ -2,13 +2,17 @@
 
 mod app;
 mod chrome;
+mod keymap;
 mod panes;
+mod plugin_ui;
 mod rail;
 mod reader;
 mod rfw_view;
+mod setup;
 mod sidebar;
 mod status_bar;
 mod terminal_element;
+mod terminal_glue;
 mod terminal_input;
 mod terminal_mouse;
 mod terminal_view;
@@ -46,6 +50,10 @@ fn main() {
         }
         if let Some(component) = chrome::demo::requested() {
             chrome::demo::open(component, cx);
+            return;
+        }
+        if let Some(root) = setup::demo::requested() {
+            setup::demo::open(root, cx);
             return;
         }
         if let Ok(name) = std::env::var(rfw_view::DEMO_ENV) {

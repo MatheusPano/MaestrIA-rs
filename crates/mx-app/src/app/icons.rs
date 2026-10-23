@@ -9,7 +9,6 @@ pub enum Icon {
     Settings,
     Search,
     CloseRounded,
-    Close,
     FilterList,
     FilterListOff,
     ChevronRight,
@@ -49,7 +48,6 @@ pub enum Icon {
     PriorityHigh,
     QuestionMark,
     Lock,
-    InfoOutline,
     Terminal,
 }
 
@@ -60,7 +58,6 @@ impl Icon {
             Icon::Settings => 0xf36e,
             Icon::Search => 0xe567,
             Icon::CloseRounded => 0xf647,
-            Icon::Close => 0xe16a,
             Icon::FilterList => 0xf75b,
             Icon::FilterListOff => 0xf031a,
             Icon::ChevronRight => 0xe15f,
@@ -100,7 +97,6 @@ impl Icon {
             Icon::PriorityHigh => 0xf00c1,
             Icon::QuestionMark => 0xf036b,
             Icon::Lock => 0xf889,
-            Icon::InfoOutline => 0xe33d,
             Icon::Terminal => 0xf0589,
         }
     }

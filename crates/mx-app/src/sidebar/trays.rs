@@ -1,13 +1,15 @@
 use gpui::{
-    AnyElement, App, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px,
+    AnyElement, App, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px,
 };
 use mx_core::model::Tab;
 
 use crate::app::host::update_store;
 use crate::app::icons::{Icon, icon};
-use crate::sidebar::tree::{Ctx, open_shell_in};
-use crate::sidebar::widgets::{badge, count_chip, count_text, row_button};
+use crate::app::confirms;
+use crate::app::menus::Target;
+use crate::sidebar::tree::Ctx;
+use crate::sidebar::widgets::{badge, count_chip, count_text, menu_on, right_click, row_button};
 
 pub fn settled_label(n: usize) -> String {
     if n == 1 {
@@ -63,7 +65,7 @@ impl Ctx<'_> {
                 div()
                     .invisible()
                     .group_hover("groups-ruler", |s| s.visible())
-                    .child(row_button(mx, "groups-clear", Icon::CloseRounded, "Esquecer todos os grupos", |_, _| {})),
+                    .child(row_button(mx, "groups-clear", Icon::CloseRounded, "Esquecer todos os grupos", |_, cx| confirms::clear_groups(cx))),
             );
         let mut col = div().flex().flex_col().child(ruler);
         if !collapsed {
@@ -88,6 +90,7 @@ impl Ctx<'_> {
                         .when(selected, |d| d.bg(mx.bg_active))
                         .when(!selected, |d| d.hover(|s| s.bg(mx.bg_hover)))
                         .on_click(move |_, _, cx: &mut App| update_store(&host, cx, |s| s.open_group(&id)))
+                        .on_mouse_down(MouseButton::Right, right_click(Target::Group(g.id.clone())))
                         .child(icon(Icon::GridView, 17., color))
                         .child(
                             div()
@@ -117,7 +120,7 @@ impl Ctx<'_> {
                             SharedString::from(format!("group-more:{}", g.id)),
                             Icon::MoreHoriz,
                             "O que fazer com esse grupo",
-                            |_, _| {},
+                            menu_on(Target::Group(g.id.clone())),
                         )),
                 );
             }
@@ -137,8 +140,7 @@ impl Ctx<'_> {
         let settled = self.store.settled_in(&loose.root);
         let clear_host = self.host.clone();
         let clear_root = loose.root.clone();
-        let add_host = self.host.clone();
-        let add_root = loose.root.clone();
+        let plus = Target::Plus { root: loose.root.clone(), feature: None };
         let ruler = div()
             .id("loose-ruler")
             .group("loose-ruler")
@@ -164,10 +166,8 @@ impl Ctx<'_> {
                         })),
                 )
             })
-            .child(row_button(mx, "loose-add", Icon::Add, "Abrir aqui", move |_, cx| {
-                open_shell_in(&add_host, &add_root, cx)
-            }))
-            .child(row_button(mx, "loose-more", Icon::MoreHoriz, "O que fazer com os avulsos", |_, _| {}));
+            .child(row_button(mx, "loose-add", Icon::Add, "Abrir aqui", menu_on(plus)))
+            .child(row_button(mx, "loose-more", Icon::MoreHoriz, "O que fazer com os avulsos", menu_on(Target::Loose)));
         let body = self.folder_body(loose, &tabs, None);
         Some(div().flex().flex_col().child(ruler).children(body).into_any_element())
     }

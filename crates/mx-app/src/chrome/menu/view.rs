@@ -51,12 +51,6 @@ impl<T: Clone + 'static> ContextMenu<T> {
         }
     }
 
-    pub fn width(mut self, min: f32, max: f32) -> Self {
-        self.min_width = min;
-        self.max_width = max;
-        self
-    }
-
     pub fn set_entries(&mut self, entries: Vec<MenuEntry<T>>, cx: &mut Context<Self>) {
         self.entries = entries;
         cx.notify();
@@ -66,6 +60,7 @@ impl<T: Clone + 'static> ContextMenu<T> {
         self.open_sub = index;
     }
 
+    #[cfg(test)]
     pub fn open_submenu(&self) -> Option<usize> {
         self.open_sub
     }

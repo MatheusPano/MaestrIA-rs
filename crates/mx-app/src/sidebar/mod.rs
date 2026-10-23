@@ -6,14 +6,17 @@ mod widgets;
 
 use gpui::{
     AnyElement, App, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use mx_core::model::sidebar::RowKey;
 use mx_store::Store;
 
 use crate::app::host::{StoreHost, update_store};
+use crate::app::menus::{self, Target};
+use crate::app::{chats, settings};
+use crate::chrome::settings::Section;
 use crate::app::icons::{Icon, icon};
-use crate::app::keys;
+use crate::keymap::{Action, keymap_of};
 use crate::app::theme::{Mx, RADIUS};
 use crate::app::tooltip::tip;
 use tree::Ctx;
@@ -24,6 +27,8 @@ pub const DEFAULT_WIDTH: f32 = 352.;
 pub struct Sidebar {
     host: Entity<StoreHost>,
     search_focus: FocusHandle,
+    scroll: ScrollHandle,
+    revealed: Option<(String, Option<String>)>,
 }
 
 pub fn no_hits_text(query: &str, filters: usize) -> String {
@@ -44,7 +49,7 @@ impl Sidebar {
         let search_focus = cx.focus_handle();
         cx.on_focus(&search_focus, window, |_, _, cx| cx.notify()).detach();
         cx.on_blur(&search_focus, window, |_, _, cx| cx.notify()).detach();
-        Sidebar { host, search_focus }
+        Sidebar { host, search_focus, scroll: ScrollHandle::new(), revealed: None }
     }
 
     pub fn focus_search(&self, window: &mut Window) {
@@ -66,17 +71,21 @@ impl Sidebar {
                 mx,
                 "sidebar-settings",
                 Icon::Settings,
-                format!("Configurações  {}", keys::SETTINGS),
-                |_, _| {},
+                with_keys("Configurações", &self.host.read(cx).store, Action::Settings),
+                |window, cx| settings::open(Section::Appearance, window, cx),
             ))
     }
 
-    fn list(&self, mx: &Mx, cx: &Context<Self>) -> impl IntoElement {
+    fn list(&mut self, mx: &Mx, cx: &Context<Self>) -> impl IntoElement {
         let store = &self.host.read(cx).store;
+        let now = store.revealed().map(|r| (r.tab_id.clone(), r.within.clone()));
+        let fresh = now.is_some() && now != self.revealed;
+        self.revealed = now;
         let ctx = Ctx {
             store,
             mx,
             host: &self.host,
+            scroll: fresh.then(|| self.scroll.clone()),
         };
         let filtering = store.filtering();
         let mut items: Vec<AnyElement> = Vec::new();
@@ -108,6 +117,7 @@ impl Sidebar {
         items.extend(ctx.loose_tray(has_folders));
         div()
             .id("sidebar-list")
+            .track_scroll(&self.scroll)
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
@@ -118,8 +128,9 @@ impl Sidebar {
             .children(items)
     }
 
-    fn footer(&self, mx: &Mx) -> impl IntoElement {
+    fn footer(&self, mx: &Mx, cx: &Context<Self>) -> impl IntoElement {
         let host = self.host.clone();
+        let hide = with_keys("Esconder a lateral", &self.host.read(cx).store, Action::Sidebar);
         div()
             .h(px(42.))
             .flex_none()
@@ -129,18 +140,28 @@ impl Sidebar {
             .gap(px(4.))
             .border_t_1()
             .border_color(mx.border)
-            .child(strip_icon(mx, "footer-add", Icon::CreateNewFolder, "Adicionar pasta ou workspace", |_, _| {}))
-            .child(strip_icon(mx, "footer-history", Icon::History, "Retomar uma conversa", |_, _| {}))
+            .child(strip_icon(mx, "footer-add", Icon::CreateNewFolder, "Adicionar pasta ou workspace", |window, cx| {
+                menus::open(Target::FooterAdd, window, cx)
+            }))
+            .child(strip_icon(mx, "footer-history", Icon::History, "Retomar uma conversa", |_, cx| drop(chats::open(cx))))
             .child(div().flex_1())
-            .child(strip_icon(mx, "footer-account", Icon::Speed, "Conta & uso", |_, _| {}))
+            .child(strip_icon(mx, "footer-account", Icon::Speed, "Conta & uso", |window, cx| {
+                settings::open(Section::Account, window, cx)
+            }))
             .child(strip_icon(
                 mx,
                 "footer-hide",
                 Icon::ViewSidebar,
-                format!("Esconder a lateral  {}", keys::SIDEBAR),
+                hide,
                 move |_, cx| update_store(&host, cx, Store::toggle_sidebar),
             ))
     }
+}
+
+pub fn with_keys(label: &str, store: &Store, action: Action) -> String {
+    let mut parts = vec![label.to_owned()];
+    parts.extend(keymap_of(store).labels(action));
+    parts.join("  ")
 }
 
 fn strip_icon(
@@ -200,7 +221,8 @@ fn no_hits(mx: &Mx, host: &Entity<StoreHost>, store: &Store) -> AnyElement {
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mx = Mx::get(cx).clone();
-        div()
+        let plugin_tab = self.host.read(cx).store.shown_plugin().and_then(|_| crate::plugin_ui::sidebar_view(cx));
+        let frame = div()
             .size_full()
             .flex()
             .flex_col()
@@ -209,10 +231,14 @@ impl Render for Sidebar {
             .border_1()
             .border_color(mx.border)
             .shadow(mx.card_shadow(12., 3.))
-            .overflow_hidden()
+            .overflow_hidden();
+        if let Some(view) = plugin_tab {
+            return frame.child(view);
+        }
+        frame
             .child(self.header(&mx, window, cx))
             .child(self.list(&mx, cx))
-            .child(self.footer(&mx))
+            .child(self.footer(&mx, cx))
     }
 }
 

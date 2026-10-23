@@ -114,6 +114,7 @@ pub(crate) struct Shared {
     guard: Mutex<TextInputGuard>,
     scrolled: AtomicBool,
     on_exit: Mutex<Option<ExitHook>>,
+    tab_id: Mutex<Option<String>>,
     events: async_channel::Receiver<TermEvent>,
 }
 
@@ -147,6 +148,7 @@ impl TerminalSession {
             guard: Mutex::new(TextInputGuard::new()),
             scrolled: AtomicBool::new(false),
             on_exit: Mutex::new(None),
+            tab_id: Mutex::new(None),
             events: rx,
         });
         Self { shared }
@@ -168,6 +170,14 @@ impl TerminalSession {
 
     pub fn set_exit_hook(&self, hook: ExitHook) {
         *lock(&self.shared.on_exit) = Some(hook);
+    }
+
+    pub fn set_tab_id(&self, id: &str) {
+        *lock(&self.shared.tab_id) = Some(id.to_owned());
+    }
+
+    pub fn tab_id(&self) -> Option<String> {
+        lock(&self.shared.tab_id).clone()
     }
 
     pub fn events(&self) -> async_channel::Receiver<TermEvent> {

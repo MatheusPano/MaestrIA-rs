@@ -19,12 +19,9 @@ impl Rect {
         self.x + self.w
     }
 
+    #[cfg(test)]
     pub fn bottom(&self) -> f32 {
         self.y + self.h
-    }
-
-    pub fn contains(&self, x: f32, y: f32) -> bool {
-        x >= self.x && x <= self.right() && y >= self.y && y <= self.bottom()
     }
 }
 

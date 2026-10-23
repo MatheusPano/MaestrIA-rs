@@ -7,7 +7,6 @@ use mx_theme::{Color, Theme};
 pub type Callback = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type Handler<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
 
-pub const GAP: f32 = 8.;
 pub const MONO: &str = "Hack";
 
 pub struct CurrentTheme(pub Arc<Theme>);
@@ -53,16 +52,6 @@ pub fn shadow(theme: &Theme, blur: f32, dy: f32) -> Vec<BoxShadow> {
         blur_radius: px(blur),
         spread_radius: px(0.),
     }]
-}
-
-pub fn blend(top: Color, a: f64, under: Color) -> Color {
-    let mix = |t: u8, u: u8| (t as f64 * a + u as f64 * (1. - a)).round() as u8;
-    Color {
-        a: 255,
-        r: mix(top.r, under.r),
-        g: mix(top.g, under.g),
-        b: mix(top.b, under.b),
-    }
 }
 
 pub fn cb<V: 'static>(

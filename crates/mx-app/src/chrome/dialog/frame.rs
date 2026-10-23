@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, App, Div, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, App, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgba,
 };
 use mx_theme::Theme;
@@ -144,12 +144,4 @@ pub fn check_line(
         .child(icon(glyph, 18., hsla(if on { t.accent } else { t.fg_dim })))
         .child(div().flex_1().text_size(px(12.)).text_color(hsla(t.fg_dim)).child(label))
         .into_any_element()
-}
-
-pub fn section_title(text: impl Into<SharedString>, t: &Theme) -> Div {
-    div()
-        .text_size(px(14.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(hsla(t.fg))
-        .child(text.into())
 }

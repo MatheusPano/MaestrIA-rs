@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, AppContext, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
-    px,
+    Bounds, MouseButton, ParentElement, Pixels, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, div,
+    canvas, point, prelude::FluentBuilder, px,
 };
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
 use mx_store::{Store, TabTint};
@@ -13,6 +13,8 @@ use crate::app::icons::{Icon, icon, terminal_mark};
 use crate::app::keys;
 use crate::app::theme::{Mx, blend};
 use crate::app::tooltip::tip;
+use crate::app::panel_actions::open_panel_menu;
+use crate::chrome::anim::reveal::{reveal_offset, reveal_overlay};
 use crate::sidebar::widgets::{badge, mini_button};
 
 pub struct TabRow {
@@ -148,7 +150,7 @@ impl TabRow {
         row
     }
 
-    pub fn render(self, mx: &Mx, host: &Entity<StoreHost>) -> AnyElement {
+    pub fn render(self, mx: &Mx, host: &Entity<StoreHost>, scroll: Option<&ScrollHandle>) -> AnyElement {
         let bg = self.background(mx);
         let title_color = if self.dim { mx.fg_dim } else { mx.fg };
         let weight = if self.selected {
@@ -232,8 +234,16 @@ impl TabRow {
             .border_color(gpui::transparent_black())
             .when_some(bg, |d, bg| d.bg(bg))
             .when(bg.is_none(), |d| d.hover(|s| s.bg(mx.bg_hover)))
-            .when(self.revealed, |d| {
-                d.bg(accent.opacity(0.12)).border(px(1.5)).border_color(accent)
+            .when(self.revealed, |d| d.child(reveal_overlay(&mx.theme)))
+            .when_some(scroll.filter(|_| self.revealed).cloned(), |d, handle| {
+                d.child(canvas(move |row, window, _| scroll_into_view(&handle, row, window), |_, _, _, _| {}).absolute().size_full())
+            })
+            .on_mouse_down(MouseButton::Right, {
+                let id = self.id.clone();
+                move |ev, _, cx| {
+                    cx.stop_propagation();
+                    open_panel_menu(&id, ev.position, cx)
+                }
             })
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host_click, cx, |s| match &group {
@@ -285,5 +295,18 @@ impl TabRow {
             )
             .child(close)
             .into_any_element()
+    }
+}
+
+fn scroll_into_view(handle: &ScrollHandle, row: Bounds<Pixels>, window: &mut gpui::Window) {
+    let list = handle.bounds();
+    let offset = f32::from(handle.offset().y);
+    let viewport = f32::from(list.size.height);
+    let top = f32::from(row.origin.y - list.origin.y) - offset;
+    let content = viewport + f32::from(handle.max_offset().height);
+    let target = reveal_offset(top, f32::from(row.size.height), viewport, content);
+    if (target + offset).abs() > 0.5 {
+        handle.set_offset(point(px(0.), px(-target)));
+        window.request_animation_frame();
     }
 }

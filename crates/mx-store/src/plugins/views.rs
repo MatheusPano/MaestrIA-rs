@@ -67,8 +67,9 @@ impl Store {
             return match slot {
                 Slot::Modal => self.plugin.modal.as_ref().map(|(t, _)| t.id.clone()).unwrap_or_default(),
                 Slot::Tab(id) => {
+                    let beside = self.focused_tab_id();
+                    self.enter_screen_of(&id);
                     if !self.is_open(&id) {
-                        let beside = self.focused_tab_id();
                         self.place_beside(&id, beside.as_deref());
                     }
                     self.focused = Some(id.clone());

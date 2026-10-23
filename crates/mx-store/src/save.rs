@@ -15,7 +15,7 @@ impl Store {
         let stale: Vec<String> = self
             .tabs
             .iter()
-            .filter(|t| t.pinned && !self.is_open(&t.id))
+            .filter(|t| t.pinned && !self.placed(t))
             .map(|t| t.id.clone())
             .collect();
         for id in stale {
@@ -86,8 +86,8 @@ impl Store {
             shortcuts: p.shortcuts.clone(),
             plugins: p.plugins.clone(),
             layout: Some(Layout {
-                tree: layout::to_json(self.panes.as_ref(), &index_of),
-                focused: self.focused.as_deref().map_or(-1, index_of),
+                tree: layout::to_json(self.tree_of(None), &index_of),
+                focused: self.sessions_focus().map_or(-1, index_of),
                 panes,
                 legacy: None,
             }),

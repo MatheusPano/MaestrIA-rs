@@ -114,6 +114,7 @@ impl Header {
             buttons.push(self.button(mx, ("pin", glyph, color), if pinned { "Solto" } else { "Prender" }, host, |s, id| s.toggle_pin(id)));
         }
         buttons.push(self.button(mx, ("reveal", Icon::MyLocation, faint), "mostrar na lateral", host, |s, id| s.reveal_tab(id)));
+        buttons.push(more_button(mx, &self.id));
         if self.agent {
             let done = self.done;
             let (glyph, color, tooltip) = if done {
@@ -188,6 +189,27 @@ impl Header {
             .child(div().ml(px(10.)).flex_1().min_w_0().flex().opacity(fade).child(chips))
             .child(div().flex_none().flex().items_center().gap(px(2.)).opacity(fade).children(buttons))
     }
+}
+
+fn more_button(mx: &Mx, tab: &str) -> AnyElement {
+    let tab = tab.to_owned();
+    div()
+        .id(SharedString::from(format!("pane-more:{tab}")))
+        .flex_none()
+        .size(px(26.))
+        .rounded(px(6.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .hover(|s| s.bg(mx.bg_hover))
+        .tooltip(tip("Mais"))
+        .on_click(move |ev, _, cx: &mut App| {
+            cx.stop_propagation();
+            crate::app::panel_actions::open_panel_menu(&tab, ev.position(), cx);
+        })
+        .child(icon(Icon::MoreHoriz, 16., mx.fg_faint))
+        .into_any_element()
 }
 
 #[cfg(test)]

@@ -31,6 +31,7 @@ impl ConfettiLayer {
         Self::default()
     }
 
+    #[cfg(test)]
     pub fn active(&self) -> bool {
         !self.bursts.is_empty()
     }

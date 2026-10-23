@@ -8,7 +8,6 @@ use super::row::{NoticeView, RowHandlers, notice_row};
 use crate::chrome::anim::ease::{ease_in_cubic, ease_out, ease_out_cubic, interval};
 use crate::chrome::style::{alpha, hsla, shadow, theme};
 
-pub const TOAST_LIFE: Duration = Duration::from_secs(8);
 pub const TOAST_ENTER: Duration = Duration::from_millis(280);
 pub const TOAST_WIDTH: f32 = 380.;
 
@@ -47,6 +46,7 @@ impl ToastStack {
         cx.notify();
     }
 
+    #[cfg(test)]
     pub fn ids(&self) -> Vec<u64> {
         self.entries.iter().map(|e| e.view.id).collect()
     }

@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use gpui::{AppContext, Context, Entity, Window};
 use mx_term::TermRegistry;
 use mx_theme::TerminalPalette;
 
 use crate::panes::PaneArea;
+use crate::plugin_ui::surface::TermViews;
 use crate::terminal_view::TerminalView;
 
 pub struct Shown {
@@ -16,12 +15,20 @@ pub struct Shown {
 
 #[derive(Default)]
 pub struct Terminals {
-    views: HashMap<String, Entity<TerminalView>>,
+    views: TermViews,
 }
 
 impl Terminals {
-    pub fn get(&self, id: &str) -> Option<&Entity<TerminalView>> {
-        self.views.get(id)
+    pub fn get(&self, id: &str) -> Option<Entity<TerminalView>> {
+        self.views.borrow().get(id).cloned()
+    }
+
+    pub fn all(&self) -> Vec<Entity<TerminalView>> {
+        self.views.borrow().values().cloned().collect()
+    }
+
+    pub fn shared(&self) -> TermViews {
+        self.views.clone()
     }
 
     pub fn sync(
@@ -35,27 +42,27 @@ impl Terminals {
         for s in shown {
             let id = &s.id;
             let Some(session) = registry.get(id) else {
-                self.views.remove(id);
+                self.views.borrow_mut().remove(id);
                 continue;
             };
-            let stale = self
-                .views
-                .get(id)
-                .is_some_and(|v| !v.read(cx).session().same(&session));
-            if stale || !self.views.contains_key(id) {
-                let view = cx.new(|cx| {
-                    let mut v = TerminalView::for_session(session, palette, window, cx);
-                    v.set_claude(s.claude);
-                    v.set_cwd(Some(s.cwd.clone()));
-                    v
-                });
-                self.views.insert(id.clone(), view);
-            }
-            if let Some(view) = self.views.get(id) {
-                let (size, line) = s.type_size;
-                view.update(cx, |v, cx| v.set_typography(size, line, cx));
-            }
+            let current = self.get(id);
+            let stale = current.as_ref().is_some_and(|v| !v.read(cx).session().same(&session));
+            let view = match current {
+                Some(v) if !stale => v,
+                _ => {
+                    let view = cx.new(|cx| {
+                        let mut v = TerminalView::for_session(session, palette, window, cx);
+                        v.set_claude(s.claude);
+                        v.set_cwd(Some(s.cwd.clone()));
+                        v
+                    });
+                    self.views.borrow_mut().insert(id.clone(), view.clone());
+                    view
+                }
+            };
+            let (size, line) = s.type_size;
+            view.update(cx, |v, cx| v.set_typography(size, line, cx));
         }
-        self.views.retain(|id, _| shown.iter().any(|s| &s.id == id));
+        self.views.borrow_mut().retain(|id, _| shown.iter().any(|s| &s.id == id));
     }
 }

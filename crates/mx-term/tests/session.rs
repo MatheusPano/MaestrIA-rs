@@ -243,6 +243,14 @@ fn registry_forgets_dropped_sessions() {
     assert!(registry.get("t7").is_none());
 }
 
+#[test]
+fn registry_sessions_know_their_tab() {
+    let registry = TermRegistry::new(TerminalPalette::default());
+    let _term = registry.create("t8");
+    assert_eq!(registry.get("t8").unwrap().tab_id().as_deref(), Some("t8"));
+    assert_eq!(TerminalSession::with_palette(TerminalPalette::default()).tab_id(), None);
+}
+
 fn futures_block(fut: mx_core::ports::BoxFuture<'static, ()>) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

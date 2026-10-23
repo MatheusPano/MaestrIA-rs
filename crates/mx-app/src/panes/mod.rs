@@ -1,20 +1,25 @@
+mod bodies;
 mod drop;
 mod empty;
 mod grip;
 mod header;
 mod terminals;
+mod view_header;
 
 use gpui::{
-    AnyElement, AnyView, App, Context, DragMoveEvent, Entity, Focusable, InteractiveElement,
+    AnyElement, AnyView, App, AppContext, Context, DragMoveEvent, Entity, Focusable, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Render, SharedString, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder, px, relative,
+    Subscription, Window, div, prelude::FluentBuilder, px, relative,
 };
+use mx_store::Areas;
 use mx_core::layout::{Axis, DropSide, PaneNode};
 use mx_core::model::TabKind;
 
 use crate::app::drag::DraggedTab;
-use crate::app::host::{StoreHost, update_store};
+use crate::app::host::{StoreChanged, StoreHost, update_store};
 use crate::app::theme::{Mx, RADIUS};
+use crate::plugin_ui::PluginLayer;
+use crate::plugin_ui::surface::SurfaceEnv;
 
 pub use terminals::Terminals;
 
@@ -24,6 +29,9 @@ pub struct PaneArea {
     hint: Option<(String, DropSide)>,
     resizing: Option<grip::GripDrag>,
     focused: Option<String>,
+    bodies: bodies::Bodies,
+    layer: Option<Entity<PluginLayer>>,
+    watch: Option<Subscription>,
 }
 
 impl PaneArea {
@@ -34,7 +42,29 @@ impl PaneArea {
             hint: None,
             resizing: None,
             focused: None,
+            bodies: bodies::Bodies::default(),
+            layer: None,
+            watch: None,
         }
+    }
+
+    pub fn set_palette(&mut self, palette: &mx_theme::TerminalPalette, cx: &mut Context<Self>) {
+        for view in self.terminals.all() {
+            view.update(cx, |v, cx| v.set_palette(palette, cx));
+        }
+    }
+
+    fn attach(&mut self, cx: &mut Context<Self>) {
+        if self.watch.is_some() {
+            return;
+        }
+        self.watch = Some(cx.subscribe(&self.host, |_, _, ev: &StoreChanged, cx| {
+            if ev.0.areas.intersects(Areas::PLUGINS) {
+                cx.notify();
+            }
+        }));
+        let (host, terms) = (self.host.clone(), self.terminals.shared());
+        self.layer = Some(cx.new(|cx| PluginLayer::new(host, terms, cx)));
     }
 
 
@@ -45,6 +75,7 @@ impl PaneArea {
         }
         self.focused = focused.clone();
         if let Some(view) = focused.as_deref().and_then(|id| self.terminals.get(id)) {
+            let view = &view;
             let handle = view.focus_handle(cx);
             window.focus(&handle);
         }
@@ -79,20 +110,26 @@ impl PaneArea {
             return div().size_full().into_any_element();
         };
         let focused = store.focused_tab_id().as_deref() == Some(id);
-        let header = header::Header::of(store, mx, tab, show_focus, focused);
-        let body: AnyElement = match (tab.kind, self.terminals.get(id)) {
-            (TabKind::Claude | TabKind::Shell, Some(view)) => AnyView::from(view.clone())
-                .cached(StyleRefinement::default().size_full())
-                .into_any_element(),
-            _ => div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(12.))
-                .text_color(mx.fg_faint)
-                .child(if tab.hibernated { "Hibernada" } else { "" })
-                .into_any_element(),
+        let kind = tab.kind;
+        let hibernated = tab.hibernated;
+        let settings: view_header::Opener = std::rc::Rc::new(|plugin, window, cx| crate::plugin_ui::open_settings(&plugin, window, cx));
+        let top: Option<AnyElement> = match kind {
+            TabKind::Plugin => view_header::ViewHeader::of(store, id, show_focus, focused)
+                .map(|h| h.render(mx, &self.host, Some(settings), 1000.).into_any_element()),
+            TabKind::Reader => None,
+            _ => Some(header::Header::of(store, mx, tab, show_focus, focused).render(mx, &self.host).into_any_element()),
+        };
+        let (body, padded): (AnyElement, bool) = match kind {
+            TabKind::Claude | TabKind::Shell => match self.terminals.get(id) {
+                Some(view) => (AnyView::from(view).cached(StyleRefinement::default().size_full()).into_any_element(), true),
+                None => (bodies::placeholder(if hibernated { "Hibernada" } else { "" }, mx.fg_faint), true),
+            },
+            TabKind::Reader => (self.bodies.reader(id).unwrap_or_else(|| bodies::placeholder("", mx.fg_faint)), false),
+            TabKind::Plugin => (
+                self.bodies.surface(id).unwrap_or_else(|| bodies::placeholder(mx_plugins::ui::view::MISSING_PLUGIN, mx.fg_faint)),
+                false,
+            ),
+            TabKind::Setup => (self.bodies.setup(id).unwrap_or_else(|| bodies::placeholder("Configuração do projeto", mx.fg_faint)), false),
         };
         let ring = if show_focus && focused {
             mx.accent.opacity(0.65)
@@ -131,8 +168,14 @@ impl PaneArea {
                     .map_or(DropSide::Center, |(_, s)| s);
                 update_store(&drop_host, cx, |s| s.drop_tab(&d.id, &drop_id, side));
             }))
-            .child(header.render(mx, &self.host))
-            .child(div().flex_1().min_h_0().px(px(12.)).py(px(10.)).child(body))
+            .children(top)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .when(padded, |d| d.px(px(12.)).py(px(10.)))
+                    .child(body),
+            )
             .child(
                 div()
                     .absolute()
@@ -204,13 +247,15 @@ impl PaneArea {
 
 impl Render for PaneArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.attach(cx);
         let host = self.host.read(cx);
         let typo = host.store.prefs().typography.clone();
-        let shown: Vec<terminals::Shown> = host
-            .store
-            .order()
+        let mut ids = host.store.order();
+        ids.extend(host.store.tabs().iter().filter(|t| t.embedded).map(|t| t.id.clone()));
+        let shown: Vec<terminals::Shown> = ids
             .into_iter()
             .filter_map(|id| host.store.tab(&id).cloned())
+            .filter(|t| matches!(t.kind, TabKind::Claude | TabKind::Shell))
             .map(|t| terminals::Shown {
                 claude: t.kind == TabKind::Claude,
                 cwd: t.cwd.clone(),
@@ -221,15 +266,25 @@ impl Render for PaneArea {
         let registry = host.terms.clone();
         let palette = Mx::get(cx).theme.terminal();
         self.terminals.sync(&shown, &registry, &palette, window, cx);
+        let env = SurfaceEnv {
+            host: self.host.clone(),
+            theme: Mx::get(cx).theme.clone(),
+            typography: crate::plugin_ui::surface::rfw_typography(&typo),
+            terms: self.terminals.shared(),
+            zoom: 0.0,
+        };
+        self.bodies.sync(&env, window, cx);
         self.follow_focus(window, cx);
         let mx = Mx::get(cx).clone();
         let store = &self.host.read(cx).store;
         let tree = store.panes().cloned();
+        let screen = store.screen().map(str::to_owned);
         let show_focus = store.pane_count() > 1;
         let live = store.tabs().iter().filter(|t| !t.exited && !t.embedded).count();
-        let body = match tree {
-            Some(tree) => self.node(&tree, Vec::new(), show_focus, &mx, cx),
-            None => empty::empty_pane(&mx, &self.host, live).into_any_element(),
+        let body = match (tree, screen) {
+            (Some(tree), _) => self.node(&tree, Vec::new(), show_focus, &mx, cx),
+            (None, Some(plugin)) => empty::empty_screen(&mx, &self.host, &plugin, cx).into_any_element(),
+            (None, None) => empty::empty_pane(&mx, &self.host, live).into_any_element(),
         };
         div()
             .size_full()
@@ -239,5 +294,6 @@ impl Render for PaneArea {
                 }
             }))
             .child(body)
+            .children(self.layer.clone())
     }
 }

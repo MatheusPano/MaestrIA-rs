@@ -16,14 +16,15 @@ use gpui::{
     SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div, point,
     prelude::*, px,
 };
-use mx_claude::docs::{LinkAction, MxDoc, decode_href, follow_link};
+use mx_claude::docs::{MxDoc, decode_href};
 use mx_claude::markdown::{MdNode, parse_markdown};
 use mx_theme::Theme;
 
 pub use header::Action;
 
 use blocks::Painter;
-use header::{HeaderButton, header, notice, source_glyph};
+use header::{Glyph, HeaderButton, header, notice, source_glyph};
+use crate::app::icons::Icon;
 use inline::FollowHref;
 use style::{SANS, Sheet};
 
@@ -31,7 +32,7 @@ const PULSE: Duration = Duration::from_millis(1500);
 const COLUMN: f32 = 760.;
 
 pub type PathAction = Rc<dyn Fn(String, &mut Window, &mut App)>;
-pub type LinkHandler = Rc<dyn Fn(LinkAction, &mut Window, &mut App)>;
+pub type LinkHandler = Rc<dyn Fn(String, Option<String>, &mut Window, &mut App)>;
 
 #[derive(Clone, Default)]
 pub struct ReaderActions {
@@ -41,6 +42,18 @@ pub struct ReaderActions {
     pub open_in_editor: Option<PathAction>,
     pub toggle_pin: Option<Action>,
     pub close: Option<Action>,
+}
+
+pub fn markdown_body(text: &str, theme: &Theme, zoom: f32, width: f32, window: &Window) -> gpui::AnyElement {
+    let sheet = Sheet::new(theme, zoom);
+    let tree = parse_markdown(text);
+    let painter = Painter::new(&sheet, None, window.text_system().clone(), px(width));
+    div()
+        .w_full()
+        .font_family(SANS)
+        .text_color(sheet.fg)
+        .child(painter.document(&tree))
+        .into_any_element()
 }
 
 pub struct ReaderView {
@@ -219,10 +232,8 @@ impl ReaderView {
                 .map(|p| p.to_string_lossy().into_owned()),
             None => self.cwd.clone(),
         };
-        let home = self.home.clone();
         Some(Rc::new(move |href: &str, window: &mut Window, cx: &mut App| {
-            let action = follow_link(&decode_href(href), base.as_deref(), home.as_deref());
-            follow(action, window, cx);
+            follow(decode_href(href), base.clone(), window, cx);
         }))
     }
 
@@ -232,20 +243,22 @@ impl ReaderView {
         if let Some(path) = self.doc.path.clone().filter(|_| self.doc.source.on_disk()) {
             let reload = weak.clone();
             buttons.push(HeaderButton {
-                glyph: "↻",
+                glyph: Glyph::Path("refresh_rounded"),
+                tint: None,
                 tooltip: "Reler do disco — ele já relê sozinho enquanto está aberto",
                 action: Rc::new(move |_, cx| {
                     reload.update(cx, |view, cx| view.reload(cx)).ok();
                 }),
             });
             for (glyph, tooltip, target) in [
-                ("⌂", "Mostrar no Finder", self.actions.reveal.clone()),
-                ("✎", "Abrir no vscode", self.actions.open_in_editor.clone()),
+                (Glyph::Path("folder_outlined"), "Mostrar no Finder", self.actions.reveal.clone()),
+                (Glyph::Path("edit_outlined"), "Abrir no vscode", self.actions.open_in_editor.clone()),
             ] {
                 if let Some(target) = target {
                     let path = path.clone();
                     buttons.push(HeaderButton {
                         glyph,
+                        tint: None,
                         tooltip,
                         action: Rc::new(move |window, cx| target(path.clone(), window, cx)),
                     });
@@ -254,7 +267,8 @@ impl ReaderView {
         }
         let copy = weak.clone();
         buttons.push(HeaderButton {
-            glyph: "⧉",
+            glyph: Glyph::Path("copy_rounded"),
+            tint: None,
             tooltip: "Copiar o markdown",
             action: Rc::new(move |window, cx| {
                 copy.update(cx, |view, cx| view.copy(window, cx)).ok();
@@ -262,14 +276,16 @@ impl ReaderView {
         });
         if let Some(pin) = self.actions.toggle_pin.clone() {
             buttons.push(HeaderButton {
-                glyph: if self.pinned { "◆" } else { "◇" },
+                glyph: Glyph::Font(if self.pinned { Icon::PushPin } else { Icon::PushPinOutlined }),
+                tint: self.pinned.then(|| style::hsla(self.theme.accent)),
                 tooltip: if self.pinned { "Desafixar" } else { "Fixar" },
                 action: pin,
             });
         }
         if let Some(close) = self.actions.close.clone() {
             buttons.push(HeaderButton {
-                glyph: "✕",
+                glyph: Glyph::Font(Icon::CloseRounded),
+                tint: None,
                 tooltip: "Fechar este leitor",
                 action: close,
             });
@@ -287,7 +303,7 @@ impl ReaderView {
     fn body(&self, sheet: &Sheet, window: &mut Window) -> gpui::AnyElement {
         if self.doc.missing() {
             let path = self.doc.path.clone().unwrap_or_default();
-            return notice(sheet, "?", "Esse arquivo não está mais lá", path);
+            return notice(sheet, Glyph::Path("error_outline"), "Esse arquivo não está mais lá", path);
         }
         if self.doc.text.trim().is_empty() {
             let title = if self.doc.source.on_disk() {
@@ -295,7 +311,7 @@ impl ReaderView {
             } else {
                 "Documento vazio"
             };
-            return notice(sheet, "▤", title, self.doc.path.clone().unwrap_or_default());
+            return notice(sheet, Glyph::Path("description_outlined"), title, self.doc.path.clone().unwrap_or_default());
         }
         let painter = Painter::new(sheet, self.follower(), window.text_system().clone(), self.width.get());
         let width = self.width.clone();

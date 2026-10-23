@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px,
+    AnyElement, App, Entity, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px,
 };
 use mx_core::model::{FeatureOrHotfix, FeatureOrHotfixKind, Folder, Tab, Workspace};
 use mx_store::Store;
@@ -10,12 +10,14 @@ use crate::app::icons::{Icon, icon};
 use crate::app::theme::Mx;
 use crate::app::tooltip::tip;
 use crate::sidebar::tab_row::TabRow;
-use crate::sidebar::widgets::{badge, chevron, count_text, nest, row_button};
+use crate::app::menus::Target;
+use crate::sidebar::widgets::{badge, chevron, count_text, menu_on, nest, right_click, row_button};
 
 pub struct Ctx<'a> {
     pub store: &'a Store,
     pub mx: &'a Mx,
     pub host: &'a Entity<StoreHost>,
+    pub scroll: Option<ScrollHandle>,
 }
 
 impl Ctx<'_> {
@@ -26,7 +28,7 @@ impl Ctx<'_> {
     fn rows(&self, tabs: &[&Tab], within: Option<&str>) -> Vec<AnyElement> {
         tabs.iter()
             .filter(|t| self.visible(t))
-            .map(|t| TabRow::of(self.store, self.mx, t, within).render(self.mx, self.host))
+            .map(|t| TabRow::of(self.store, self.mx, t, within).render(self.mx, self.host, self.scroll.as_ref()))
             .collect()
     }
 
@@ -65,6 +67,7 @@ impl Ctx<'_> {
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host, cx, |s| s.toggle_workspace_collapsed(&ws_id))
             })
+            .on_mouse_down(MouseButton::Right, right_click(Target::Workspace(w.id.clone())))
             .child(chevron(mx, collapsed, 20.))
             .child(icon(Icon::Hexagon, 15., color))
             .child(
@@ -89,7 +92,7 @@ impl Ctx<'_> {
                 SharedString::from(format!("ws-more:{}", w.id)),
                 Icon::MoreHoriz,
                 "O que fazer com esse workspace",
-                |_, _| {},
+                menu_on(Target::Workspace(w.id.clone())),
             ));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
@@ -183,8 +186,8 @@ impl Ctx<'_> {
             );
         }
         let ghosts = self.store.worktrees_of(&f.root).iter().filter(|w| w.prunable).count();
-        let add_host = self.host.clone();
-        let add_root = f.root.clone();
+        let target = Target::Folder { root: f.root.clone(), within: within.map(str::to_owned) };
+        let plus = Target::Plus { root: f.root.clone(), feature: None };
         let header = div()
             .id(SharedString::from(format!("folder:{key}")))
             .group("folder-row")
@@ -203,6 +206,7 @@ impl Ctx<'_> {
                     s.toggle_folder_collapsed(&root, within_owned.as_deref())
                 })
             })
+            .on_mouse_down(MouseButton::Right, right_click(target.clone()))
             .child(chevron(mx, collapsed, 20.))
             .child(glyph)
             .child(div().w(px(3.)))
@@ -220,7 +224,7 @@ impl Ctx<'_> {
                         SharedString::from(format!("folder-add:{key}")),
                         Icon::Add,
                         "Abrir aqui",
-                        move |_, cx| open_shell_in(&add_host, &add_root, cx),
+                        menu_on(plus),
                     )),
             )
             .child(row_button(
@@ -228,7 +232,7 @@ impl Ctx<'_> {
                 SharedString::from(format!("folder-more:{key}")),
                 Icon::MoreHoriz,
                 "O que fazer com essa pasta",
-                |_, _| {},
+                menu_on(target),
             ));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
@@ -301,6 +305,7 @@ impl Ctx<'_> {
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host, cx, |s| s.toggle_feature_collapsed(&id))
             })
+            .on_mouse_down(MouseButton::Right, right_click(Target::Feature(f.id.clone())))
             .drag_over::<crate::app::drag::DraggedTab>(move |s, d, _, _| {
                 if d.folder_root == root {
                     s.bg(hover).border_color(accent)
@@ -338,10 +343,17 @@ impl Ctx<'_> {
             .child(count_text(mx, tabs.len()))
             .child(row_button(
                 mx,
-                SharedString::from(format!("feature-more:{}", f.id)),
+                SharedString::from(format!("feature-add:{}:{}", f.id, within.unwrap_or(""))),
+                Icon::Add,
+                "Abrir aqui",
+                menu_on(Target::Plus { root: f.folder_root.clone(), feature: Some(f.id.clone()) }),
+            ))
+            .child(row_button(
+                mx,
+                SharedString::from(format!("feature-more:{}:{}", f.id, within.unwrap_or(""))),
                 Icon::MoreHoriz,
                 format!("O que fazer com {}", f.kind.this_one()),
-                |_, _| {},
+                menu_on(Target::Feature(f.id.clone())),
             ));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
@@ -374,17 +386,4 @@ fn ghost_chip(mx: &Mx, n: usize) -> impl IntoElement {
                 .text_color(mx.yellow)
                 .child(n.to_string()),
         )
-}
-
-pub fn open_shell_in(host: &Entity<StoreHost>, root: &str, cx: &mut App) {
-    update_store(host, cx, |s| {
-        let folder = if s.loose().root == root {
-            Some(s.loose().clone())
-        } else {
-            s.find_folder(root).cloned()
-        };
-        if let Some(folder) = folder {
-            s.open_shell(&folder, None, None, None, None);
-        }
-    });
 }

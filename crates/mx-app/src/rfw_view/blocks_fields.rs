@@ -22,6 +22,7 @@ fn frame(p: &Paint, focused: bool, label: Option<&String>, floating: bool) -> gp
     let border = if focused { hsla(th.accent) } else { alpha(th.fg_dim, 0.6) };
     let mut f = div()
         .relative()
+        .w_full()
         .flex()
         .flex_row()
         .items_center()

@@ -57,6 +57,9 @@ impl Store {
         let Some(r) = self.plugin.registry.clone() else { return };
         if !on {
             self.drop_plugin_windows(id);
+            if self.screen() == Some(id) {
+                self.enter(None);
+            }
         }
         let plugin = id.to_owned();
         self.spawn(async move {
@@ -64,6 +67,22 @@ impl Store {
             Done::PluginsChanged
         });
         self.after_plugin_change();
+    }
+
+    pub fn plugin_installed(&mut self, id: &str, banner: &str) {
+        self.drop_plugin_windows(id);
+        self.plugins_changed();
+        self.after_plugin_change();
+        self.show_banner(banner);
+    }
+
+    pub fn restart_plugin(&mut self, id: &str) {
+        let Some(r) = self.plugin.registry.clone() else { return };
+        let plugin = id.to_owned();
+        self.spawn(async move {
+            r.restart(&plugin).await;
+            Done::PluginsChanged
+        });
     }
 
     pub fn uninstall_plugin(&mut self, id: &str) {

@@ -4,6 +4,7 @@ use gpui::{
 };
 
 use crate::app::icons::{Icon, icon};
+use crate::app::menus::{self, Target};
 use crate::app::theme::{Mx, on_color};
 use crate::app::tooltip::tip;
 
@@ -113,4 +114,15 @@ pub fn nest(rail: f32, line: Hsla, children: Vec<AnyElement>) -> impl IntoElemen
         .flex()
         .flex_col()
         .children(children)
+}
+
+pub fn menu_on(target: Target) -> impl Fn(&mut Window, &mut App) + 'static {
+    move |window, cx| menus::open(target.clone(), window, cx)
+}
+
+pub fn right_click(target: Target) -> impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static {
+    move |ev, _, cx| {
+        cx.stop_propagation();
+        menus::open_at(target.clone(), ev.position, cx)
+    }
 }

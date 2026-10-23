@@ -4,5 +4,5 @@ pub mod ease;
 pub mod reveal;
 mod spinner;
 
-pub use confetti_layer::{ConfettiLayer, colors};
-pub use spinner::{Pulse, Spinner, pulse_t};
+pub use confetti_layer::ConfettiLayer;
+pub use spinner::{Pulse, Spinner};

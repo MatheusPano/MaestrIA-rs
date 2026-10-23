@@ -6,6 +6,8 @@ use gpui::{
 use crate::app::host::update_store;
 use crate::app::icons::{Icon, icon};
 use crate::app::keys;
+use crate::keymap::Action;
+use crate::app::menus::{self, Target};
 use crate::app::theme::Mx;
 use crate::sidebar::Sidebar;
 use crate::sidebar::widgets::mini_button;
@@ -63,7 +65,8 @@ impl Sidebar {
         let hint = if focused {
             "Buscar sessão".to_owned()
         } else {
-            format!("Buscar sessão  {}", keys::SEARCH)
+            let first = keys::label(store, Action::Search).unwrap_or_default();
+            format!("Buscar sessão  {first}")
         };
         let shown = if query.is_empty() { hint } else { query.clone() };
         let color = if query.is_empty() { mx.fg_faint } else { mx.fg };
@@ -116,7 +119,7 @@ impl Sidebar {
                 Icon::FilterList,
                 if active > 0 { mx.accent } else { mx.fg_dim },
                 filter_tooltip(active),
-                |_, _| {},
+                |window, cx| menus::open(Target::Filter, window, cx),
             ))
     }
 }

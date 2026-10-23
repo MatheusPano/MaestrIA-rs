@@ -71,6 +71,7 @@ impl SettingsDialog {
         cx.notify();
     }
 
+    #[cfg(test)]
     pub fn section(&self) -> Section {
         self.section
     }

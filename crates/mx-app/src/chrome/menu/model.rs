@@ -5,7 +5,6 @@ use crate::chrome::icon::Icon;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Tone {
-    Fg,
     Dim,
     Faint,
     Accent,
@@ -15,13 +14,11 @@ pub enum Tone {
     Purple,
     Tint(Tint),
     Group(usize),
-    Custom(Color),
 }
 
 impl Tone {
     pub fn color(self, t: &Theme) -> Color {
         match self {
-            Tone::Fg => t.fg,
             Tone::Dim => t.fg_dim,
             Tone::Faint => t.fg_faint,
             Tone::Accent => t.accent,
@@ -31,7 +28,6 @@ impl Tone {
             Tone::Purple => t.purple,
             Tone::Tint(tint) => t.tint(tint),
             Tone::Group(i) => t.group_tints()[i % 4],
-            Tone::Custom(c) => c,
         }
     }
 }
@@ -171,6 +167,7 @@ impl<T> From<MenuItem<T>> for MenuEntry<T> {
     }
 }
 
+#[cfg(test)]
 pub fn labels<T>(entries: &[MenuEntry<T>]) -> Vec<String> {
     entries
         .iter()
@@ -182,6 +179,7 @@ pub fn labels<T>(entries: &[MenuEntry<T>]) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
 pub fn find<'a, T>(entries: &'a [MenuEntry<T>], label: &str) -> Option<&'a MenuEntry<T>> {
     entries.iter().find(|e| e.label() == Some(label))
 }

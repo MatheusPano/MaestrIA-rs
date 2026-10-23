@@ -4,17 +4,16 @@ mod menus;
 mod notices;
 mod settings;
 
+#[cfg(test)]
 pub use notices::notices as demo_notices;
-pub use settings::{data as settings_data, demo_validate};
-
-use std::borrow::Cow;
+#[cfg(test)]
+pub use settings::data as settings_data;
 
 use gpui::{
-    AnyView, App, AppContext, Application, Bounds, Context, IntoElement, ParentElement, Render,
+    AnyView, App, AppContext, Bounds, Context, IntoElement, ParentElement, Render,
     Styled, TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
 };
 
-use crate::chrome::assets::ChromeAssets;
 use crate::chrome::style::{hsla, set_theme, theme};
 
 pub fn requested() -> Option<String> {
@@ -29,15 +28,6 @@ fn window_size() -> (f32, f32) {
             Some((w.parse().ok()?, h.parse().ok()?))
         })
         .unwrap_or((1100., 720.))
-}
-
-pub fn run(component: String, fonts: Vec<Cow<'static, [u8]>>) {
-    Application::new().with_assets(ChromeAssets).run(move |cx: &mut App| {
-        if let Err(err) = cx.text_system().add_fonts(fonts) {
-            log::error!("failed to load bundled fonts: {err}");
-        }
-        open(component, cx);
-    });
 }
 
 pub fn open(component: String, cx: &mut App) {

@@ -7,6 +7,8 @@ mod history;
 mod layout;
 mod notices;
 mod pin;
+mod plugin_live;
+mod plugin_screen;
 mod plugins;
 mod readers;
 mod reorder;

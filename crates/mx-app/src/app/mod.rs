@@ -1,14 +1,23 @@
 pub mod assets;
 pub mod avatar;
-pub mod banner;
+pub mod chats;
+pub mod confirms;
+pub mod dialogs;
 pub mod drag;
+pub mod flows;
 pub mod host;
 pub mod icons;
 pub mod keys;
+pub mod menu_actions;
+pub mod menus;
+pub mod notices;
+pub mod panel_actions;
 pub mod ports;
 pub mod root;
+pub mod settings;
 pub mod theme;
 pub mod tooltip;
+pub mod ui;
 
 use std::borrow::Cow;
 
@@ -22,7 +31,10 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
     if let Err(err) = cx.text_system().add_fonts(vec![Cow::Borrowed(icons::ICON_FONT)]) {
         log::error!("failed to load the shell icon font: {err}");
     }
+    crate::chrome::register_fonts(cx);
     let host = StoreHost::boot(StoreOptions::from_env(), cx)?;
+    crate::terminal_glue::install(&host, cx);
+    ui::install(host.clone(), cx);
     let quitting = host.clone();
     cx.on_app_quit(move |cx| {
         quitting.update(cx, |h, _| drop(h.store.shutdown()));

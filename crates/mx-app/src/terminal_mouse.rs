@@ -2,7 +2,7 @@ use gpui::{
     Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollWheelEvent,
     TouchPhase, Window, px,
 };
-use mx_term::{MouseAction, MouseButton, SelectionKind, TermMode, clamp_cell, follow_link, reports_mouse};
+use mx_term::{MouseAction, MouseButton, SelectionKind, TermMode, clamp_cell, reports_mouse};
 
 use crate::terminal_view::{TerminalView, TerminalViewEvent};
 
@@ -49,7 +49,9 @@ impl TerminalView {
     pub(crate) fn on_right_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
         cx.emit(TerminalViewEvent::Focused);
-        cx.emit(TerminalViewEvent::ContextMenu { position: event.position, can_copy: self.session.has_selection() });
+        let (col, row, _) = self.cell(event.position);
+        let link = self.session.link_at(col, row, self.cwd.as_deref());
+        self.open_menu(event.position, link, window, cx);
     }
 
     pub(crate) fn on_mouse_move(&mut self, event: &MouseMoveEvent, _window: &mut Window, cx: &mut Context<Self>) {
@@ -87,9 +89,8 @@ impl TerminalView {
         if press.selecting || press.clicks > 1 || moved > CLICK_SLOP {
             return;
         }
-        let base = self.cwd.as_deref();
-        if let Some(href) = self.session.link_at(col, row, base) {
-            cx.emit(TerminalViewEvent::Link(follow_link(&href, base)));
+        if let Some(href) = self.session.link_at(col, row, self.cwd.as_deref()) {
+            self.follow(&href, cx);
         }
     }
 

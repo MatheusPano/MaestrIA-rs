@@ -3,8 +3,6 @@ use mx_theme::Theme;
 
 use crate::chrome::style::{alpha, hsla};
 
-pub const REVEAL_MS: u64 = 2000;
-pub const REVEAL_SCROLL_MS: f32 = 250.;
 pub const REVEAL_ALIGNMENT: f32 = 0.3;
 
 pub fn reveal_overlay(t: &Theme) -> Div {

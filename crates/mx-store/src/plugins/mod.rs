@@ -1,5 +1,6 @@
 mod commands;
 mod host;
+mod screen;
 mod sessions;
 mod views;
 
@@ -45,6 +46,7 @@ pub enum DialogAnswer {
 }
 
 pub struct PluginDialog {
+    pub id: u64,
     pub plugin: PluginInfo,
     pub ask: DialogAsk,
     text: Option<Reply<Option<String>>>,
@@ -63,6 +65,7 @@ pub struct PluginUi {
     pub effects: Vec<Effect>,
     pub(crate) created: HashMap<u64, Reply<Option<mx_plugins::rpc::CreatedSession>>>,
     pub(crate) next_reply: u64,
+    pub(crate) screens: screen::Screens,
 }
 
 struct Listener(StoreSender);
@@ -89,12 +92,21 @@ impl Store {
 
     pub fn attach_plugins(&mut self, plugins: Plugins) {
         plugins.set_runtime(self.p.rt.clone());
+        plugins.set_env(mx_sys::shell::env().iter().map(|(k, v)| (k.clone(), v.clone())).collect());
         plugins.set_listener(Arc::new(Listener(self.sender())));
         plugins.set_calls(Arc::new(HostDispatcher::new(self.plugin_host())));
         plugins.load(&Value::Object(self.prefs.plugins.clone()));
         plugins.scan();
         self.plugin.registry = Some(plugins);
         self.mark(Areas::PLUGINS);
+    }
+
+    pub fn start_plugins(&mut self) {
+        let Some(r) = self.plugin.registry.clone() else { return };
+        r.startup();
+        self.land_screen();
+        let live = self.live_sidebar();
+        self.announce_sidebar(live, true);
     }
 
     pub fn plugins(&self) -> Option<&Plugins> {
@@ -113,6 +125,7 @@ impl Store {
         if let Some(r) = &self.plugin.registry {
             self.installed_plugins = r.all().into_iter().map(|p| p.id).collect();
         }
+        self.sync_screen();
         self.mark(Areas::PLUGINS | Areas::SIDEBAR);
     }
 
@@ -141,14 +154,21 @@ impl Store {
     }
 
     pub(crate) fn ask_text(&mut self, plugin: PluginInfo, ask: DialogAsk, reply: Reply<Option<String>>) {
-        self.plugin.dialogs.push_back(PluginDialog { plugin, ask, text: Some(reply), form: None });
+        let id = self.next_dialog_id();
+        self.plugin.dialogs.push_back(PluginDialog { id, plugin, ask, text: Some(reply), form: None });
         self.mark(Areas::PLUGINS);
     }
 
     pub(crate) fn ask_form(&mut self, plugin: PluginInfo, form: PluginForm, reply: Reply<Option<FormAnswer>>) {
         let ask = DialogAsk::Form(form);
-        self.plugin.dialogs.push_back(PluginDialog { plugin, ask, text: None, form: Some(reply) });
+        let id = self.next_dialog_id();
+        self.plugin.dialogs.push_back(PluginDialog { id, plugin, ask, text: None, form: Some(reply) });
         self.mark(Areas::PLUGINS);
+    }
+
+    fn next_dialog_id(&mut self) -> u64 {
+        self.plugin.next_reply += 1;
+        self.plugin.next_reply
     }
 
     pub fn answer_dialog(&mut self, answer: DialogAnswer) {
@@ -205,23 +225,23 @@ impl Store {
     }
 
     pub fn show_sidebar_view(&mut self, plugin: Option<&str>) {
-        let before = self.prefs.sidebar_view.clone().filter(|_| !self.prefs.sidebar_hidden);
+        let live = self.live_sidebar();
+        if !self.prefs.sidebar_hidden && self.shown_plugin().as_deref() == plugin {
+            self.set_sidebar_hidden(true);
+            self.announce_sidebar(live, false);
+            return;
+        }
         self.prefs.sidebar_hidden = false;
-        self.set_sidebar_view(plugin);
-        let Some(r) = self.plugin.registry.clone() else { return };
-        if let Some(old) = before.filter(|o| Some(o.as_str()) != plugin) {
+        self.prefs.sidebar_view = plugin.map(str::to_owned);
+        self.land_screen();
+        self.save();
+        self.announce_sidebar(None, true);
+        if let Some(old) = live.filter(|o| Some(o.as_str()) != plugin)
+            && let Some(r) = &self.plugin.registry
+        {
             r.tell(&old, "sidebar.hidden", Default::default());
         }
-        if let Some(id) = plugin
-            && r.get(id).is_some_and(|p| p.manifest.as_ref().is_some_and(|m| m.sidebar))
-        {
-            if r.is_up(id) {
-                r.tell(id, "sidebar.shown", Default::default());
-            } else {
-                r.wake(id);
-            }
-        }
-        self.mark(Areas::PLUGINS | Areas::SIDEBAR);
+        self.mark(Areas::PLUGINS | Areas::SIDEBAR | Areas::PREFS);
     }
 
     pub fn sidebar_view_of(&self, plugin: &str) -> Option<&PluginView> {

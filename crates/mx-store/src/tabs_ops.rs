@@ -48,7 +48,12 @@ impl Store {
         self.closing_view(id);
         self.timers.cancel(&TimerKey::Settle(id.to_owned()));
         if self.panes.is_none()
-            && let Some(last) = self.tabs.iter().rev().find(|t| !t.embedded).map(|t| t.id.clone())
+            && let Some(last) = self
+                .tabs
+                .iter()
+                .rev()
+                .find(|t| !t.embedded && self.screen_of(t).as_deref() == self.screen())
+                .map(|t| t.id.clone())
         {
             self.place(&last);
         }
@@ -143,6 +148,10 @@ impl Store {
         if !self.has_tab(id) {
             return;
         }
+        if self.screen_of_id(id).as_deref() != self.screen() {
+            self.select(id);
+            return;
+        }
         self.drop_from_tree(id);
         if side == DropSide::Center {
             let pin = self.is_pinned(target);
@@ -187,7 +196,7 @@ impl Store {
         let ring: Vec<String> = self
             .tabs
             .iter()
-            .filter(|t| !t.embedded)
+            .filter(|t| !t.embedded && self.screen_of(t).as_deref() == self.screen())
             .map(|t| t.id.clone())
             .collect();
         if ring.is_empty() {

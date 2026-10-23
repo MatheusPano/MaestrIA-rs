@@ -5,9 +5,15 @@ use gpui::{
 };
 use mx_store::{Areas, Changes, Effect, Store};
 
-use crate::app::banner::banner;
+use std::rc::Rc;
+
 use crate::app::host::{StoreChanged, StoreHost, update_store};
 use crate::app::theme::{GAP, Mx};
+use crate::app::ui::{self, Ui};
+use crate::app::{dialogs, settings};
+use crate::chrome::settings::Section;
+use crate::keymap::{self, Outcome, UiRequest};
+use crate::chrome::notices::Banner;
 use crate::panes::PaneArea;
 use crate::rail::{self, Rail};
 use crate::sidebar::{self, Sidebar};
@@ -18,6 +24,7 @@ struct SidebarGrip;
 
 pub struct Root {
     host: Entity<StoreHost>,
+    ui: Entity<Ui>,
     rail: Entity<Rail>,
     sidebar: Entity<Sidebar>,
     status_bar: Entity<StatusBar>,
@@ -49,15 +56,19 @@ impl Root {
         let status_bar = cx.new(|_| StatusBar::new(host.clone()));
         let panes = cx.new(|_| PaneArea::new(host.clone()));
         cx.subscribe_in(&host, window, Self::on_store).detach();
+        let ui = ui::get(cx);
+        cx.observe(&ui, |_, _, cx| cx.notify()).detach();
         cx.observe_window_activation(window, |this, window, cx| {
             let active = window.is_window_active();
             update_store(&this.host, cx, |s| s.set_window_active(active));
         })
         .detach();
         let theme = host.read(cx).store.prefs().theme.clone();
-        Mx::install(&theme, cx);
+        let resolved = Mx::resolve(&host.read(cx).store);
+        Mx::install(resolved, cx);
         Root {
             host,
+            ui,
             rail,
             sidebar,
             status_bar,
@@ -79,9 +90,11 @@ impl Root {
         }
         let theme = self.host.read(cx).store.prefs().theme.clone();
         if theme != self.theme {
-            Mx::install(&theme, cx);
+            let resolved = Mx::resolve(&self.host.read(cx).store);
+            Mx::install(resolved, cx);
             let palette = Mx::get(cx).theme.terminal();
-            self.host.read(cx).terms.set_palette(palette);
+            self.host.read(cx).terms.set_palette(palette.clone());
+            self.panes.update(cx, |p, cx| p.set_palette(&palette, cx));
             self.theme = theme;
             window.refresh();
             return;
@@ -108,18 +121,33 @@ impl Root {
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = &ev.keystroke;
         let m = k.modifiers;
-        if !(m.control && m.shift) || m.alt {
+        if k.key == "escape" && !(m.control || m.shift || m.alt || m.platform) {
+            if ui::escape(cx) {
+                cx.stop_propagation();
+            }
             return;
         }
-        match k.key.as_str() {
-            "b" => update_store(&self.host, cx, Store::toggle_sidebar),
-            "f" => {
-                update_store(&self.host, cx, |s| s.set_sidebar_hidden(false));
-                self.sidebar.read(cx).focus_search(window);
-            }
-            _ => return,
+        if self.ui.read(cx).top().is_some() {
+            return;
         }
-        cx.stop_propagation();
+        let Outcome::Ui(request) = keymap::on_key_down(&self.host, ev, window, cx) else { return };
+        match request {
+            UiRequest::Settings => settings::open(Section::Appearance, window, cx),
+            UiRequest::FocusSearch => {
+                update_store(&self.host, cx, |s| s.set_sidebar_hidden(false));
+                let sidebar = self.sidebar.clone();
+                window.defer(cx, move |window, cx| sidebar.read(cx).focus_search(window));
+            }
+            UiRequest::NewTask { folder } => dialogs::new_task(&folder, None, window, cx),
+            UiRequest::Rename { tab_id, title } => dialogs::prompt(
+                "Renomear painel",
+                "Título",
+                &title,
+                move |text, cx| ui::act(cx, |s| s.rename_tab(&tab_id, &text)),
+                window,
+                cx,
+            ),
+        }
     }
 
     fn grip(&self, mx: &Mx) -> impl IntoElement {
@@ -181,13 +209,11 @@ impl Render for Root {
         let host = self.host.clone();
         let close_host = self.host.clone();
 
-        let mut stage = div()
+        let stage = div()
             .flex_1()
             .relative()
-            .child(panes);
-        if let Some(text) = banner_text {
-            stage = stage.child(banner(&mx, &self.host, text, top));
-        }
+            .child(panes)
+            .child(self.notices(banner_text, top, cx));
 
         let body = div()
             .size_full()
@@ -201,8 +227,12 @@ impl Render for Root {
             .when(!hidden, |d| d.child(sidebar).child(self.grip(&mx)))
             .child(stage);
 
+        let ui = self.ui.read(cx);
+        let layers = ui.views();
+        let confetti = ui.confetti.clone();
         div()
             .id("root")
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -238,6 +268,31 @@ impl Render for Root {
                     }),
             )
             .when(!top, |d| d.child(status))
+            .children(layers.into_iter().map(|v| div().absolute().inset_0().child(v)))
+            .child(confetti)
+    }
+}
+
+impl Root {
+    fn notices(&self, banner_text: Option<String>, top: bool, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let ui = self.ui.read(cx);
+        if let Some(center) = ui.center.clone() {
+            let pos = div().absolute().right(px(8.));
+            let pos = if top { pos.top(px(8.)) } else { pos.bottom(px(8.)) };
+            return pos.child(center).into_any_element();
+        }
+        let banner = banner_text.map(|text| {
+            Banner::new(text, Rc::new(|_, cx: &mut App| ui::act(cx, Store::clear_banner))).on_top(top)
+        });
+        let col = div().absolute().left(px(8.)).right(px(8.)).flex().flex_col().items_end().gap(px(8.));
+        let col = if top { col.top(px(8.)) } else { col.bottom(px(8.)) };
+        let toasts = ui.toasts.clone();
+        match (top, banner) {
+            (true, Some(b)) => col.child(b).child(toasts),
+            (false, Some(b)) => col.child(toasts).child(b),
+            (_, None) => col.child(toasts),
+        }
+        .into_any_element()
     }
 }
 

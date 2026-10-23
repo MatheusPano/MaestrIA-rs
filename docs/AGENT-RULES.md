@@ -7,7 +7,7 @@
    `Cargo.toml` raiz; use `foo.workspace = true` para deps já declaradas lá. Se
    precisar de uma dep nova, adicione-a só no `Cargo.toml` do seu crate com versão
    explícita.
-3. Build isolado: `export CARGO_TARGET_DIR=target-<seu-crate> CARGO_BUILD_JOBS=2` e prefixe todo cargo com `nice -n 19` (o Lucas está usando a máquina)
+3. Build isolado: `export CARGO_TARGET_DIR=target-<seu-crate> CARGO_BUILD_JOBS=8` (máquina livre)
    e sempre `cargo <cmd> -p <seu-crate>` — nunca `--workspace` (outros crates estão em
    obras). Feche com `cargo test -p <crate>` e
    `cargo clippy -p <crate> --all-targets -- -D warnings` limpos.

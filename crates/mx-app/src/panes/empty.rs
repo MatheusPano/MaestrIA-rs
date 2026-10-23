@@ -3,7 +3,7 @@ use gpui::{App, Entity, FontWeight, IntoElement, ParentElement, Styled, div, px}
 use crate::app::drag::DraggedTab;
 use crate::app::host::{StoreHost, update_store};
 use crate::app::theme::Mx;
-use gpui::InteractiveElement;
+use gpui::{InteractiveElement, StatefulInteractiveElement};
 
 pub fn headline(live: usize) -> String {
     match live {
@@ -79,6 +79,39 @@ pub fn empty_pane(mx: &Mx, host: &Entity<StoreHost>, live: usize) -> impl IntoEl
                 .child(DRAG_HINT),
         )
         .child(sheet)
+}
+
+pub fn empty_screen(mx: &Mx, host: &Entity<StoreHost>, plugin: &str, cx: &App) -> impl IntoElement {
+    let store = &host.read(cx).store;
+    let info = store.plugins().and_then(|r| r.get(plugin));
+    let name = info.as_ref().map_or_else(|| plugin.to_owned(), |p| p.name().to_owned());
+    let glyph = info.as_ref().and_then(|p| p.manifest.as_ref().and_then(|m| m.icon.clone()));
+    let dir = info.map(|p| p.dir);
+    let home = store.screen_home();
+    let host = host.clone();
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(14.))
+        .child(crate::rfw_view::plugin_glyph(glyph.as_deref(), dir.as_deref(), 40., mx.fg_faint))
+        .child(div().text_size(px(14.)).text_color(mx.fg_dim).child(mx_plugins::rail::empty_screen_text(&name)))
+        .children(home.map(|cmd| {
+            div()
+                .id("screen-home")
+                .px(px(14.))
+                .py(px(7.))
+                .rounded(px(8.))
+                .bg(mx.accent)
+                .text_color(crate::app::theme::on_color(mx.accent, mx.canvas))
+                .text_size(px(13.))
+                .font_weight(FontWeight::MEDIUM)
+                .cursor_pointer()
+                .on_click(move |_, _, cx: &mut App| update_store(&host, cx, |s| s.open_screen_home()))
+                .child(cmd.title)
+        }))
 }
 
 #[cfg(test)]

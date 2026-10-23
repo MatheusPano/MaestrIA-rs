@@ -1,46 +1,13 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    App, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
     RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
-use crate::chrome::icon::{self, icon};
+use crate::chrome::icon;
 use crate::chrome::style::{Callback, MONO, hsla, theme};
 use crate::chrome::widgets::IconButton;
-
-pub fn checkbox_row(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    checked: bool,
-    on_toggle: Callback,
-    cx: &App,
-) -> AnyElement {
-    let t = theme(cx);
-    let label = label.into();
-    let glyph = if checked {
-        icon::CHECK_BOX_ROUNDED
-    } else {
-        icon::CHECK_BOX_OUTLINE_BLANK_ROUNDED
-    };
-    let color = if checked { t.accent } else { t.fg_dim };
-    let selector = label.clone();
-    div()
-        .id(id.into())
-        .debug_selector(move || format!("check:{selector}"))
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .h(px(34.))
-        .px(px(8.))
-        .rounded(px(6.))
-        .cursor_pointer()
-        .hover(|s| s.bg(hsla(t.bg_hover)))
-        .child(icon(glyph, 18., hsla(color)))
-        .child(div().text_size(px(13.)).text_color(hsla(t.fg)).child(label))
-        .on_click(move |_, window, cx| on_toggle(window, cx))
-        .into_any_element()
-}
 
 #[derive(IntoElement)]
 pub struct Switch {

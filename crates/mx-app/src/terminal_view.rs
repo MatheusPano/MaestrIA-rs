@@ -2,24 +2,26 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{
-    ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
-    KeyUpEvent, MouseButton, ParentElement, Pixels, Point, Render, Styled, Window, div,
-    prelude::*,
+    ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
+    KeyUpEvent, MouseButton, ParentElement, Render, Styled, Subscription, Window, div, prelude::*,
 };
 use mx_term::{
-    GridSize, LinkFollow, Mods, SpawnOptions, TermEvent, TermMode, TerminalSession,
-    WheelAccumulator, encode_key, is_slot_chord, is_text_key,
+    GridSize, Mods, SpawnOptions, TermEvent, TermMode, TerminalSession, WheelAccumulator, encode_key,
+    is_slot_chord, is_text_key,
 };
 use mx_theme::TerminalPalette;
 
+use crate::app::theme::Mx;
+use crate::chrome::menu::ContextMenu;
+use crate::keymap::{self, TerminalKey};
 use crate::terminal_element::{RenderState, SharedRender, TerminalElement, Typography};
+use crate::terminal_glue::TermMenu;
 use crate::terminal_mouse::Press;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TerminalViewEvent {
     Focused,
-    Link(LinkFollow),
-    ContextMenu { position: Point<Pixels>, can_copy: bool },
+    Link(String),
     Exited(Option<i32>),
     Title(String),
 }
@@ -33,6 +35,9 @@ pub struct TerminalView {
     pub(crate) pending_key: Option<String>,
     pub(crate) claude: bool,
     pub(crate) cwd: Option<String>,
+    pub(crate) menu: Option<Entity<ContextMenu<TermMenu>>>,
+    quit_on_exit: bool,
+    _theme: Option<Subscription>,
 }
 
 impl EventEmitter<TerminalViewEvent> for TerminalView {}
@@ -48,6 +53,7 @@ impl TerminalView {
         let session = TerminalSession::spawn(options, GridSize::DEFAULT, palette.clone())?;
         let mut view = Self::for_session(session, &palette, window, cx);
         view.cwd = cwd;
+        view.quit_on_exit = true;
         Ok(view)
     }
 
@@ -70,6 +76,12 @@ impl TerminalView {
             }
         })
         .detach();
+        let theme = cx.has_global::<Mx>().then(|| {
+            cx.observe_global::<Mx>(|this, cx| {
+                let palette = Mx::get(cx).theme.terminal();
+                this.set_palette(&palette, cx);
+            })
+        });
         Self {
             session,
             focus: cx.focus_handle(),
@@ -79,6 +91,9 @@ impl TerminalView {
             pending_key: None,
             claude: false,
             cwd: None,
+            menu: None,
+            quit_on_exit: false,
+            _theme: theme,
         }
     }
 
@@ -129,6 +144,9 @@ impl TerminalView {
                 TermEvent::Exited(code) => {
                     redraw = true;
                     cx.emit(TerminalViewEvent::Exited(code));
+                    if self.quit_on_exit {
+                        cx.quit();
+                    }
                 }
             }
         }
@@ -164,31 +182,14 @@ impl TerminalView {
         let mods = mods_of(&ks.modifiers);
         self.pending_key = None;
         self.session.key_down(&ks.key);
-        let only = |ctrl: bool, shift: bool| mods.ctrl == ctrl && mods.shift == shift && !mods.alt && !mods.platform;
-        let handled = match ks.key.as_str() {
-            "enter" if only(false, true) => {
-                self.session.newline();
-                true
+        let fixed = keymap::press_of(ks).and_then(|p| keymap::terminal_key(&p, keymap::LINUX));
+        if let Some(key) = fixed {
+            match key {
+                TerminalKey::Newline => self.session.newline(),
+                TerminalKey::Paste => self.paste_clipboard(cx),
+                TerminalKey::Copy => self.copy_selection(cx),
+                TerminalKey::SelectAll => self.select_all(cx),
             }
-            "v" if only(true, true) || only(true, false) => {
-                self.paste_clipboard(cx);
-                true
-            }
-            "insert" if only(false, true) => {
-                self.paste_clipboard(cx);
-                true
-            }
-            "c" if only(true, true) => {
-                self.copy_selection(cx);
-                true
-            }
-            "a" if only(true, true) => {
-                self.select_all(cx);
-                true
-            }
-            _ => false,
-        };
-        if handled {
             cx.stop_propagation();
             return;
         }
@@ -233,5 +234,6 @@ impl Render for TerminalView {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_left_up))
             .size_full()
             .child(TerminalElement::new(cx.entity()))
+            .children(self.menu.clone())
     }
 }

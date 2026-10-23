@@ -72,10 +72,17 @@ impl Mx {
         cx.global::<Mx>()
     }
 
-    pub fn install(theme_id: &str, cx: &mut App) {
-        let theme = mx_theme::built_in(theme_id).cloned().unwrap_or_else(mx_theme::default_theme);
+    pub fn install(theme: Arc<Theme>, cx: &mut App) {
         crate::chrome::style::set_theme(theme.clone(), cx);
-        cx.set_global(Mx::new(theme.clone()));
+        cx.set_global(Mx::new(theme));
+    }
+
+    pub fn resolve(store: &mx_store::Store) -> Arc<Theme> {
+        let id = store.prefs().theme.as_str();
+        match store.plugins() {
+            Some(p) => p.themes().by_id(Some(id)),
+            None => mx_theme::built_in(id).cloned().unwrap_or_else(mx_theme::default_theme),
+        }
     }
 
     pub fn status(&self, s: ClaudeStatus) -> Hsla {

@@ -10,10 +10,13 @@ use crate::app::theme::{GAP, Mx, on_color};
 use crate::app::keys;
 use crate::app::tooltip::tip;
 
+mod plugins;
+
 pub const WIDTH: f32 = 36.;
 
 pub struct Rail {
     host: Entity<StoreHost>,
+    watch: Option<gpui::Subscription>,
 }
 
 pub fn sessions_tooltip(current: bool, waiting: usize, keys: &[String]) -> String {
@@ -31,11 +34,11 @@ pub fn sessions_tooltip(current: bool, waiting: usize, keys: &[String]) -> Strin
 
 impl Rail {
     pub fn new(host: Entity<StoreHost>) -> Rail {
-        Rail { host }
+        Rail { host, watch: None }
     }
 }
 
-fn rail_button(mx: &Mx, id: &'static str, selected: bool) -> gpui::Stateful<gpui::Div> {
+fn rail_button(mx: &Mx, id: impl Into<gpui::ElementId>, selected: bool) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .relative()
@@ -76,10 +79,18 @@ pub fn text_badge(mx: &Mx, text: String, bg: Hsla) -> impl IntoElement {
 
 impl Render for Rail {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.watch.is_none() {
+            self.watch = Some(cx.subscribe(&self.host, |_, _, ev: &crate::app::host::StoreChanged, cx| {
+                if ev.0.areas.intersects(mx_store::Areas::PLUGINS) {
+                    cx.notify();
+                }
+            }));
+        }
         let mx = Mx::get(cx).clone();
         let store = &self.host.read(cx).store;
         let prefs = store.prefs();
-        let current = prefs.sidebar_view.is_none() && !prefs.sidebar_hidden;
+        let current = store.shown_plugin().is_none() && !prefs.sidebar_hidden;
+        let items = plugins::items(store);
         let waiting = store.waiting_sessions();
         let badge = waiting.first().map(|t| mx.status(t.status()));
         let count = waiting.len();
@@ -108,7 +119,8 @@ impl Render for Rail {
 
         let install = rail_button(&mx, "rail-install", false)
             .child(icon(Icon::Add, 16., mx.fg_faint.opacity(0.55)))
-            .tooltip(tip("Instalar plugin"));
+            .tooltip(tip("Instalar plugin"))
+            .on_click(|_, window, cx: &mut App| crate::plugin_ui::open_install(window, cx));
 
         div()
             .w(px(WIDTH))
@@ -118,6 +130,7 @@ impl Render for Rail {
             .flex_col()
             .gap(px(4.))
             .child(sessions)
+            .children(items.into_iter().enumerate().map(|(i, item)| plugins::button(&mx, &self.host, i, item)))
             .child(install)
     }
 }

@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 pub mod anim;
 pub mod assets;
 pub mod demo;

@@ -5,31 +5,50 @@ use gpui::{
     ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
     prelude::*, px,
 };
+use gpui::Hsla;
 use mx_claude::docs::DocSource;
 
 use super::style::Sheet;
+use crate::app::icons::{Icon, icon};
+use crate::rfw_view::named_icon as named;
 
 pub type Action = Rc<dyn Fn(&mut Window, &mut App)>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glyph {
+    Font(Icon),
+    Path(&'static str),
+}
+
+impl Glyph {
+    pub fn render(self, size: f32, color: Hsla) -> AnyElement {
+        match self {
+            Glyph::Font(i) => icon(i, size, color).into_any_element(),
+            Glyph::Path(name) => named(name, size, color),
+        }
+    }
+}
+
 pub struct HeaderButton {
-    pub glyph: &'static str,
+    pub glyph: Glyph,
+    pub tint: Option<Hsla>,
     pub tooltip: &'static str,
     pub action: Action,
 }
 
-pub fn source_glyph(source: DocSource) -> &'static str {
+pub fn source_glyph(source: DocSource) -> Glyph {
     match source {
-        DocSource::Plan => "☑",
-        DocSource::File => "▤",
-        DocSource::Message => "✉",
-        DocSource::Report => "▦",
-        DocSource::Plugin => "⬚",
+        DocSource::Plan => Glyph::Font(Icon::TaskAlt),
+        DocSource::File => Glyph::Path("description_outlined"),
+        DocSource::Message => Glyph::Font(Icon::StickyNote),
+        DocSource::Report => Glyph::Path("summarize_outlined"),
+        DocSource::Plugin => Glyph::Path("extension_outlined"),
     }
 }
 
 pub fn header(
     sheet: &Sheet,
-    glyph: &'static str,
+    glyph: Glyph,
     title: SharedString,
     subtitle: SharedString,
     buttons: Vec<HeaderButton>,
@@ -77,14 +96,7 @@ pub fn header(
         .bg(sheet.bg_sidebar)
         .border_b_1()
         .border_color(sheet.border)
-        .child(
-            div()
-                .flex_none()
-                .w(px(17.))
-                .text_size(px(15.))
-                .text_color(sheet.fg_dim)
-                .child(glyph),
-        )
+        .child(glyph.render(17., sheet.fg_dim))
         .child(div().w(px(9.)).flex_none())
         .child(label)
         .child(
@@ -100,6 +112,7 @@ pub fn header(
 
 fn button(sheet: &Sheet, b: HeaderButton) -> impl IntoElement {
     let action = b.action;
+    let glyph = b.glyph.render(16., b.tint.unwrap_or(sheet.fg_faint));
     let tip = Tip {
         text: b.tooltip.into(),
         sheet: sheet.clone(),
@@ -111,11 +124,9 @@ fn button(sheet: &Sheet, b: HeaderButton) -> impl IntoElement {
         .items_center()
         .justify_center()
         .rounded(px(4.))
-        .text_size(px(15.))
-        .text_color(sheet.fg_dim)
         .cursor_pointer()
-        .hover(|s| s.bg(sheet.bg_hover).text_color(sheet.fg))
-        .child(b.glyph)
+        .hover(|s| s.bg(sheet.bg_hover))
+        .child(glyph)
         .on_mouse_down(MouseButton::Left, |_, window, cx| {
             window.prevent_default();
             cx.stop_propagation();
@@ -146,17 +157,12 @@ impl Render for Tip {
     }
 }
 
-pub fn notice(sheet: &Sheet, glyph: &'static str, title: &'static str, detail: String) -> AnyElement {
+pub fn notice(sheet: &Sheet, glyph: Glyph, title: &'static str, detail: String) -> AnyElement {
     let mut column = div()
         .flex()
         .flex_col()
         .items_center()
-        .child(
-            div()
-                .text_size(px(26.))
-                .text_color(sheet.fg_faint)
-                .child(glyph),
-        )
+        .child(glyph.render(28., sheet.fg_faint))
         .child(
             div()
                 .mt(px(12.))
