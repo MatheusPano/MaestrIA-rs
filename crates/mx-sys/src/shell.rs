@@ -96,8 +96,23 @@ pub fn env() -> &'static HashMap<String, String> {
             Path::new(d).is_dir()
         });
         env.insert("PATH".into(), path);
+        restore_input_method(&mut env);
         env
     })
+}
+
+pub const SAVED_XMODIFIERS: &str = "MAESTRIA_SAVED_XMODIFIERS";
+
+pub fn restore_input_method(env: &mut HashMap<String, String>) {
+    match env.remove(SAVED_XMODIFIERS) {
+        Some(saved) if !saved.is_empty() => {
+            env.insert("XMODIFIERS".into(), saved);
+        }
+        Some(_) => {
+            env.remove("XMODIFIERS");
+        }
+        None => {}
+    }
 }
 
 pub fn profile_file(platform: Platform) -> &'static str {

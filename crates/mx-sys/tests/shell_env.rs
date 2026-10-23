@@ -126,3 +126,24 @@ async fn spawn_failure_is_code_minus_one_with_the_message() {
     assert_eq!(r.stdout, "");
     assert!(!r.stderr.is_empty());
 }
+
+#[test]
+fn children_get_back_the_input_method_the_launcher_hid_from_the_app() {
+    let mut env = std::collections::HashMap::from([
+        ("XMODIFIERS".to_owned(), String::new()),
+        (mx_sys::shell::SAVED_XMODIFIERS.to_owned(), "@im=ibus".to_owned()),
+    ]);
+    mx_sys::shell::restore_input_method(&mut env);
+    assert_eq!(env.get("XMODIFIERS").map(String::as_str), Some("@im=ibus"));
+    assert!(!env.contains_key(mx_sys::shell::SAVED_XMODIFIERS));
+}
+
+#[test]
+fn children_get_no_input_method_when_the_launcher_saw_none() {
+    let mut env = std::collections::HashMap::from([
+        ("XMODIFIERS".to_owned(), String::new()),
+        (mx_sys::shell::SAVED_XMODIFIERS.to_owned(), String::new()),
+    ]);
+    mx_sys::shell::restore_input_method(&mut env);
+    assert!(!env.contains_key("XMODIFIERS"));
+}
