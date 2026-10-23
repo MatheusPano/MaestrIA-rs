@@ -113,6 +113,7 @@ impl Keymap {
         self.chords(a) == a.defaults(self.linux).as_slice()
     }
 
+    #[cfg(test)]
     pub fn all_default(&self) -> bool {
         Action::ALL.iter().all(|a| self.is_default(*a))
     }

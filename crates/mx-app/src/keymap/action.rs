@@ -24,8 +24,6 @@ pub enum Action {
     Settings,
 }
 
-pub const GROUPS: [&str; 4] = ["Sessões", "Navegação", "Exibição", "Janela"];
-
 struct Info {
     id: &'static str,
     label: &'static str,

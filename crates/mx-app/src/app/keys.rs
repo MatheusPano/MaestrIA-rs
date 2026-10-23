@@ -3,8 +3,6 @@ use mx_store::Store;
 use crate::keymap::{self, Action};
 
 pub const SIDEBAR: &str = "Ctrl+Shift+B";
-pub const SEARCH: &str = "Ctrl+Shift+F";
-pub const SETTINGS: &str = "Ctrl+,";
 pub const CLOSE_PANE: &str = "Ctrl+Shift+W";
 
 pub fn slot(index: usize) -> Option<String> {
@@ -30,8 +28,8 @@ mod tests {
     fn fixed_labels_match_the_linux_defaults() {
         let m = keymap::Keymap::defaults(true);
         assert_eq!(m.first_label(Action::Sidebar).as_deref(), Some(SIDEBAR));
-        assert_eq!(m.first_label(Action::Search).as_deref(), Some(SEARCH));
-        assert_eq!(m.first_label(Action::Settings).as_deref(), Some(SETTINGS));
+        assert_eq!(m.first_label(Action::Search).as_deref(), Some("Ctrl+Shift+F"));
+        assert_eq!(m.first_label(Action::Settings).as_deref(), Some("Ctrl+,"));
         assert_eq!(m.first_label(Action::Close).as_deref(), Some(CLOSE_PANE));
     }
 }

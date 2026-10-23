@@ -7,6 +7,8 @@ use mx_sys::FakeRunner;
 
 use super::dispatch::{NO_FOLDER_FOR_TASK, NOT_CLAUDE, UiRequest, run_action};
 use super::*;
+use super::chord::chord_id;
+use super::dispatch::{Hit, run};
 use crate::chrome::settings::SettingsAction;
 
 struct Rig {

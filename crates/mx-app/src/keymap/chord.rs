@@ -70,10 +70,6 @@ pub fn press_of(k: &Keystroke) -> Option<KeyPress> {
     }
 }
 
-pub fn chord_of(p: &KeyPress) -> Chord {
-    Chord { key: p.key, meta: p.meta, control: p.control, alt: p.alt, shift: p.shift }
-}
-
 pub fn check_chord(p: &settings::KeyPress) -> ChordCheck {
     check_chord_for(p, LINUX)
 }
