@@ -2,7 +2,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, ElementId, Hsla, InteractiveText, IntoElement, StyledText, TextRun, Window,
+    AnyElement, App, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    StyledText, TextRun, Window, div,
 };
 use mx_claude::markdown::{MdKind, MdNode};
 
@@ -118,10 +119,18 @@ impl Inline {
         let text = StyledText::new(self.text).with_runs(self.runs);
         match follow {
             Some(follow) if !self.links.is_empty() => {
-                let (ranges, urls): (Vec<_>, Vec<_>) = self.links.into_iter().unzip();
                 let follow = follow.clone();
-                InteractiveText::new(id, text)
-                    .on_click(ranges, move |ix, window, cx| follow(&urls[ix], window, cx))
+                let layout = text.layout().clone();
+                let links = self.links;
+                div()
+                    .id(id)
+                    .on_click(move |ev, window, cx| {
+                        let Ok(at) = layout.index_for_position(ev.position()) else { return };
+                        if let Some((_, url)) = links.iter().find(|(r, _)| r.contains(&at)) {
+                            follow(url, window, cx);
+                        }
+                    })
+                    .child(text)
                     .into_any_element()
             }
             _ => text.into_any_element(),

@@ -4,6 +4,7 @@ use gpui::{
 };
 
 use crate::chrome::style::{hsla, theme};
+use crate::chrome::widgets::tip_gate::gated;
 
 pub struct Tip {
     text: SharedString,
@@ -32,13 +33,13 @@ impl Render for Tip {
 
 pub fn tip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let text = text.into();
-    move |_, cx| {
+    gated(move |_, cx| {
         cx.new(|_| Tip {
             text: text.clone(),
             max_width: None,
         })
         .into()
-    }
+    })
 }
 
 pub fn wide_tip(
@@ -46,11 +47,11 @@ pub fn wide_tip(
     max_width: f32,
 ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let text = text.into();
-    move |_, cx| {
+    gated(move |_, cx| {
         cx.new(|_| Tip {
             text: text.clone(),
             max_width: Some(max_width),
         })
         .into()
-    }
+    })
 }

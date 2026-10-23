@@ -2,6 +2,7 @@ mod button;
 mod controls;
 mod text_field;
 mod tooltip;
+pub mod tip_gate;
 
 pub use button::{Button, ButtonKind, IconButton};
 pub use controls::{Stepper, Switch};

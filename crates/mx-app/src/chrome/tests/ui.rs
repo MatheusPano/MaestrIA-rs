@@ -156,6 +156,21 @@ fn prompt_submits_on_enter_and_cancels_on_escape(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn ctrl_a_then_typing_replaces_the_prefilled_text(cx: &mut TestAppContext) {
+    let result: Rc<RefCell<Vec<Option<FormResult>>>> = Rc::default();
+    let r2 = result.clone();
+    let (_, cx) = host(cx, move |window, cx| {
+        cx.new(|cx| FormDialog::new(specs::prompt_text("Renomear painel", "Título", "proj"), move |r, _, _| r2.borrow_mut().push(r), window, cx))
+    });
+    cx.simulate_keystrokes("ctrl-a n o v o");
+    cx.simulate_keystrokes("enter");
+    cx.simulate_keystrokes("ctrl-a backspace enter");
+    let r = result.borrow();
+    assert_eq!(r[0].as_ref().unwrap().fields, vec!["novo".to_owned()]);
+    assert_eq!(r[1].as_ref().unwrap().fields, vec![String::new()]);
+}
+
+#[gpui::test]
 fn new_flow_opens_only_with_a_prompt_and_carries_the_review_step(cx: &mut TestAppContext) {
     let result: Rc<RefCell<Option<Option<FlowResult>>>> = Rc::default();
     let r2 = result.clone();

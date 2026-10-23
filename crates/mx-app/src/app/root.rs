@@ -1,5 +1,5 @@
 use gpui::{
-    AnyView, App, AppContext, ClipboardItem, Context, DragMoveEvent, Entity, InteractiveElement, IntoElement,
+    AnyView, App, AppContext, ClipboardItem, Context, DragMoveEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, StyleRefinement, Styled,
     Window, div, prelude::FluentBuilder, px,
 };
@@ -14,10 +14,13 @@ use crate::app::{dialogs, settings};
 use crate::chrome::settings::Section;
 use crate::keymap::{self, Outcome, UiRequest};
 use crate::chrome::notices::Banner;
+use crate::chrome::widgets::tip_gate;
 use crate::panes::PaneArea;
 use crate::rail::{self, Rail};
 use crate::sidebar::{self, Sidebar};
 use crate::status_bar::{self, SessionList, StatusBar};
+
+const ROOT_CONTEXT: &str = "MaestriaRoot";
 
 #[derive(Debug, Clone, Copy)]
 struct SidebarGrip;
@@ -30,6 +33,7 @@ pub struct Root {
     status_bar: Entity<StatusBar>,
     panes: Entity<PaneArea>,
     theme: String,
+    focus: FocusHandle,
 }
 
 pub fn fit_sidebar(width: f32, window_width: f32) -> f32 {
@@ -74,6 +78,7 @@ impl Root {
             status_bar,
             panes,
             theme,
+            focus: cx.focus_handle(),
         }
     }
 
@@ -122,7 +127,7 @@ impl Root {
         let k = &ev.keystroke;
         let m = k.modifiers;
         if k.key == "escape" && !(m.control || m.shift || m.alt || m.platform) {
-            if ui::escape(cx) {
+            if ui::escape(window, cx) {
                 cx.stop_propagation();
             }
             return;
@@ -189,6 +194,13 @@ impl Render for Blank {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let focus = self.focus.clone();
+        window.on_next_frame(move |window, _| {
+            if !window.context_stack().iter().any(|c| c.contains(ROOT_CONTEXT)) {
+                window.focus(&focus);
+            }
+        });
+        crate::chrome::dialog::frame::forget_escape(cx);
         let mx = Mx::get(cx).clone();
         let store = &self.host.read(cx).store;
         let prefs = store.prefs();
@@ -232,6 +244,7 @@ impl Render for Root {
         let confetti = ui.confetti.clone();
         div()
             .id("root")
+            .key_context(ROOT_CONTEXT)
             .relative()
             .size_full()
             .flex()
@@ -270,6 +283,8 @@ impl Render for Root {
             .when(!top, |d| d.child(status))
             .children(layers.into_iter().map(|v| div().absolute().inset_0().child(v)))
             .child(confetti)
+            .child(tip_gate::watch_clicks())
+            .child(div().id("root-focus").track_focus(&self.focus).absolute().size_0())
     }
 }
 

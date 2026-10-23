@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window,
-    div, px,
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Render, Styled, Subscription, Window, div, px,
 };
 use mx_plugins::registry::{installed_banner, trust_facts, trust_headline};
 use mx_plugins::{PluginInfo, StagedPlugin};
@@ -57,6 +57,7 @@ pub struct InstallDialog {
     host: Entity<StoreHost>,
     close: Close,
     field: Entity<TextField>,
+    focus: FocusHandle,
     step: Step,
     error: Option<String>,
     _sub: Subscription,
@@ -71,7 +72,7 @@ impl InstallDialog {
             TextFieldEvent::Cancel => this.cancel(window, cx),
             TextFieldEvent::Changed(_) => {}
         });
-        InstallDialog { host, close, field, step: Step::Ask, error: None, _sub: sub }
+        InstallDialog { host, close, field, focus: cx.focus_handle(), step: Step::Ask, error: None, _sub: sub }
     }
 
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -202,7 +203,12 @@ impl InstallDialog {
 }
 
 impl Render for InstallDialog {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match self.step {
+            Step::Trust(_) if !self.focus.is_focused(window) => window.focus(&self.focus),
+            Step::Ask if self.focus.is_focused(window) => self.field.read(cx).focus(window),
+            _ => {}
+        }
         let t = theme(cx);
         let (head, body, buttons) = self.body(cx);
         let me = cx.weak_entity();
@@ -213,10 +219,20 @@ impl Render for InstallDialog {
         .items_center()
         .justify_center()
         .child(
-            card(&t, 520.)
-                .child(div().px(px(24.)).pt(px(18.)).pb(px(10.)).child(title(&t, head)))
-                .child(div().px(px(24.)).pb(px(8.)).child(body))
-                .child(div().px(px(16.)).py(px(12.)).flex().justify_end().gap(px(4.)).children(buttons)),
+            div()
+                .track_focus(&self.focus)
+                .on_key_down(cx.listener(|d, ev: &KeyDownEvent, window, cx| {
+                    if ev.keystroke.key == "escape" {
+                        d.cancel(window, cx);
+                        cx.stop_propagation();
+                    }
+                }))
+                .child(
+                    card(&t, 520.)
+                        .child(div().px(px(24.)).pt(px(18.)).pb(px(10.)).child(title(&t, head)))
+                        .child(div().px(px(24.)).pb(px(8.)).child(body))
+                        .child(div().px(px(16.)).py(px(12.)).flex().justify_end().gap(px(4.)).children(buttons)),
+                ),
         )
     }
 }

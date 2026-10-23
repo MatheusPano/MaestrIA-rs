@@ -107,10 +107,11 @@ run_scenario() {
     E2E_FAILS=0
     SEED=
     trap 'stop_app; [[ -n ${E2E_TMP:-} ]] && rm -rf "$E2E_TMP"' EXIT
-    unset -f scenario
+    unset -f scenario prepare
     # shellcheck disable=SC1090
     source "$file"
     seed_home
+    if declare -F prepare >/dev/null; then prepare; fi
     if start_app; then
       scenario
       kill -0 "$APP_PID" 2>/dev/null || fail "app exited during the scenario (log: $E2E_OUT/$E2E_SCENARIO.app.log)"

@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, App, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, App, Div, Global, Hsla, canvas, InteractiveElement, IntoElement, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Window, div, px, rgba,
 };
 use mx_theme::Theme;
@@ -8,6 +8,19 @@ use crate::chrome::icon::{self, Icon, icon};
 use crate::chrome::style::{Callback, MONO, hsla, shadow, theme};
 
 pub const BARRIER: u32 = 0x0000_008a;
+
+#[derive(Default)]
+struct EscapeTarget(Option<Callback>);
+
+impl Global for EscapeTarget {}
+
+pub fn forget_escape(cx: &mut App) {
+    cx.default_global::<EscapeTarget>().0 = None;
+}
+
+pub fn escape_target(cx: &mut App) -> Option<Callback> {
+    cx.default_global::<EscapeTarget>().0.clone()
+}
 
 pub fn barrier(color: u32, on_dismiss: Option<Callback>) -> gpui::Stateful<Div> {
     let mut el = div()
@@ -20,7 +33,10 @@ pub fn barrier(color: u32, on_dismiss: Option<Callback>) -> gpui::Stateful<Div> 
         .bg(rgba(color))
         .occlude();
     if let Some(f) = on_dismiss {
-        el = el.on_click(move |_, window, cx| f(window, cx));
+        let target = f.clone();
+        el = el
+            .on_click(move |_, window, cx| f(window, cx))
+            .child(canvas(move |_, _, cx| cx.default_global::<EscapeTarget>().0 = Some(target.clone()), |_, _, _, _| {}).absolute().size_0());
     }
     el
 }

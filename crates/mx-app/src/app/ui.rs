@@ -9,6 +9,7 @@ use crate::chrome::anim::ConfettiLayer;
 use crate::chrome::menu::{ContextMenu, MenuEntry};
 use crate::chrome::notices::{NoticeCenter, ToastStack};
 use crate::chrome::settings::SettingsDialog;
+use crate::chrome::widgets::tip_gate::{self, Overlays};
 
 #[derive(Clone)]
 pub enum Layer {
@@ -70,6 +71,11 @@ pub fn act<R>(cx: &mut App, f: impl FnOnce(&mut Store) -> R) -> R {
 }
 
 impl Ui {
+    fn sync_tips(&self, cx: &mut App) {
+        let menu_on_top = matches!(self.layers.last(), Some((_, Layer::Menu(_))));
+        tip_gate::set_overlays(Overlays { generation: self.next, count: self.layers.len(), menu_on_top }, cx);
+    }
+
     pub fn views(&self) -> Vec<AnyView> {
         self.layers.iter().map(|(_, l)| l.view()).collect()
     }
@@ -132,6 +138,7 @@ pub fn show(layer: impl FnOnce(&mut App) -> Layer, cx: &mut App) -> u64 {
     get(cx).update(cx, |ui, cx| {
         ui.next += 1;
         ui.layers.push((ui.next, layer));
+        ui.sync_tips(cx);
         cx.notify();
         ui.next
     })
@@ -146,6 +153,7 @@ pub fn close_if(generation: u64, cx: &mut App) {
         let before = ui.layers.len();
         ui.layers.retain(|(g, _)| *g != generation);
         if ui.layers.len() != before {
+            ui.sync_tips(cx);
             cx.notify();
         }
     });
@@ -154,6 +162,7 @@ pub fn close_if(generation: u64, cx: &mut App) {
 pub fn close_top(cx: &mut App) {
     get(cx).update(cx, |ui, cx| {
         if ui.layers.pop().is_some() {
+            ui.sync_tips(cx);
             cx.notify();
         }
     });
@@ -162,6 +171,7 @@ pub fn close_top(cx: &mut App) {
 pub fn close_settings(cx: &mut App) {
     get(cx).update(cx, |ui, cx| {
         ui.layers.retain(|(_, l)| !matches!(l, Layer::Settings(_)));
+        ui.sync_tips(cx);
         cx.notify();
     });
 }
@@ -199,11 +209,15 @@ pub fn puff(at: Point<Pixels>, window: &Window, cx: &mut App) {
     layer.update(cx, |c, cx| c.puff(at, window, cx));
 }
 
-pub fn escape(cx: &mut App) -> bool {
+pub fn escape(window: &mut Window, cx: &mut App) -> bool {
     let Some(layer) = get(cx).read(cx).top() else { return false };
     let closes = match &layer {
         Layer::Menu(_) => true,
-        Layer::Modal(_) => false,
+        Layer::Modal(_) => {
+            let Some(dismiss) = crate::chrome::dialog::frame::escape_target(cx) else { return false };
+            dismiss(window, cx);
+            return true;
+        }
         Layer::Settings(d) => d.read(cx).recording().is_none(),
     };
     if closes {

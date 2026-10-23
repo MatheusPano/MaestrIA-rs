@@ -128,6 +128,16 @@
       "clippy_warnings": 0,
       "failures_summary": "Joint run of the 7 non-UI crates after independent parallel development: 824/824 pass, clippy -D warnings clean. Coverage not yet measured.",
       "fix_applied": "None needed; per-crate agents iterated to green individually (e.g. serde_json float_roundtrip found by proptest, ETXTBSY spawn retry under parallel tests)."
+    },
+    {
+      "iteration": 2,
+      "total": 1117,
+      "passed": 1117,
+      "failed": 0,
+      "coverage_pct": 0.0,
+      "clippy_warnings": 0,
+      "failures_summary": "All 9 crates after the integration wave: 943 library + 174 app tests pass; mx-app clippy had 9 dead-code errors from cross-agent seams.",
+      "fix_applied": "Removed unused keymap re-exports/constants, made test-only items cfg(test)."
     }
   ],
   "parity_iterations": [],

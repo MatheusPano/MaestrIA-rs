@@ -123,7 +123,11 @@ impl InputDialog {
     pub fn new(host: Entity<StoreHost>, req: InputRequest, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let hint = req.placeholder.clone().unwrap_or_default();
         let value = req.value.clone().unwrap_or_default();
-        let field = cx.new(|cx| TextField::new(cx).hint(hint).filled().with_text(value));
+        let field = cx.new(|cx| {
+            let mut f = TextField::new(cx).hint(hint).filled().with_text(value);
+            f.select_all(cx);
+            f
+        });
         field.read(cx).focus(window);
         let sub = cx.subscribe(&field, |this: &mut Self, f, ev: &TextFieldEvent, cx| match ev {
             TextFieldEvent::Submit => {

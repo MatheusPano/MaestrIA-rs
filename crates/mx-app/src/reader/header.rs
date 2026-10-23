@@ -11,6 +11,7 @@ use mx_claude::docs::DocSource;
 use super::style::Sheet;
 use crate::app::icons::{Icon, icon};
 use crate::rfw_view::named_icon as named;
+use crate::chrome::widgets::tip_gate::gated;
 
 pub type Action = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -132,7 +133,7 @@ fn button(sheet: &Sheet, b: HeaderButton) -> impl IntoElement {
             cx.stop_propagation();
         })
         .on_click(move |_, window, cx| action(window, cx))
-        .tooltip(move |_, cx| cx.new(|_| tip.clone()).into())
+        .tooltip(gated(move |_, cx| cx.new(|_| tip.clone()).into()))
 }
 
 #[derive(Clone)]

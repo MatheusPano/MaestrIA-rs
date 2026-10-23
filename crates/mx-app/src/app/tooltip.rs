@@ -4,6 +4,7 @@ use gpui::{
 };
 
 use crate::app::theme::Mx;
+use crate::chrome::widgets::tip_gate::gated;
 
 pub struct Tip(SharedString);
 
@@ -25,5 +26,5 @@ impl Render for Tip {
 
 pub fn tip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let text = text.into();
-    move |_, cx| cx.new(|_| Tip(text.clone())).into()
+    gated(move |_, cx| cx.new(|_| Tip(text.clone())).into())
 }

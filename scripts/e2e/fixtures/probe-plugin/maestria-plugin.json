@@ -1,0 +1,14 @@
+{
+  "id": "e2e.probe",
+  "version": "1.0.0",
+  "name": "Sonda",
+  "description": "Plugin de teste do e2e.",
+  "author": "e2e",
+  "main": ["python3", "-u", "main.py"],
+  "contributes": {
+    "commands": [
+      {"id": "modal", "title": "Abrir modal", "key": "ctrl+alt+m"},
+      {"id": "ask", "title": "Perguntar", "key": "ctrl+alt+j"}
+    ]
+  }
+}

@@ -49,7 +49,7 @@ type_text() { on_display xdotool type --delay 40 -- "$1"; nudge; sleep 0.3; }
 key() { on_display xdotool key --delay 60 "$@"; nudge; sleep "${E2E_SETTLE:-0.6}"; }
 
 # gpui's X11 loop only wakes on fd readiness; events xcb already queued while waiting for a reply stall until the next one arrives.
-nudge() { on_display xprop -id "$WIN_ID" -f _E2E_NUDGE 32c -set _E2E_NUDGE "$RANDOM" 2>/dev/null; }
+nudge() { [[ ${E2E_NUDGE:-1} == 0 ]] && return 0; on_display xprop -id "$WIN_ID" -f _E2E_NUDGE 32c -set _E2E_NUDGE "$RANDOM" 2>/dev/null; }
 
 shot() {
   local file="$E2E_SHOTS/$E2E_SCENARIO-$1.png"
@@ -90,3 +90,22 @@ expect_config() {
 }
 
 clipboard() { on_display xclip -o -selection clipboard 2>/dev/null; }
+
+wait_json() {
+  local file=$1 filter=$2 deadline=$((SECONDS + ${3:-5}))
+  while ((SECONDS < deadline)); do
+    if [[ -f $file ]] && jq -se "$filter" "$file" >/dev/null 2>&1; then return 0; fi
+    sleep 0.25
+  done
+  return 1
+}
+
+expect_json() {
+  if wait_json "$1" "$2" "${4:-5}"; then ok "$3"; else fail "$3 ($(basename "$1"): $(jq -sc . "$1" 2>/dev/null || echo missing))"; fi
+}
+
+install_probe_plugin() {
+  mkdir -p "$MAESTRIA_HOME/plugins"
+  cp -R "$HERE/fixtures/probe-plugin" "$MAESTRIA_HOME/plugins/e2e.probe"
+  PLUGIN_DATA=$MAESTRIA_HOME/plugin-data/e2e.probe
+}

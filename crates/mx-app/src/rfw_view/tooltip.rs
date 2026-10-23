@@ -2,6 +2,7 @@ use gpui::{AnyView, App, AppContext, Context, Hsla, IntoElement, ParentElement, 
 use mx_theme::Palette;
 
 use super::style::{UI_FONT, hsla};
+use crate::chrome::widgets::tip_gate::gated;
 
 pub struct Tip {
     text: String,
@@ -30,5 +31,5 @@ impl Render for Tip {
 
 pub fn builder(text: String, p: &Palette) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
     let (bg, border, fg) = (hsla(p.bg_active), hsla(p.border), hsla(p.fg));
-    move |_, cx| cx.new(|_| Tip { text: text.clone(), bg, border, fg }).into()
+    gated(move |_, cx| cx.new(|_| Tip { text: text.clone(), bg, border, fg }).into())
 }

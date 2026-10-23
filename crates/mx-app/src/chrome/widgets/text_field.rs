@@ -17,6 +17,7 @@ pub struct TextField {
     focus: FocusHandle,
     text: String,
     cursor: usize,
+    all_selected: bool,
     label: Option<SharedString>,
     hint: SharedString,
     lines: Option<(usize, usize)>,
@@ -39,6 +40,7 @@ impl TextField {
             focus: cx.focus_handle(),
             text: String::new(),
             cursor: 0,
+            all_selected: false,
             label: None,
             hint: SharedString::default(),
             lines: None,
@@ -95,7 +97,23 @@ impl TextField {
     pub fn set_text(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
         self.text = text.into();
         self.cursor = self.text.len();
+        self.all_selected = false;
         cx.notify();
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.all_selected = !self.text.is_empty();
+        self.cursor = self.text.len();
+        cx.notify();
+    }
+
+    fn take_selection(&mut self) -> bool {
+        if !std::mem::take(&mut self.all_selected) {
+            return false;
+        }
+        self.text.clear();
+        self.cursor = 0;
+        true
     }
 
     pub fn focus(&self, window: &mut Window) {
@@ -108,6 +126,7 @@ impl TextField {
         } else {
             s.replace(['\n', '\r'], " ")
         };
+        self.take_selection();
         self.text.insert_str(self.cursor, &s);
         self.cursor += s.len();
         self.changed(cx);
@@ -136,7 +155,23 @@ impl TextField {
         let k = &ev.keystroke;
         let m = k.modifiers;
         let command = m.control || m.platform;
+        if self.all_selected && !matches!(k.key.as_str(), "a" | "c" | "x" | "backspace" | "delete") && (command || k.key_char.is_none()) {
+            self.all_selected = false;
+            cx.notify();
+        }
         match k.key.as_str() {
+            "backspace" | "delete" if self.all_selected => {
+                self.take_selection();
+                self.changed(cx);
+            }
+            "a" if command => self.select_all(cx),
+            "c" | "x" if command && !m.shift && self.all_selected => {
+                cx.write_to_clipboard(ClipboardItem::new_string(self.text.clone()));
+                if k.key == "x" {
+                    self.take_selection();
+                    self.changed(cx);
+                }
+            }
             "backspace" if self.cursor > 0 => {
                 let at = self.prev();
                 self.text.replace_range(at..self.cursor, "");
@@ -217,12 +252,14 @@ impl Render for TextField {
                 let end = start + line.len();
                 let multiline = self.lines.is_some();
                 let has_caret = focused && self.cursor >= start && self.cursor <= end;
-                let row = if multiline && !has_caret {
+                let row = if multiline && !has_caret && !self.all_selected {
                     div().min_h(px(line_h)).child(line.to_owned())
                 } else {
                     let mut row = div().flex().items_center().min_h(px(line_h));
                     row = if multiline { row.flex_wrap() } else { row.whitespace_nowrap() };
-                    if has_caret {
+                    if self.all_selected {
+                        row.child(div().bg(hsla(t.accent).opacity(0.35)).child(line.to_owned()))
+                    } else if has_caret {
                         let at = self.cursor - start;
                         row.child(line[..at].to_owned()).child(caret()).child(line[at..].to_owned())
                     } else {
