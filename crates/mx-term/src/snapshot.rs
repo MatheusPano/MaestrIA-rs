@@ -18,12 +18,13 @@ pub struct CellStyle {
     pub strikeout: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SnapCell {
     pub c: char,
     pub style: CellStyle,
     pub wide: bool,
     pub spacer: bool,
+    pub selected: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,13 +55,32 @@ pub struct Snapshot {
     pub display_offset: usize,
 }
 
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self {
+            cols: 0,
+            rows: 0,
+            cells: Vec::new(),
+            cursor: None,
+            foreground: Rgb::hex(0xffffff),
+            background: Rgb::hex(0),
+            mode: TermMode::empty(),
+            display_offset: 0,
+        }
+    }
+}
+
 impl Snapshot {
     pub fn row(&self, row: usize) -> &[SnapCell] {
         &self.cells[row * self.cols..(row + 1) * self.cols]
     }
 }
 
-pub(crate) fn snapshot<T: EventListener>(term: &Term<T>, palette: &TerminalPalette) -> Snapshot {
+pub(crate) fn snapshot_into<T: EventListener>(
+    term: &Term<T>,
+    palette: &TerminalPalette,
+    out: &mut Snapshot,
+) {
     let content = term.renderable_content();
     let cols = term.columns();
     let rows = term.screen_lines();
@@ -79,9 +99,13 @@ pub(crate) fn snapshot<T: EventListener>(term: &Term<T>, palette: &TerminalPalet
         },
         wide: false,
         spacer: false,
+        selected: false,
     };
-    let mut cells = vec![blank; cols * rows];
+    out.cells.clear();
+    out.cells.resize(cols * rows, blank);
+    let cells = &mut out.cells;
     let offset = content.display_offset as i32;
+    let selection = content.selection;
 
     for indexed in content.display_iter {
         let row = indexed.point.line.0 + offset;
@@ -118,6 +142,7 @@ pub(crate) fn snapshot<T: EventListener>(term: &Term<T>, palette: &TerminalPalet
             },
             wide: flags.contains(Flags::WIDE_CHAR),
             spacer: flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER),
+            selected: selection.as_ref().is_some_and(|r| r.contains(indexed.point)),
         };
     }
 
@@ -138,16 +163,13 @@ pub(crate) fn snapshot<T: EventListener>(term: &Term<T>, palette: &TerminalPalet
             color: named(NamedColor::Cursor, colors, palette),
         });
 
-    Snapshot {
-        cols,
-        rows,
-        cells,
-        cursor,
-        foreground,
-        background,
-        mode: content.mode,
-        display_offset: content.display_offset,
-    }
+    out.cols = cols;
+    out.rows = rows;
+    out.cursor = cursor;
+    out.foreground = foreground;
+    out.background = background;
+    out.mode = content.mode;
+    out.display_offset = content.display_offset;
 }
 
 fn resolve(color: Color, colors: &Colors, palette: &TerminalPalette) -> Rgb {

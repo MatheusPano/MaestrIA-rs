@@ -1,0 +1,46 @@
+[
+ {"type": "header", "title": "Flutter", "subtitle": "app rodando no Pixel 7", "tone": "green", "avatar": {"icon": "device", "color": "accent"}, "status": "green",
+  "actions": [{"action": "reload", "icon": "reload", "tooltip": "hot reload"}, {"action": "restart", "icon": "restart", "tooltip": "hot restart"}, {"action": "stop", "icon": "stop", "tone": "red", "tooltip": "parar"}]},
+ {"type": "tabs", "items": [{"label": "Geral", "action": "tab:geral", "active": true, "icon": "info"}, {"label": "Log", "action": "tab:log", "count": 12}, {"label": "Rede", "action": "tab:rede"}]},
+ {"type": "heading", "text": "Configuração"},
+ {"type": "text", "text": "Um texto comum, no corpo do painel, que quebra linha quando precisa e continua legível."},
+ {"type": "text", "text": "dim", "style": "dim"},
+ {"type": "row", "children": [{"type": "text", "text": "erro", "style": "error", "width": 60}, {"type": "text", "text": "ok", "style": "success", "width": 60}, {"type": "text", "text": "aviso", "style": "warning", "width": 60}, {"type": "text", "text": "mono 123", "style": "mono", "width": 90}]},
+ {"type": "section", "text": "CAMPOS", "count": 4, "collapsed": false, "action": "toggle:campos"},
+ {"type": "input", "id": "name", "label": "Nome", "placeholder": "digite um nome", "value": "maestria", "submit": "salvar", "icon": "search"},
+ {"type": "row", "children": [
+   {"type": "select", "id": "device", "label": "Aparelho", "options": ["", {"value": "pixel", "label": "Pixel 7"}, {"value": "linux", "label": "Linux"}], "value": "pixel", "action": "device", "width": 220},
+   {"type": "checkbox", "id": "verbose", "label": "Verboso", "value": true, "width": 120},
+   {"type": "button", "action": "salvar", "label": "Salvar", "style": "primary"},
+   {"type": "button", "action": "apagar", "label": "Apagar", "style": "danger"},
+   {"type": "button", "action": "abrir", "label": "Abrir", "icon": "open"},
+   {"type": "button", "action": "mais", "icon": "more", "menu": [{"action": "a", "label": "Copiar", "icon": "copy"}, {"type": "divider"}, {"action": "b", "label": "Apagar", "tone": "red", "icon": "trash"}, {"label": "Cor", "children": [{"action": "cor:r", "label": "Vermelho", "tone": "red"}, {"action": "cor:n", "label": "Nenhuma"}]}]}
+ ]},
+ {"type": "input", "id": "notes", "label": "Notas", "multiline": true, "placeholder": "notas"},
+ {"type": "section", "text": "Lista", "style": "label"},
+ {"type": "list", "items": [
+   {"title": "web", "subtitle": "nginx · 2 portas", "avatar": {"icon": "box", "color": "cyan"}, "status": "green", "badge": "3", "action": "open:web", "expanded": true, "toggle": "t:web",
+    "actions": [{"action": "stop:web", "icon": "stop", "tooltip": "parar"}], "menu": [{"action": "x", "label": "Remover", "icon": "trash"}]},
+   {"title": "db", "subtitle": "postgres", "avatar": {"text": "PG", "color": "purple"}, "status": "red", "indent": 1, "meta": ":5432", "selected": true},
+   {"title": "cache", "subtitle": "parado", "icon": "server", "tone": "yellow", "dim": true, "meta": "redis", "metaTone": "yellow"}
+ ]},
+ {"type": "list", "flat": true, "alwaysActions": true, "items": [
+   {"title": "main.dart", "subtitle": "lib/", "icon": "file", "action": "f:main", "actions": [{"action": "stage", "icon": "add", "tooltip": "preparar"}]},
+   {"title": "pubspec.yaml", "icon": "file", "strong": true, "action": "f:pub"}
+ ]},
+ {"type": "card", "children": [
+   {"type": "kv", "items": [{"key": "status", "value": "rodando", "tone": "green"}, {"key": "porta", "value": "8080"}, {"key": "imagem", "value": "nginx:1.27"}]},
+   {"type": "progress", "value": 0.42, "label": "CPU", "detail": "42% de 8 núcleos"},
+   {"type": "progress", "label": "baixando", "tone": "yellow"}
+ ]},
+ {"type": "columns", "children": [{"type": "progress", "value": 0.7, "label": "Memória", "tone": "purple"}, {"type": "progress", "value": 0.2, "label": "Disco", "tone": "green"}]},
+ {"type": "code", "text": "fn main() {\n    println!(\"oi\");\n}"},
+ {"type": "markdown", "text": "## Markdown\nUm parágrafo com **negrito** e `código`.\n\n- item um\n- item dois"},
+ {"type": "divider"},
+ {"type": "console", "id": "log", "height": 120},
+ {"type": "calendar", "id": "when", "mode": "range", "value": {"from": "2026-10-12", "to": "2026-10-16"}, "presets": [{"label": "Hoje", "from": "2026-10-21"}, {"label": "Semana passada", "from": "2026-10-12", "to": "2026-10-16"}]},
+ {"type": "terminal", "tabId": "t1", "height": 80},
+ {"type": "button", "action": "sozinho", "label": "Botão sozinho"},
+ {"type": "foo"},
+ {"type": "checkbox"}
+]

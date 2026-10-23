@@ -24,7 +24,7 @@ pub fn encode_key(
     mods: Mods,
     app_cursor: bool,
 ) -> Option<Cow<'static, [u8]>> {
-    if mods.platform {
+    if mods.platform || is_slot_chord(key, mods) {
         return None;
     }
     if let Some(seq) = special(key, mods, app_cursor) {
@@ -55,6 +55,26 @@ pub fn encode_key(
         .map(|s| Cow::Owned(s.as_bytes().to_vec()))
 }
 
+const NAMED: [&str; 26] = [
+    "enter", "tab", "escape", "backspace", "insert", "delete", "home", "end", "pageup",
+    "pagedown", "up", "down", "left", "right", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+    "f9", "f10", "f11", "f12",
+];
+
+pub fn is_text_key(key: &str, key_char: Option<&str>, mods: Mods) -> bool {
+    !(mods.ctrl || mods.alt || mods.platform)
+        && key_char.is_some_and(|c| !c.is_empty())
+        && !NAMED.contains(&key)
+}
+
+pub fn is_slot_chord(key: &str, mods: Mods) -> bool {
+    mods.alt
+        && !mods.ctrl
+        && !mods.shift
+        && !mods.platform
+        && matches!(key.as_bytes(), [b'1'..=b'9'])
+}
+
 fn ctrl_byte(key: &str) -> Option<u8> {
     let mut chars = key.chars();
     let c = chars.next()?;
@@ -81,7 +101,9 @@ fn special(key: &str, mods: Mods, app_cursor: bool) -> Option<Cow<'static, [u8]>
     let fixed: Option<&'static [u8]> = match (key, mods.none()) {
         ("enter", true) => Some(b"\r"),
         ("enter", false) if mods.alt && !mods.ctrl => Some(b"\x1b\r"),
-        ("enter", false) if mods.shift && !mods.ctrl => Some(b"\n"),
+        ("enter", false) if mods.shift && !mods.ctrl => Some(b"\x1b\r"),
+        ("enter", false) if mods.ctrl && !mods.alt && !mods.shift => Some(b"\r"),
+        ("space", false) if mods.alt && !mods.ctrl => Some(b"\x1b "),
         ("tab", true) => Some(b"\t"),
         ("tab", false) if mods.shift && !mods.ctrl && !mods.alt => Some(b"\x1b[Z"),
         ("escape", true) => Some(b"\x1b"),
@@ -179,5 +201,47 @@ mod tests {
         assert_eq!(enc("left", None, CTRL, false), b"\x1b[1;5D");
         assert_eq!(enc("tab", None, SHIFT, false), b"\x1b[Z");
         assert_eq!(enc("A", Some("A"), SHIFT, false), b"A");
+    }
+
+    #[test]
+    fn printable_keys_go_through_text_input() {
+        assert!(is_text_key("a", Some("a"), Mods::default()));
+        assert!(is_text_key("a", Some("A"), SHIFT));
+        assert!(is_text_key("space", Some(" "), Mods::default()));
+        assert!(!is_text_key("a", Some("a"), CTRL));
+        assert!(!is_text_key("1", Some("1"), ALT));
+        assert!(!is_text_key("enter", Some("\r"), Mods::default()));
+        assert!(!is_text_key("dead_acute", None, Mods::default()));
+    }
+
+    #[test]
+    fn shift_enter_sends_esc_cr() {
+        assert_eq!(enc("enter", None, SHIFT, false), b"\x1b\r");
+    }
+
+    #[test]
+    fn alt_digits_are_intercepted_not_leaked() {
+        for d in 1..=9 {
+            let key = d.to_string();
+            assert!(is_slot_chord(&key, ALT));
+            assert!(enc(&key, Some(&key), ALT, false).is_empty());
+        }
+        assert_eq!(enc("0", Some("0"), ALT, false), b"\x1b0");
+    }
+
+    #[test]
+    fn more_modified_keys() {
+        assert_eq!(enc("enter", None, ALT, false), b"\x1b\r");
+        assert_eq!(enc("enter", None, CTRL, false), b"\r");
+        assert_eq!(enc("space", Some(" "), ALT, false), b"\x1b ");
+        assert_eq!(enc("backspace", None, ALT, false), b"\x1b\x7f");
+        assert_eq!(enc("backspace", None, CTRL, false), b"\x08");
+        assert_eq!(enc("up", None, ALT, false), b"\x1b[1;3A");
+        assert_eq!(enc("home", None, Mods::default(), true), b"\x1bOH");
+        assert_eq!(enc("f5", None, Mods::default(), false), b"\x1b[15~");
+        assert_eq!(enc("f2", None, SHIFT, false), b"\x1b[1;2Q");
+        assert_eq!(enc("pageup", None, SHIFT, false), b"\x1b[5;2~");
+        assert_eq!(enc("x", Some("x"), Mods { ctrl: true, alt: true, ..Mods::default() }, false), b"\x1b\x18");
+        assert_eq!(enc("t", Some("t"), Mods { platform: true, ..Mods::default() }, false), b"");
     }
 }

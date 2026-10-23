@@ -3681,6 +3681,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "gpui",
+ "image",
  "libc",
  "log",
  "mx-claude",
@@ -3692,6 +3693,7 @@ dependencies = [
  "mx-term",
  "mx-theme",
  "regex",
+ "resvg",
  "serde_json",
  "tokio",
 ]

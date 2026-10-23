@@ -8,13 +8,13 @@
   "started_at_epoch": 1792592787.7103658,
   "completed_at": null,
   "_active_bucket": {
-    "name": "rewrite",
-    "started_at": 1792593451.9838746
+    "name": "test_heal",
+    "started_at": 1792597297.7674556
   },
   "_bucket_seconds": {
     "discovery": 124.92693972587585,
     "blueprint": 105.89466190338135,
-    "rewrite": 0.0,
+    "rewrite": 3845.783581018448,
     "test_heal": 0.0,
     "parity": 0.0,
     "pgo_bench": 0.0
@@ -58,8 +58,8 @@
       "avg_fn_loc": null,
       "unsafe_blocks": null,
       "forbid_unsafe": false,
-      "branch_coverage_pct": null,
-      "clippy_warnings": null
+      "branch_coverage_pct": 0.0,
+      "clippy_warnings": 0
     }
   },
   "opportunities": [
@@ -118,7 +118,18 @@
       "description": "Target <=400 LOC per Rust file."
     }
   ],
-  "test_iterations": [],
+  "test_iterations": [
+    {
+      "iteration": 1,
+      "total": 824,
+      "passed": 824,
+      "failed": 0,
+      "coverage_pct": 0.0,
+      "clippy_warnings": 0,
+      "failures_summary": "Joint run of the 7 non-UI crates after independent parallel development: 824/824 pass, clippy -D warnings clean. Coverage not yet measured.",
+      "fix_applied": "None needed; per-crate agents iterated to green individually (e.g. serde_json float_roundtrip found by proptest, ETXTBSY spawn retry under parallel tests)."
+    }
+  ],
   "parity_iterations": [],
   "benchmarks": [
     {

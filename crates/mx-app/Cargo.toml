@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+description = "Cockpit para sessões do Claude Code"
 
 [[bin]]
 name = "maestria"
@@ -12,6 +13,18 @@ path = "src/main.rs"
 [dependencies]
 mx-term.workspace = true
 mx-theme.workspace = true
+mx-core.workspace = true
+mx-store.workspace = true
+mx-sys.workspace = true
+mx-claude.workspace = true
+mx-plugins.workspace = true
+mx-rfw = { path = "../mx-rfw" }
+regex.workspace = true
+resvg = { version = "0.45", default-features = false }
+image = { version = "0.25", default-features = false }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
+chrono.workspace = true
+serde_json.workspace = true
 gpui.workspace = true
 anyhow.workspace = true
 async-channel.workspace = true
@@ -22,3 +35,41 @@ libc.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.deb]
+name = "maestria"
+maintainer = "Matheus Pano <matheus@marrow.com.br>"
+copyright = "2026, br.com.marrow"
+section = "devel"
+priority = "optional"
+revision = "1"
+default-features = true
+extended-description = """\
+Painéis lado a lado, cada um com uma sessão do Claude Code viva dentro,
+worktrees do git por tarefa e um leitor de markdown para o que as sessões
+escrevem. Requer o Claude Code CLI (claude) instalado e no PATH."""
+depends = "$auto, libvulkan1, mesa-vulkan-drivers | vulkan-icd, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libxcb1, fontconfig, git, libnotify-bin, xdg-utils, curl"
+recommends = "dbus-x11"
+maintainer-scripts = "../../packaging/linux/debian/"
+assets = [
+  ["target/release/maestria", "opt/maestria/maestria", "755"],
+  ["../../packaging/linux/maestria-launcher.sh", "usr/bin/maestria", "755"],
+  ["../../packaging/linux/br.com.marrow.maestria.desktop", "usr/share/applications/br.com.marrow.maestria.desktop", "644"],
+  ["assets/icons/32.png", "usr/share/icons/hicolor/32x32/apps/br.com.marrow.maestria.png", "644"],
+  ["assets/icons/64.png", "usr/share/icons/hicolor/64x64/apps/br.com.marrow.maestria.png", "644"],
+  ["assets/icons/128.png", "usr/share/icons/hicolor/128x128/apps/br.com.marrow.maestria.png", "644"],
+  ["assets/icons/256.png", "usr/share/icons/hicolor/256x256/apps/br.com.marrow.maestria.png", "644"],
+  ["assets/icons/512.png", "usr/share/icons/hicolor/512x512/apps/br.com.marrow.maestria.png", "644"],
+]
+
+[package.metadata.bundle]
+name = "MaestrIA"
+identifier = "br.com.marrow.maestria"
+icon = ["assets/icons/32.png", "assets/icons/64.png", "assets/icons/128.png", "assets/icons/256.png", "assets/icons/512.png", "assets/icons/1024.png"]
+copyright = "Copyright © 2026 br.com.marrow. All rights reserved."
+category = "public.app-category.developer-tools"
+short_description = "Cockpit para sessões do Claude Code"
+osx_minimum_system_version = "12.0"
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
