@@ -7,7 +7,7 @@ use crate::chrome::menu::{MenuEntry, MenuItem, Tone};
 use crate::chrome::style::{MONO, hsla, theme};
 use crate::chrome::widgets::{Button, ButtonKind, IconButton};
 
-pub const PLUGINS_INFO: &str = "Temas, comandos e janelas que vêm de fora, instalados em ~/.maestria/plugins. Um plugin com programa roda com as suas permissões — instale só o que você confia. Como escrever um: docs/plugins.md, no repositório da maestria.";
+pub const PLUGINS_INFO: &str = "Temas, comandos e janelas que vêm de fora, instalados em ~/.maestria-rs/plugins. Um plugin com programa roda com as suas permissões — instale só o que você confia. Como escrever um: docs/plugins.md, no repositório da maestria.";
 pub const PLUGINS_EMPTY: &str = "Nenhum ainda. Os exemplos do repositório (examples/plugins) são um bom começo: um tema com atalhos, e um plugin completo em node com comandos, hooks e uma janela.";
 
 pub fn state_tone(s: PluginState) -> Tone {

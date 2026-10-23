@@ -109,13 +109,13 @@ fn state_dir_honours_the_override_and_never_defaults_elsewhere() {
     );
     assert_eq!(
         state_dir_from(Some("  "), HOME),
-        PathBuf::from("/home/u/.maestria")
+        PathBuf::from("/home/u/.maestria-rs")
     );
     assert_eq!(
         state_dir_from(None, HOME),
-        PathBuf::from("/home/u/.maestria")
+        PathBuf::from("/home/u/.maestria-rs")
     );
-    assert_eq!(state_dir_from(None, None), PathBuf::from("/.maestria"));
+    assert_eq!(state_dir_from(None, None), PathBuf::from("/.maestria-rs"));
 }
 
 proptest! {

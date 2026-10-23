@@ -37,7 +37,7 @@ pub fn state_dir_from(override_dir: Option<&str>, home: Option<&str>) -> PathBuf
         return PathBuf::from(expand_home_with(dir, home));
     }
     let home = home.filter(|h| !h.is_empty()).unwrap_or("/");
-    PathBuf::from(home).join(".maestria")
+    PathBuf::from(home).join(".maestria-rs")
 }
 
 pub fn config_path(state_dir: &std::path::Path) -> PathBuf {
