@@ -10,7 +10,7 @@ pub fn applescript_string(value: &str) -> String {
 
 pub fn alert_command(platform: Platform, title: &str, body: &str) -> String {
     match platform {
-        Platform::Linux => format!("notify-send -a maestria {} {}", q(title), q(body)),
+        Platform::Linux => format!("notify-send -a maestria -- {} {}", q(title), q(body)),
         Platform::MacOs => {
             let script = format!(
                 "display notification {} with title {}",

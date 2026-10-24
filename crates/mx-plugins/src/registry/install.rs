@@ -148,11 +148,25 @@ impl Plugins {
     pub async fn commit(&self, staged: &StagedPlugin) -> Result<PluginInfo, InstallError> {
         let id = staged.manifest.id.clone();
         let moved = async {
-            if let Some(old) = self.get(&id) {
-                self.remove(&old).await;
-            }
             fs::create_dir_all(&self.inner.root).map_err(|e| err(e.to_string()))?;
-            fs::rename(&staged.dir, self.inner.root.join(&id)).map_err(|e| err(e.to_string()))
+            let old = self.get(&id);
+            if let Some(old) = &old {
+                self.stop(&old.id).await;
+            }
+            let aside = staged.staging.join("old");
+            let parked = match &old {
+                Some(old) if fs::symlink_metadata(&old.dir).is_ok() => {
+                    fs::rename(&old.dir, &aside).map_err(|e| err(e.to_string()))?;
+                    Some(old.dir.clone())
+                }
+                _ => None,
+            };
+            fs::rename(&staged.dir, self.inner.root.join(&id)).map_err(|e| {
+                if let Some(dir) = &parked {
+                    let _ = fs::rename(&aside, dir);
+                }
+                err(e.to_string())
+            })
         }
         .await;
         rm(&staged.staging);

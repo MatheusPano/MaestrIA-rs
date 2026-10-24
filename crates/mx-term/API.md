@@ -18,12 +18,22 @@ leftovers (full PTY buffer) are flushed by the I/O thread.
 - Env (spec 02 §1.2): `mx_sys::shell::env()` (PATH fallbacks) + `TERM=xterm-256color`,
   `COLORTERM=truecolor`, `LANG` only if absent, `FORCE_HYPERLINK=1`, then caller env.
 - `set_exit_hook(Arc<dyn Fn(Option<i32>)>)`, `events() -> async_channel::Receiver<TermEvent>`
-  (`Wakeup`, `Title`, `ResetTitle`, `Bell`, `ClipboardStore`, `Exited(code)`), `same(&other)`.
+  (`Wakeup`, `Title`, `ResetTitle`, `Bell`, `ClipboardStore`, `Exited(code)`; shared, buffered from birth;
+  pairs with `take_dirty()`), `same(&other)`.
+- `subscribe() -> Subscriber{events, dirty: DirtyFlag}` — one per view: its own channel (dropping it
+  unsubscribes) and its own dirty flag; one `Wakeup` per dirty period, re-armed by `dirty.take()`.
+  Starts dirty. Views use this, never `events()`.
+- A life's I/O thread and master fd live until the next start or the session drop, even after the leader
+  exits (background jobs' output still shows); then the fd closes and the slave hangs up. Signals are sent
+  under the state lock while the leader is still unreaped (no PID reuse).
 - Input: `write(&[u8])` (raw; snaps viewport to bottom), `send(text)` / `newline()` (`ESC CR`) /
-  `paste(text)` (bracketed when `?2004`; clear the IME echo memory), `paste_clipboard(text, images_via_ctrl_v)
+  `paste(text)` (bracketed when `?2004`; ESC stripped always, ^C and U+009B too inside brackets;
+  clear the IME echo memory), `paste_clipboard(text, images_via_ctrl_v)
   -> PasteOutcome::{Text, CtrlV, Nothing}`.
 - IME guard (spec 02 §3.5): `key_down(key)`, `key_up(key)`, `preedit(text)`,
-  `input_text(text, TextOrigin::{Key, Commit}) -> bool` (writes only if the guard accepts).
+  `input_text(text, TextOrigin::{Key, Commit, CommitKey}) -> bool` (writes only if the guard accepts).
+  `CommitKey` = an IME commit delivered as its own key event (gpui Wayland `ime_commit`): never
+  deduped against the previous text, only paired one-to-one with a real key's echo, either order.
 - View: `resize(GridSize)` (term + `TIOCSWINSZ`, no-op when unchanged), `size`, `scroll(lines)`, `mode()`,
   `take_dirty()`, `snapshot_into(&mut Snapshot)` (reuses the buffer), `snapshot()`, `row_text(row)`,
   `set_palette(p)`, `feed(bytes)` (into the emulator through the scrubber; tests/notes).
@@ -42,11 +52,13 @@ leftovers (full PTY buffer) are flushed by the I/O thread.
 
 ## Snapshot
 `Snapshot{cols, rows, cells, cursor, foreground, background, mode, display_offset}`, `row(r) -> &[SnapCell]`;
-`SnapCell{c, style: CellStyle{fg, bg, bold, italic, underline, strikeout}, wide, spacer, selected}` (`Copy`);
+`SnapCell{c, marks: Marks, style: CellStyle{fg, bg, bold, italic, underline, strikeout}, wide, spacer, selected}`
+(`Copy`; `Marks::chars()` = up to 3 zero-width/combining chars drawn after `c`);
 `SnapCursor{row, col, kind: CursorKind, color}`. Dim/inverse/hidden are already applied to colors.
 
 ## Pure helpers
-- `encode_key(key, key_char, Mods, app_cursor)` (Shift+Enter → `ESC CR`, Alt+1…9 → `None`),
+- `encode_key(key, key_char, Mods, app_cursor)` (Shift+Enter → `ESC CR`, Alt+1…9 → `None`,
+  Alt+key → `ESC` + the typed char, Ctrl+/ → 0x1f, xterm forms for modified Esc/Space/Tab),
   `is_slot_chord`, `is_text_key` (printable, modifiers ⊆ shift → goes through the IME path).
 - `wheel_bytes`, `reports_mouse`, `WheelAccumulator::notches(delta_up, line_h)` (trunc toward 0), `clamp_cell`.
 - `VtScrubber::{scrub, scrub_into}` — drops `CSI <|=|> … m`, holds split fragments ≤ 32 bytes.

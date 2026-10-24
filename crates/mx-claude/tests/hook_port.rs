@@ -110,3 +110,44 @@ async fn any_first_segment_other_than_mcp_or_status_is_a_hook() {
     .await;
     assert!(matches!(rx.recv().await, Some(ServerEvent::Hook { tab_id, .. }) if tab_id == "tab1"));
 }
+
+async fn raw_post(port: u16, path: &str, extra: &[(&str, &str)], body: &str) -> u16 {
+    let mut req = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}{path}"))
+        .header("content-type", "text/plain")
+        .body(body.to_owned());
+    for (k, v) in extra {
+        req = req.header(*k, *v);
+    }
+    req.send().await.unwrap().status().as_u16()
+}
+
+#[tokio::test]
+async fn browser_requests_with_an_origin_are_refused_and_reach_nobody() {
+    let state = tempfile::tempdir().unwrap();
+    let (server, mut rx) = start(state.path()).await;
+    let port = server.port();
+    let hook = r#"{"hook_event_name":"Stop"}"#;
+    let mcp = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"suggest_task","arguments":{"title":"x","tldr":"y","prompt":"z"}}}"#;
+    for (path, body) in [("/hook/tab1", hook), ("/status/tab1", hook), ("/mcp/tab1", mcp)] {
+        assert_eq!(
+            raw_post(port, path, &[("origin", "https://evil.example")], body).await,
+            403
+        );
+    }
+    assert!(rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn a_rebound_host_name_is_refused() {
+    let state = tempfile::tempdir().unwrap();
+    let (server, mut rx) = start(state.path()).await;
+    let port = server.port();
+    let hook = r#"{"hook_event_name":"Stop"}"#;
+    let evil = format!("evil.example:{port}");
+    assert_eq!(raw_post(port, "/hook/tab1", &[("host", &evil)], hook).await, 403);
+    assert!(rx.try_recv().is_err());
+    let local = format!("localhost:{port}");
+    assert_eq!(raw_post(port, "/hook/tab1", &[("host", &local)], hook).await, 200);
+    assert!(matches!(rx.recv().await, Some(ServerEvent::Hook { .. })));
+}

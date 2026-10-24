@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Styled, Window, div};
+use gpui::{AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Styled, Window, div};
 use mx_claude::docs::{DocSource, MxDoc};
 use mx_claude::setup::MxSetup;
 use mx_core::model::{Doc, Tab};
@@ -65,6 +65,7 @@ impl Bodies {
         let store = &env.host.read(cx).store;
         let open: Vec<Tab> = store.open_panes().into_iter().cloned().collect();
         let home = store.options().home.clone();
+        let alive: Vec<String> = store.tabs().iter().filter(|t| t.is_setup()).map(|t| t.id.clone()).collect();
         let mut views = Vec::new();
         for t in &open {
             if let Some(v) = store.plugin_view(&t.id) {
@@ -86,7 +87,7 @@ impl Bodies {
             surface.sync(view, &env, cx);
         }
         self.surfaces.retain(|id, _| views.iter().any(|(v, _)| v == id));
-        self.sync_setups(env, &open, window, cx);
+        self.sync_setups(env, &open, &alive, window, cx);
     }
 
     fn sync_reader(
@@ -134,7 +135,7 @@ impl Bodies {
         }
     }
 
-    fn sync_setups(&mut self, env: &SurfaceEnv, open: &[Tab], window: &mut Window, cx: &mut Context<PaneArea>) {
+    fn sync_setups(&mut self, env: &SurfaceEnv, open: &[Tab], alive: &[String], window: &mut Window, cx: &mut Context<PaneArea>) {
         for t in open.iter().filter(|t| t.is_setup()) {
             let Some(setup) = t.setup.clone() else { continue };
             let mx_setup = MxSetup { root: setup.root.clone(), selected: setup.selected.clone() };
@@ -146,6 +147,7 @@ impl Bodies {
                         if *v.setup() != mx_setup {
                             v.set_setup(mx_setup, cx);
                         }
+                        v.set_visible(true, cx);
                         v.set_theme(theme, cx);
                         v.set_pinned(pinned, cx);
                         v.set_zoom(zoom, cx);
@@ -166,7 +168,20 @@ impl Bodies {
                 }
             }
         }
-        self.setups.retain(|id, _| open.iter().any(|t| t.is_setup() && &t.id == id));
+        let shown = |id: &String| open.iter().any(|t| t.is_setup() && &t.id == id);
+        self.setups.retain(|id, view| shown(id) || (alive.contains(id) && view.read(cx).edited(cx)));
+        for (id, view) in &self.setups {
+            if !shown(id) {
+                view.update(cx, |v, cx| v.set_visible(false, cx));
+            }
+        }
+    }
+
+    pub fn focus_target(&self, id: &str, cx: &App) -> Option<FocusHandle> {
+        if let Some(r) = self.readers.get(id) {
+            return Some(r.view.focus_handle(cx));
+        }
+        self.setups.get(id).map(|v| v.read(cx).focus_target(cx))
     }
 
     pub fn reader(&self, id: &str) -> Option<AnyElement> {

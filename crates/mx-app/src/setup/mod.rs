@@ -1,5 +1,5 @@
 pub mod demo;
-mod editor;
+pub mod editor;
 mod overlay;
 mod state;
 mod view;
@@ -59,6 +59,8 @@ pub struct SetupView {
     welcome_scroll: ScrollHandle,
     focus: FocusHandle,
     poll: Option<Task<()>>,
+    reads: u64,
+    visible: bool,
     _editor_events: Subscription,
 }
 
@@ -74,6 +76,7 @@ impl SetupView {
         let events = cx.subscribe_in(&editor, window, |this, _, ev: &EditorEvent, window, cx| match ev {
             EditorEvent::Changed => cx.notify(),
             EditorEvent::Save => this.save(window, cx),
+            EditorEvent::Cursor => {}
         });
         let mut view = Self {
             setup,
@@ -92,11 +95,21 @@ impl SetupView {
             welcome_scroll: ScrollHandle::new(),
             focus: cx.focus_handle(),
             poll: None,
+            reads: 0,
+            visible: true,
             _editor_events: events,
         };
         view.sync_style(cx);
         view.adopt(cx);
         view
+    }
+
+    pub fn focus_target(&self, cx: &App) -> FocusHandle {
+        if self.slot().is_some() && self.overlay.is_none() {
+            self.editor.focus_handle(cx)
+        } else {
+            self.focus.clone()
+        }
     }
 
     pub fn setup(&self) -> &MxSetup {
@@ -117,30 +130,40 @@ impl SetupView {
     }
 
     pub fn set_theme(&mut self, theme: Arc<Theme>, cx: &mut Context<Self>) {
-        self.theme = theme;
-        self.sync_style(cx);
-        cx.notify();
+        if !Arc::ptr_eq(&self.theme, &theme) {
+            self.theme = theme;
+            self.sync_style(cx);
+            cx.notify();
+        }
     }
 
     pub fn set_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
-        self.zoom = zoom;
-        self.sync_style(cx);
-        cx.notify();
+        if self.zoom != zoom {
+            self.zoom = zoom;
+            self.sync_style(cx);
+            cx.notify();
+        }
     }
 
     pub fn set_title(&mut self, title: Option<String>, cx: &mut Context<Self>) {
-        self.title = title;
-        cx.notify();
+        if self.title != title {
+            self.title = title;
+            cx.notify();
+        }
     }
 
     pub fn set_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
-        self.pinned = pinned;
-        cx.notify();
+        if self.pinned != pinned {
+            self.pinned = pinned;
+            cx.notify();
+        }
     }
 
     pub fn set_header(&mut self, shown: bool, cx: &mut Context<Self>) {
-        self.header = shown;
-        cx.notify();
+        if self.header != shown {
+            self.header = shown;
+            cx.notify();
+        }
     }
 
     pub fn title(&self) -> String {
@@ -156,6 +179,7 @@ impl SetupView {
             caret: view::hsla(t.accent),
             selection: view::hsla(t.accent.with_alpha(0.3)),
             thumb: view::hsla(t.fg_faint.with_alpha(0.35)),
+            ..EditorStyle::default()
         };
         self.editor.update(cx, |e, cx| e.set_style(style, cx));
     }
@@ -167,14 +191,31 @@ impl SetupView {
         self.showing = self.setup.root.clone();
         self.slots = setup::scan(&self.setup.root);
         self.load(cx);
-        self.start_poll(cx);
+        self.poll = None;
+        self.sync_poll(cx);
     }
 
-    fn start_poll(&mut self, cx: &mut Context<Self>) {
+    pub fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if self.visible != visible {
+            self.visible = visible;
+            self.sync_poll(cx);
+        }
+    }
+
+    fn sync_poll(&mut self, cx: &mut Context<Self>) {
+        if !self.visible {
+            self.poll = None;
+            return;
+        }
+        if self.poll.is_some() {
+            return;
+        }
         self.poll = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(PULSE).await;
-                let Ok((root, rel)) = this.update(cx, |v, _| (v.setup.root.clone(), v.setup.selected.clone())) else {
+                let Ok((root, rel, read)) =
+                    this.update(cx, |v, _| (v.setup.root.clone(), v.setup.selected.clone(), v.reads))
+                else {
                     break;
                 };
                 let (slots, now) = cx
@@ -184,11 +225,17 @@ impl SetupView {
                         (setup::scan(&root), now)
                     })
                     .await;
-                if this.update(cx, |v, cx| v.tick(slots, now, cx)).is_err() {
+                if this.update(cx, |v, cx| v.tick_read(read, slots, now, cx)).is_err() {
                     break;
                 }
             }
         }));
+    }
+
+    pub(crate) fn tick_read(&mut self, read: u64, slots: Vec<SetupSlot>, now: Option<(String, String)>, cx: &mut Context<Self>) {
+        if read == self.reads {
+            self.tick(slots, now, cx);
+        }
     }
 
     pub(crate) fn tick(&mut self, slots: Vec<SetupSlot>, now: Option<(String, String)>, cx: &mut Context<Self>) {
@@ -216,12 +263,13 @@ impl SetupView {
         Some(slot_for(&self.slots, &self.setup.root, rel))
     }
 
-    fn edited(&self, cx: &App) -> bool {
+    pub fn edited(&self, cx: &App) -> bool {
         self.doc.edited(self.editor.read(cx).text())
     }
 
     fn load(&mut self, cx: &mut Context<Self>) {
         let slot = self.slot();
+        self.reads += 1;
         self.doc = DocState::load(slot.as_ref(), &self.setup.root, self.setup.name());
         let text = self.doc.loaded.clone();
         self.editor.update(cx, |e, cx| e.set_text(text, cx));
@@ -274,6 +322,7 @@ impl SetupView {
             return;
         }
         self.doc.saved(&text);
+        self.reads += 1;
         self.slots = setup::scan(&self.setup.root);
         self.banner(format!("{} salvo", slot.label), false, window, cx);
         cx.notify();

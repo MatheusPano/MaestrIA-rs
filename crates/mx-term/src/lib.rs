@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
+mod events;
 mod follow;
 mod ime;
 mod io;
 mod keys;
 mod links;
 mod mouse;
+mod paste;
 mod port;
 mod scrubber;
 mod session;
@@ -15,6 +17,7 @@ mod spawn;
 mod text;
 
 pub use alacritty_terminal::term::TermMode;
+pub use events::{DirtyFlag, Subscriber};
 pub use follow::{LinkFollow, follow_link, url_failed_banner};
 pub use ime::{TextInputGuard, TextOrigin};
 pub use keys::{Mods, encode_key, is_slot_chord, is_text_key};
@@ -27,5 +30,5 @@ pub use session::{
     TerminalSession,
 };
 pub use signals::GRACE;
-pub use snapshot::{CellStyle, CursorKind, SnapCell, SnapCursor, Snapshot};
+pub use snapshot::{CellStyle, CursorKind, Marks, SnapCell, SnapCursor, Snapshot};
 pub use spawn::{Launch, SpawnPlan, TERM};

@@ -200,3 +200,28 @@ fn hibernate_with_a_live_process_kills_it() {
     rig.s.hibernate("t1");
     assert_eq!(rig.terms.log("t1").kills, 1);
 }
+
+#[tokio::test]
+async fn a_tab_hibernated_again_before_its_kill_lands_is_not_relaunched() {
+    let mut rig = fixture();
+    rig.s.hibernate("t1");
+    rig.tm("t1").exited = false;
+    let launched = rig.terms.log("t1").commands.len();
+    rig.s.wake("t1");
+    rig.s.hibernate("t1");
+    rig.s.settle().await;
+    assert!(rig.t("t1").hibernated);
+    assert_eq!(rig.terms.log("t1").commands.len(), launched);
+}
+
+#[tokio::test]
+async fn a_woken_tab_whose_kill_lands_is_relaunched() {
+    let mut rig = fixture();
+    rig.s.hibernate("t1");
+    rig.tm("t1").exited = false;
+    let launched = rig.terms.log("t1").commands.len();
+    rig.s.wake("t1");
+    rig.s.settle().await;
+    assert!(!rig.t("t1").hibernated);
+    assert_eq!(rig.terms.log("t1").commands.len(), launched + 1);
+}

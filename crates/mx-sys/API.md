@@ -21,6 +21,9 @@ Funções `*_on(…, Platform, …)` existem para testar Linux/macOS em qualquer
 - `profile_file(platform)` — `~/.zprofile` / `~/.profile`.
 - `early_exit_message(title, code, platform)` — banner do claude que saiu em < 5 s.
 - `run(cmd, cwd) -> ShResult` — stdout/stderr trimados; falha de spawn → code −1; sinal → −signo.
+  Roda em grupo próprio; abandonar o future mata o grupo inteiro.
+- `run_with_timeout(cmd, cwd, Option<Duration>)` — passou do limite → `TIMED_OUT` (124), grupo morto.
+- `q_operand(v)` — `q`, com `./` na frente quando começa com `-` (xdg-open/open não têm `--`).
 - `stderr_or_stdout(&r)`.
 
 ## git (spec 01 §4.3) — `Git::new(Arc<dyn CommandRunner>)`
@@ -43,7 +46,7 @@ Funções `*_on(…, Platform, …)` existem para testar Linux/macOS em qualquer
 - `AgentsWatcher::new(runner)`; `start()` (tick já + a cada 2 s eager / 30 s idle),
   `stop()` (também no Drop), `set_eager(bool)` (virar eager dispara tick imediato),
   `eager()`, `is_running()`, `latest() -> AgentList`, `subscribe() -> watch::Receiver<AgentList>`
-  (notifica a cada poll bem-sucedido). Tick em voo → o próximo é pulado. Falhas engolidas.
+  (notifica a cada poll bem-sucedido). Tick em voo → o próximo é pulado; poll que passa de `TIMEOUT` (20 s) é abandonado. Falhas engolidas.
 - `AgentList = Arc<Vec<AgentInfo>>`, `parse_agents(stdout)`, `COMMAND`, `EAGER_EVERY`, `IDLE_EVERY`.
   Precisa de runtime tokio (testes: `start_paused`).
 

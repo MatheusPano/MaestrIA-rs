@@ -317,7 +317,7 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
 `initialize` params (exact keys):
 ```json
 {
-  "apiVersion": 1, "blocks": 2, "rfw": 2, "floats": 1, "input": 1, "form": 1, "modal": 1,
+  "apiVersion": 1, "blocks": 2, "rfw": 2, "floats": 1, "input": 1, "form": 1, "modal": 1, "editor": 1,
   "pluginId": "<id>", "pluginDir": "<dir>", "dataDir": "~/.maestria/plugin-data/<id> (absolute)",
   "permissions": ["hooks", ...], "settings": { ... resolved ... }
 }

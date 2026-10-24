@@ -147,3 +147,52 @@ fn children_get_no_input_method_when_the_launcher_saw_none() {
     mx_sys::shell::restore_input_method(&mut env);
     assert!(!env.contains_key("XMODIFIERS"));
 }
+
+#[cfg(target_os = "linux")]
+fn alive(pid: &str) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .is_ok_and(|stat| stat.rsplit(')').next().is_some_and(|rest| !rest.trim_start().starts_with('Z')))
+}
+
+#[cfg(target_os = "linux")]
+async fn gone_soon(pid: &str) -> bool {
+    for _ in 0..60 {
+        if !alive(pid) {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    false
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_run_past_its_limit_is_killed_with_everything_it_started() {
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("pid");
+    let command = format!("sleep 30 & echo $! > {}; wait", q(pidfile.to_str().unwrap()));
+    let started = std::time::Instant::now();
+    let r = mx_sys::shell::run_with_timeout(
+        &command,
+        None,
+        Some(std::time::Duration::from_millis(500)),
+    )
+    .await;
+    assert_eq!(r.code, mx_sys::shell::TIMED_OUT);
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    let pid = std::fs::read_to_string(&pidfile).unwrap().trim().to_owned();
+    assert!(gone_soon(&pid).await);
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn dropping_a_run_kills_its_process_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("pid");
+    let command = format!("sleep 30 & echo $! > {}; wait", q(pidfile.to_str().unwrap()));
+    let abandoned =
+        tokio::time::timeout(std::time::Duration::from_millis(500), run(&command, None)).await;
+    assert!(abandoned.is_err());
+    let pid = std::fs::read_to_string(&pidfile).unwrap().trim().to_owned();
+    assert!(gone_soon(&pid).await);
+}

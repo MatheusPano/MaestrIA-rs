@@ -25,6 +25,9 @@ pub struct KeyDownEvent {
 
     /// Whether the key is currently held down.
     pub is_held: bool,
+
+    /// Whether this keystroke was synthesized from an IME commit rather than a physical key.
+    pub ime_commit: bool,
 }
 
 impl Sealed for KeyDownEvent {}

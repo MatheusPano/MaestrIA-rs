@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -26,7 +25,6 @@ pub struct Preview {
 
 impl Render for Preview {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let measured = HashMap::new();
         let mut cx = Ctx {
             palette: &self.theme,
             dir: self.dir.as_deref(),
@@ -36,8 +34,9 @@ impl Render for Preview {
             drops: Vec::new(),
             dragging: None,
             turns: 0.0,
-            measured: &measured,
             interactive: false,
+            bounded_w: true,
+            editors: None,
         };
         let body = self.widget.as_ref().map(|w| render(&mut cx, w, Fit { w: true, h: false }));
         text_root(div(), &self.theme)

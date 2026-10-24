@@ -98,6 +98,7 @@ impl Store {
         plugins.load(&Value::Object(self.prefs.plugins.clone()));
         plugins.scan();
         self.plugin.registry = Some(plugins);
+        self.settle_theme();
         self.mark(Areas::PLUGINS);
     }
 

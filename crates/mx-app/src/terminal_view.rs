@@ -3,11 +3,11 @@ use std::rc::Rc;
 
 use gpui::{
     ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
-    KeyUpEvent, MouseButton, ParentElement, Render, Styled, Subscription, Window, div, prelude::*,
+    KeyUpEvent, MouseButton, ParentElement, Render, Styled, Subscription, Task, Window, div, prelude::*,
 };
 use mx_term::{
-    GridSize, Mods, SpawnOptions, TermEvent, TermMode, TerminalSession, WheelAccumulator, encode_key,
-    is_slot_chord, is_text_key,
+    DirtyFlag, GridSize, Mods, SpawnOptions, TermEvent, TermMode, TerminalSession, TextOrigin, WheelAccumulator,
+    encode_key, is_slot_chord, is_text_key,
 };
 use mx_theme::TerminalPalette;
 
@@ -28,16 +28,18 @@ pub enum TerminalViewEvent {
 
 pub struct TerminalView {
     pub(crate) session: TerminalSession,
+    pub(crate) dirty: DirtyFlag,
     pub(crate) focus: FocusHandle,
     pub(crate) render: SharedRender,
     pub(crate) wheel: WheelAccumulator,
     pub(crate) press: Option<Press>,
-    pub(crate) pending_key: Option<String>,
+    pub(crate) pending_key: Option<(String, TextOrigin)>,
     pub(crate) claude: bool,
     pub(crate) cwd: Option<String>,
     pub(crate) menu: Option<Entity<ContextMenu<TermMenu>>>,
     quit_on_exit: bool,
     _theme: Option<Subscription>,
+    _events: Task<()>,
 }
 
 impl EventEmitter<TerminalViewEvent> for TerminalView {}
@@ -63,8 +65,9 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let events = session.events();
-        cx.spawn_in(window, async move |this, cx| {
+        let sub = session.subscribe();
+        let events = sub.events;
+        let task = cx.spawn_in(window, async move |this, cx| {
             while let Ok(first) = events.recv().await {
                 let mut batch = vec![first];
                 while let Ok(more) = events.try_recv() {
@@ -74,8 +77,7 @@ impl TerminalView {
                     break;
                 }
             }
-        })
-        .detach();
+        });
         let theme = cx.has_global::<Mx>().then(|| {
             cx.observe_global::<Mx>(|this, cx| {
                 let palette = Mx::get(cx).theme.terminal();
@@ -84,6 +86,7 @@ impl TerminalView {
         });
         Self {
             session,
+            dirty: sub.dirty,
             focus: cx.focus_handle(),
             render: Rc::new(RefCell::new(RenderState::new(Typography::default(), palette.selection))),
             wheel: WheelAccumulator::default(),
@@ -94,6 +97,7 @@ impl TerminalView {
             menu: None,
             quit_on_exit: false,
             _theme: theme,
+            _events: task,
         }
     }
 
@@ -181,6 +185,10 @@ impl TerminalView {
         let ks = &event.keystroke;
         let mods = mods_of(&ks.modifiers);
         self.pending_key = None;
+        if event.ime_commit {
+            self.pending_key = ks.key_char.clone().map(|c| (c, TextOrigin::CommitKey));
+            return;
+        }
         self.session.key_down(&ks.key);
         let fixed = keymap::press_of(ks).and_then(|p| keymap::terminal_key(&p, keymap::LINUX));
         if let Some(key) = fixed {
@@ -197,7 +205,7 @@ impl TerminalView {
             return;
         }
         if is_text_key(&ks.key, ks.key_char.as_deref(), mods) {
-            self.pending_key = ks.key_char.clone();
+            self.pending_key = ks.key_char.clone().map(|c| (c, TextOrigin::Key));
             return;
         }
         let app_cursor = self.session.mode().contains(TermMode::APP_CURSOR);
@@ -237,3 +245,7 @@ impl Render for TerminalView {
             .children(self.menu.clone())
     }
 }
+
+#[cfg(test)]
+#[path = "terminal_tests.rs"]
+mod tests;

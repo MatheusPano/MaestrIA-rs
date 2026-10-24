@@ -6,8 +6,11 @@ mod blocks_fields;
 mod blocks_list;
 mod blocks_misc;
 mod blocks_text;
+mod code_editor;
+mod code_pane;
 mod demo;
 mod drag;
+mod grid;
 mod icon_paths;
 mod icons;
 mod layout;
@@ -47,5 +50,9 @@ pub struct ViewAction {
 
 pub type ActionSink = Rc<dyn Fn(ViewAction, &mut Window, &mut App)>;
 
+#[cfg(test)]
+mod code_pane_tests;
+#[cfg(test)]
+mod layout_tests;
 #[cfg(test)]
 mod tests;

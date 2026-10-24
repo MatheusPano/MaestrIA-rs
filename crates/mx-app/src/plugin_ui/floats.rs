@@ -74,7 +74,7 @@ pub fn render(layer: &mut PluginLayer, window: &mut Window, cx: &mut Context<Plu
     let mx = Mx::get(cx).clone();
     let mut out = Vec::new();
     for (key, tab, view, w, h, spot, start) in floats {
-        let surface = layer.floats.entry(tab.clone()).or_insert_with(|| Surface::new(&tab, BlocksMode::Bare));
+        let surface = layer.floats.entry(tab.clone()).or_insert_with(|| Surface::new(&tab, BlocksMode::Bare).overlaid());
         surface.sync(&view, &env, cx);
         let spot = spot.unwrap_or(FloatSpot { corner: start, dx: GAP as f64, dy: GAP as f64 });
         let (ox, oy) = spot.origin(w as f64, h as f64, a.width as f64, a.height as f64, GAP as f64);

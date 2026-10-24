@@ -22,6 +22,7 @@ fn data_for(fixture: &str) -> (&'static str, &'static [&'static str]) {
         "argo.rfwtxt" => ("argo.json", &["home", "tree"]),
         "kanban.rfwtxt" => ("kanban.json", &["root"]),
         "devtools.rfwtxt" => ("devtools.json", &["root"]),
+        "editor.rfwtxt" => ("editor.json", &["root"]),
         other => panic!("no data for {other}"),
     }
 }
@@ -33,7 +34,7 @@ fn data(name: &str) -> DynamicContent {
 #[test]
 fn every_real_rfwtxt_file_is_copied_and_listed_in_sources() {
     let listed = sources();
-    assert_eq!(listed.len(), 10);
+    assert_eq!(listed.len(), 11);
     for (name, origin) in &listed {
         assert!(fixtures_dir().join(name).is_file(), "{name}");
         assert!(origin.ends_with(".rfwtxt"), "{origin}");

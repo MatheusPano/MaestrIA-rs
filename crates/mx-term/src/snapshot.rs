@@ -18,9 +18,33 @@ pub struct CellStyle {
     pub strikeout: bool,
 }
 
+const MAX_MARKS: usize = 3;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Marks([char; MAX_MARKS]);
+
+impl Marks {
+    fn from_slice(chars: &[char]) -> Self {
+        let mut out = Self::default();
+        for (slot, c) in out.0.iter_mut().zip(chars) {
+            *slot = *c;
+        }
+        out
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0[0] == '\0'
+    }
+
+    pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
+        self.0.iter().copied().take_while(|c| *c != '\0')
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SnapCell {
     pub c: char,
+    pub marks: Marks,
     pub style: CellStyle,
     pub wide: bool,
     pub spacer: bool,
@@ -89,6 +113,7 @@ pub(crate) fn snapshot_into<T: EventListener>(
     let background = named(NamedColor::Background, colors, palette);
     let blank = SnapCell {
         c: ' ',
+        marks: Marks::default(),
         style: CellStyle {
             fg: foreground,
             bg: background,
@@ -132,6 +157,7 @@ pub(crate) fn snapshot_into<T: EventListener>(
         }
         cells[row as usize * cols + col] = SnapCell {
             c: cell.c,
+            marks: cell.zerowidth().map(Marks::from_slice).unwrap_or_default(),
             style: CellStyle {
                 fg,
                 bg,
@@ -209,5 +235,17 @@ fn named(n: NamedColor, colors: &Colors, palette: &TerminalPalette) -> Rgb {
             let base = index - NamedColor::DimBlack as usize;
             palette.ansi[base.min(7)].scaled(DIM_FACTOR)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marks_keep_up_to_three_combining_chars_in_order() {
+        let m = Marks::from_slice(&['\u{301}', '\u{323}', '\u{302}', '\u{300}']);
+        assert_eq!(m.chars().collect::<String>(), "\u{301}\u{323}\u{302}");
+        assert!(Marks::default().is_empty());
     }
 }

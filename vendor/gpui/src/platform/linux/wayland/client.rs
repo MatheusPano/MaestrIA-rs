@@ -1350,6 +1350,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                         let input = PlatformInput::KeyDown(KeyDownEvent {
                             keystroke: keystroke.clone(),
                             is_held: false,
+                            ime_commit: false,
                         });
 
                         state.repeat.current_id += 1;
@@ -1363,6 +1364,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                                 let input = PlatformInput::KeyDown(KeyDownEvent {
                                     keystroke,
                                     is_held: true,
+                                    ime_commit: false,
                                 });
                                 move |_event, _metadata, this| {
                                     let mut client = this.get_client();
@@ -1447,6 +1449,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientStatePtr {
                                 key_char: Some(commit_text),
                             },
                             is_held: false,
+                            ime_commit: true,
                         }));
                     } else {
                         window.handle_ime(ImeInput::InsertText(commit_text));

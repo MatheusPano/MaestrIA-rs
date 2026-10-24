@@ -12,7 +12,7 @@ use crate::app::icons::{Icon, icon};
 use crate::app::theme::{GAP, Mx};
 use crate::app::tooltip::tip;
 
-pub use sessions::SessionList;
+pub use sessions::SessionsView;
 
 pub const HEIGHT: f32 = 26.;
 pub const INSET: f32 = GAP + 36. + GAP;

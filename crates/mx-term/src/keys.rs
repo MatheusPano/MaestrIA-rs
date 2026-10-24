@@ -36,6 +36,15 @@ pub fn encode_key(
     {
         return Some(Cow::Owned(vec![byte]));
     }
+    if mods.alt
+        && !mods.ctrl
+        && let Some(text) = key_char.filter(|t| is_printable(t))
+    {
+        let mut out = Vec::with_capacity(text.len() + 1);
+        out.push(0x1b);
+        out.extend_from_slice(text.as_bytes());
+        return Some(Cow::Owned(out));
+    }
     if mods.alt && key.len() == 1 && key.is_ascii() {
         let k = key.as_bytes()[0];
         let byte = if mods.ctrl {
@@ -67,6 +76,11 @@ pub fn is_text_key(key: &str, key_char: Option<&str>, mods: Mods) -> bool {
         && !NAMED.contains(&key)
 }
 
+fn is_printable(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars.next().is_some_and(|c| !c.is_control()) && chars.next().is_none()
+}
+
 pub fn is_slot_chord(key: &str, mods: Mods) -> bool {
     mods.alt
         && !mods.ctrl
@@ -91,7 +105,7 @@ fn ctrl_byte(key: &str) -> Option<u8> {
         '\\' | '4' => Some(0x1c),
         ']' | '5' => Some(0x1d),
         '^' | '6' => Some(0x1e),
-        '_' | '-' | '7' => Some(0x1f),
+        '_' | '-' | '/' | '7' => Some(0x1f),
         '?' | '8' => Some(0x7f),
         _ => None,
     }
@@ -104,9 +118,14 @@ fn special(key: &str, mods: Mods, app_cursor: bool) -> Option<Cow<'static, [u8]>
         ("enter", false) if mods.shift && !mods.ctrl => Some(b"\x1b\r"),
         ("enter", false) if mods.ctrl && !mods.alt && !mods.shift => Some(b"\r"),
         ("space", false) if mods.alt && !mods.ctrl => Some(b"\x1b "),
+        ("space", false) if mods.alt && mods.ctrl => Some(b"\x1b\x00"),
         ("tab", true) => Some(b"\t"),
         ("tab", false) if mods.shift && !mods.ctrl && !mods.alt => Some(b"\x1b[Z"),
+        ("tab", false) if mods.shift && mods.alt && !mods.ctrl => Some(b"\x1b\x1b[Z"),
+        ("tab", false) if mods.alt && !mods.ctrl => Some(b"\x1b\t"),
         ("escape", true) => Some(b"\x1b"),
+        ("escape", false) if mods.alt => Some(b"\x1b\x1b"),
+        ("escape", false) => Some(b"\x1b"),
         ("backspace", true) => Some(b"\x7f"),
         ("backspace", false) if mods.ctrl && !mods.alt => Some(b"\x08"),
         ("backspace", false) if mods.alt && !mods.ctrl => Some(b"\x1b\x7f"),
@@ -243,5 +262,35 @@ mod tests {
         assert_eq!(enc("pageup", None, SHIFT, false), b"\x1b[5;2~");
         assert_eq!(enc("x", Some("x"), Mods { ctrl: true, alt: true, ..Mods::default() }, false), b"\x1b\x18");
         assert_eq!(enc("t", Some("t"), Mods { platform: true, ..Mods::default() }, false), b"");
+    }
+
+    #[test]
+    fn ctrl_slash_sends_unit_separator_like_xterm() {
+        assert_eq!(enc("/", Some("/"), CTRL, false), b"\x1f");
+    }
+
+    #[test]
+    fn shift_escape_still_sends_escape() {
+        assert_eq!(enc("escape", None, SHIFT, false), b"\x1b");
+        assert_eq!(enc("escape", None, CTRL, false), b"\x1b");
+        assert_eq!(enc("escape", None, ALT, false), b"\x1b\x1b");
+    }
+
+    #[test]
+    fn ctrl_alt_space_sends_esc_nul() {
+        let m = Mods { ctrl: true, alt: true, ..Mods::default() };
+        assert_eq!(enc("space", Some(" "), m, false), b"\x1b\x00");
+    }
+
+    #[test]
+    fn alt_shift_tab_sends_esc_back_tab() {
+        let m = Mods { alt: true, shift: true, ..Mods::default() };
+        assert_eq!(enc("tab", None, m, false), b"\x1b\x1b[Z");
+    }
+
+    #[test]
+    fn alt_with_a_non_ascii_layout_key_sends_the_typed_character() {
+        assert_eq!(enc(";", Some("ç"), ALT, false), "\x1bç".as_bytes());
+        assert_eq!(enc("a", Some("A"), Mods { alt: true, shift: true, ..Mods::default() }, false), b"\x1bA");
     }
 }

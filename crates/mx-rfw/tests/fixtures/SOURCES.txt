@@ -1,4 +1,5 @@
 argocd-plugin__ui__argo.rfwtxt <- /home/lucas/maestria/argocd-plugin/ui/argo.rfwtxt
+maestria-editor__ui__editor.rfwtxt <- /home/lucas/.maestria-rs/plugins/maestria.editor/ui/editor.rfwtxt
 maestria-plugins__argocd__argo.rfwtxt <- /home/lucas/maestria/maestria-plugins/argocd/ui/argo.rfwtxt
 maestria-plugins__docker__sidebar.rfwtxt <- /home/lucas/maestria/maestria-plugins/docker/ui/sidebar.rfwtxt
 maestria-plugins__flutter__devtools.rfwtxt <- /home/lucas/maestria/maestria-plugins/flutter/ui/devtools.rfwtxt

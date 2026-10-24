@@ -1,0 +1,15 @@
+{
+  "id": "e2e.argo",
+  "version": "1.0.0",
+  "name": "Argo de teste",
+  "description": "Abre a tela do ArgoCD com dados fixos para o e2e.",
+  "author": "e2e",
+  "main": ["python3", "-u", "main.py"],
+  "contributes": {
+    "commands": [
+      {"id": "home", "title": "Argo: cluster", "key": "ctrl+alt+g"},
+      {"id": "clusters", "title": "Argo: clusters", "key": "ctrl+alt+k"},
+      {"id": "tree", "title": "Argo: app", "key": "ctrl+alt+u"}
+    ]
+  }
+}

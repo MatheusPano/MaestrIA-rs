@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
 use gpui::{
-    AlignItems, Div, ElementId, Hsla, InteractiveElement, ParentElement, Stateful, Styled, WeakEntity, div, px,
+    AlignItems, Div, ElementId, Hsla, InteractiveElement, ParentElement, Stateful, Styled, WeakEntity, div, px, relative,
 };
 use mx_rfw::{Event, Map};
 use std::sync::Arc;
@@ -56,8 +55,9 @@ pub struct Ctx<'a> {
     pub drops: Vec<Rc<DropInfo>>,
     pub dragging: Option<DragNow>,
     pub turns: f64,
-    pub measured: &'a HashMap<u64, f32>,
     pub interactive: bool,
+    pub bounded_w: bool,
+    pub editors: Option<&'a super::code_editor::CodeEditors>,
 }
 
 impl Ctx<'_> {
@@ -68,11 +68,18 @@ impl Ctx<'_> {
 
     pub fn el(&mut self) -> El {
         let id = self.next_id();
-        div().id(ElementId::NamedInteger("rfw".into(), id))
+        let mut el = div().id(ElementId::NamedInteger("rfw".into(), id));
+        if self.bounded_w {
+            el.style().max_size.width = Some(relative(1.0).into());
+        }
+        el
     }
 
-    pub fn measured(&self, id: u64) -> Option<f32> {
-        self.measured.get(&id).copied()
+    pub fn within<T>(&mut self, bounded_w: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+        let outer = std::mem::replace(&mut self.bounded_w, bounded_w);
+        let out = f(self);
+        self.bounded_w = outer;
+        out
     }
 }
 
@@ -113,7 +120,11 @@ pub fn pass(mut el: El, child: Option<El>) -> El {
     s.align_items = Some(AlignItems::Stretch);
     match child {
         Some(mut c) => {
-            c.style().flex_grow = Some(1.0);
+            let cs = c.style();
+            cs.flex_grow = Some(1.0);
+            if cs.align_self == Some(AlignItems::Stretch) {
+                el.style().align_self = Some(AlignItems::Stretch);
+            }
             el.child(c)
         }
         None => el,

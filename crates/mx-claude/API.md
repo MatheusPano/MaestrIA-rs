@@ -6,7 +6,8 @@ Spec: `docs/spec/03-claude-integration.md`. State dir is always a parameter (nev
 - `HookServer::start(state_dir, UnboundedSender<ServerEvent>) -> io::Result<HookServer>` (async):
   binds `127.0.0.1`, reuses `<state_dir>/hook-port` when free, rewrites it otherwise, and
   (re)writes `<state_dir>/statusline.sh`. Routes: `/mcp/<tab>` (POST only), `/status/<tab>`,
-  anything else = hook. Hooks/status always answer `200 {}`.
+  anything else = hook. Hooks/status always answer `200 {}`. Any request with `Origin`, or a
+  `Host` other than `127.0.0.1:<port>`/`localhost:<port>`, gets `403`; bodies capped at `MAX_BODY_BYTES`.
 - `.port()`, `.running()`, `.stop().await` (abort; also on drop), `.status_line_file()`,
   `.settings_for(tab, cwd, home)`, `.mcp_config_for(tab)`, `.set_sink(Arc<dyn SuggestionSink>)`
   (before it is set, `NoSink` answers "no panel").

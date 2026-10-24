@@ -9,12 +9,13 @@ use std::time::Duration;
 
 use mx_core::json::Obj;
 use mx_core::ports::BoxFuture;
-use nix::sys::signal::{Signal, kill};
+use nix::sys::signal::{Signal, kill, killpg};
 use nix::unistd::Pid;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::task::AbortHandle;
 
 use crate::rpc::RpcError;
 use crate::rpc::wire::{self, Incoming};
@@ -30,12 +31,16 @@ pub struct ConnHandlers {
 }
 
 pub const SHUTDOWN_GRACE: Duration = Duration::from_millis(800);
+pub const OUTBOX_LINES: usize = 1024;
 
 type Pending = Mutex<HashMap<i64, oneshot::Sender<Result<Value, RpcError>>>>;
 
 pub struct Connection {
     pid: u32,
-    out: Mutex<Option<mpsc::UnboundedSender<String>>>,
+    reaped: AtomicBool,
+    out: Mutex<Option<mpsc::Sender<String>>>,
+    readers: Mutex<Vec<AbortHandle>>,
+    log: LogSink,
     pending: Pending,
     next: AtomicI64,
     ready: AtomicBool,
@@ -58,13 +63,18 @@ impl Connection {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
             .spawn()?;
         let pid = child.id().unwrap_or_default();
-        let (tx, rx) = mpsc::unbounded_channel::<String>();
+        let (tx, rx) = mpsc::channel::<String>(OUTBOX_LINES);
         let (exit_tx, exit_rx) = watch::channel(None);
         let conn = Arc::new(Connection {
             pid,
+            reaped: AtomicBool::new(false),
             out: Mutex::new(Some(tx)),
+            readers: Mutex::new(Vec::new()),
+            log: handlers.on_log.clone(),
             pending: Mutex::new(HashMap::new()),
             next: AtomicI64::new(1),
             ready: AtomicBool::new(false),
@@ -75,7 +85,8 @@ impl Connection {
         }
         if let Some(stderr) = child.stderr.take() {
             let log = handlers.on_log.clone();
-            tokio::spawn(read_lines(stderr, move |l| log(format!("stderr: {l}"))));
+            let task = tokio::spawn(read_lines(stderr, move |l| log(format!("stderr: {l}"))));
+            conn.readers.lock().unwrap().push(task.abort_handle());
         }
         let reader = child.stdout.take().map(|stdout| {
             let c = conn.clone();
@@ -83,9 +94,13 @@ impl Connection {
             let log = handlers.on_log.clone();
             tokio::spawn(read_lines(stdout, move |l| c.line(&l, &request, &log)))
         });
+        if let Some(reader) = &reader {
+            conn.readers.lock().unwrap().push(reader.abort_handle());
+        }
         let c = conn.clone();
         tokio::spawn(async move {
             let code = wait_code(&mut child).await;
+            c.reaped.store(true, Ordering::SeqCst);
             if let Some(reader) = reader {
                 let _ = tokio::time::timeout(Duration::from_millis(300), reader).await;
             }
@@ -121,8 +136,12 @@ impl Connection {
     }
 
     fn send(&self, line: String) {
-        if let Some(tx) = self.out.lock().unwrap().as_ref() {
-            let _ = tx.send(line);
+        let full = match self.out.lock().unwrap().as_ref() {
+            Some(tx) => matches!(tx.try_send(line), Err(mpsc::error::TrySendError::Full(_))),
+            None => false,
+        };
+        if full {
+            (self.log)(format!("o plugin não está lendo o stdin: {OUTBOX_LINES} mensagens na fila, descartei uma"));
         }
     }
 
@@ -191,10 +210,20 @@ impl Connection {
     }
 
     fn signal(&self, sig: Signal) {
-        if self.alive()
-            && let Ok(pid) = i32::try_from(self.pid)
-        {
-            let _ = kill(Pid::from_raw(pid), sig);
+        if self.reaped.load(Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(pid) = i32::try_from(self.pid) {
+            let pid = Pid::from_raw(pid);
+            if killpg(pid, sig).is_err() {
+                let _ = kill(pid, sig);
+            }
+        }
+    }
+
+    fn stop_readers(&self) {
+        for reader in self.readers.lock().unwrap().drain(..) {
+            reader.abort();
         }
     }
 
@@ -204,20 +233,20 @@ impl Connection {
         }
         self.notify("shutdown", None);
         self.out.lock().unwrap().take();
-        if self.wait_exit(grace).await {
-            return;
+        if !self.wait_exit(grace).await {
+            self.signal(Signal::SIGTERM);
+            if !self.wait_exit(grace).await {
+                self.signal(Signal::SIGKILL);
+                self.wait_exit(grace).await;
+            }
         }
-        self.signal(Signal::SIGTERM);
-        if self.wait_exit(grace).await {
-            return;
-        }
-        self.signal(Signal::SIGKILL);
-        self.wait_exit(grace).await;
+        self.stop_readers();
     }
 
     pub fn kill(&self) {
         self.out.lock().unwrap().take();
         self.signal(Signal::SIGKILL);
+        self.stop_readers();
     }
 }
 
@@ -228,7 +257,7 @@ async fn wait_code(child: &mut Child) -> i32 {
     }
 }
 
-async fn write_loop(mut stdin: tokio::process::ChildStdin, mut rx: mpsc::UnboundedReceiver<String>) {
+async fn write_loop(mut stdin: tokio::process::ChildStdin, mut rx: mpsc::Receiver<String>) {
     while let Some(mut line) = rx.recv().await {
         line.push('\n');
         if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {

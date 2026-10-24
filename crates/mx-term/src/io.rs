@@ -14,12 +14,14 @@ use alacritty_terminal::vte::ansi::{Processor, Rgb as AnsiRgb};
 use mx_theme::TerminalPalette;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
+use crate::events::Fanout;
 use crate::scrubber::VtScrubber;
 use crate::session::{GridSize, TermEvent};
 
 const READ_CHUNK: usize = 0x10000;
 const MAX_LOCKED_READ: usize = 0x40000;
 const CHILD_CHECK: Duration = Duration::from_millis(500);
+const HUP_RECHECK: Duration = Duration::from_millis(10);
 
 pub(crate) struct Writer {
     generation: u64,
@@ -61,8 +63,7 @@ fn write_some<'a>(mut file: &File, mut bytes: &'a [u8]) -> &'a [u8] {
 }
 
 pub(crate) struct Port {
-    pub events: async_channel::Sender<TermEvent>,
-    pub dirty: AtomicBool,
+    pub fanout: Fanout,
     pub writer: Mutex<Option<Writer>>,
     pub size: Mutex<GridSize>,
     pub palette: Mutex<Arc<TerminalPalette>>,
@@ -81,13 +82,11 @@ impl Port {
     }
 
     pub fn wake(&self) {
-        if !self.dirty.swap(true, Ordering::AcqRel) {
-            let _ = self.events.try_send(TermEvent::Wakeup);
-        }
+        self.fanout.wake();
     }
 
     pub fn emit(&self, event: TermEvent) {
-        let _ = self.events.try_send(event);
+        self.fanout.emit(event);
     }
 
     pub fn resize_pty(&self, size: GridSize) {
@@ -155,9 +154,20 @@ pub(crate) struct Feeder {
     scrubber: VtScrubber,
     parser: Processor,
     buf: Vec<u8>,
+    generation: u64,
 }
 
 impl Feeder {
+    pub fn adopt(&mut self, generation: u64) {
+        self.generation = generation;
+    }
+
+    fn feed_from(&mut self, generation: u64, term: &SharedTerm, port: &Port, bytes: &[u8]) {
+        if generation == self.generation {
+            self.feed(term, port, bytes);
+        }
+    }
+
     pub fn feed(&mut self, term: &SharedTerm, port: &Port, bytes: &[u8]) {
         self.buf.clear();
         self.scrubber.scrub_into(bytes, &mut self.buf);
@@ -180,8 +190,10 @@ impl Feeder {
     }
 }
 
+pub(crate) type ChildPoll<'a> = &'a mut dyn FnMut() -> Option<Option<i32>>;
+
 pub(crate) trait LifeOwner: Send + Sync + 'static {
-    fn exited(&self, generation: u64, code: Option<i32>);
+    fn reap(&self, generation: u64, poll: ChildPoll<'_>) -> bool;
 }
 
 pub(crate) struct LifeIo {
@@ -189,8 +201,8 @@ pub(crate) struct LifeIo {
     pub waker: UnixStream,
 }
 
-impl LifeIo {
-    pub fn shutdown(&self) {
+impl Drop for LifeIo {
+    fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         let _ = (&self.waker).write(&[1]);
     }
@@ -244,16 +256,19 @@ impl Life {
         let mut hung_up = false;
         let mut reported = false;
         let mut next_check = Instant::now() + CHILD_CHECK;
+        let mut recheck = HUP_RECHECK;
         while !self.stop.load(Ordering::Acquire) {
-            let wants_write = self.has_pending();
-            let deadline = self.sync_deadline();
-            let timeout = match (hung_up, deadline) {
-                (true, _) => Duration::from_millis(20),
+            let wants_write = !hung_up && self.has_pending();
+            let timeout = match (hung_up, self.sync_deadline()) {
+                (true, _) => recheck,
                 (false, Some(d)) => d.saturating_duration_since(Instant::now()).min(CHILD_CHECK),
                 (false, None) => CHILD_CHECK,
             };
             let (pty_ready, hup) = self.wait(timeout, wants_write, hung_up);
             self.drain_waker();
+            if self.stop.load(Ordering::Acquire) {
+                break;
+            }
             if pty_ready && !hung_up && self.read_all(&mut buf) {
                 hung_up = true;
             }
@@ -264,17 +279,20 @@ impl Life {
             if let Some(d) = self.sync_deadline()
                 && Instant::now() >= d
                 && let Ok(mut f) = self.feeder.lock()
+                && f.generation == self.generation
             {
                 f.stop_sync(&self.term, &self.port);
             }
             if !reported && (hung_up || Instant::now() >= next_check) {
                 next_check = Instant::now() + CHILD_CHECK;
-                if let Some(ChildEvent::Exited(status)) = self.pty.next_child_event() {
-                    reported = true;
-                    let code = status.and_then(|s| exit_code(&s));
-                    if let Some(owner) = self.owner.upgrade() {
-                        owner.exited(self.generation, code);
-                    }
+                let Some(owner) = self.owner.upgrade() else { break };
+                let pty = &mut self.pty;
+                reported = owner.reap(self.generation, &mut || match pty.next_child_event() {
+                    Some(ChildEvent::Exited(status)) => Some(status.and_then(|s| exit_code(&s))),
+                    _ => None,
+                });
+                if hung_up {
+                    recheck = (recheck * 2).min(CHILD_CHECK);
                 }
             }
             if hung_up && reported {
@@ -286,6 +304,7 @@ impl Life {
     fn flush(&self) {
         if let Ok(mut guard) = self.port.writer.lock()
             && let Some(writer) = guard.as_mut()
+            && writer.generation == self.generation
         {
             writer.flush();
         }
@@ -295,7 +314,7 @@ impl Life {
         self.port
             .writer
             .lock()
-            .map(|w| w.as_ref().is_some_and(|w| !w.pending.is_empty()))
+            .map(|w| w.as_ref().is_some_and(|w| w.generation == self.generation && !w.pending.is_empty()))
             .unwrap_or(false)
     }
 
@@ -304,10 +323,15 @@ impl Life {
     }
 
     fn wait(&self, timeout: Duration, write: bool, hung_up: bool) -> (bool, bool) {
-        let mut flags = PollFlags::empty();
-        if !hung_up {
-            flags |= PollFlags::IN;
+        let ts = Timespec {
+            tv_sec: timeout.as_secs() as _,
+            tv_nsec: timeout.subsec_nanos() as _,
+        };
+        if hung_up {
+            let _ = poll(&mut [PollFd::new(&self.wake_rx, PollFlags::IN)], Some(&ts));
+            return (false, false);
         }
+        let mut flags = PollFlags::IN;
         if write {
             flags |= PollFlags::OUT;
         }
@@ -315,16 +339,12 @@ impl Life {
             PollFd::new(self.pty.file(), flags),
             PollFd::new(&self.wake_rx, PollFlags::IN),
         ];
-        let ts = Timespec {
-            tv_sec: timeout.as_secs() as _,
-            tv_nsec: timeout.subsec_nanos() as _,
-        };
         if poll(&mut fds, Some(&ts)).is_err() {
             return (false, false);
         }
         let ev = fds[0].revents();
         let hup = ev.intersects(PollFlags::HUP | PollFlags::ERR) && !ev.contains(PollFlags::IN);
-        (ev.contains(PollFlags::IN), hup && !hung_up)
+        (ev.contains(PollFlags::IN), hup)
     }
 
     fn drain_waker(&self) {
@@ -339,7 +359,7 @@ impl Life {
                 Ok(0) => return true,
                 Ok(n) => {
                     if let Ok(mut f) = self.feeder.lock() {
-                        f.feed(&self.term, &self.port, &buf[..n]);
+                        f.feed_from(self.generation, &self.term, &self.port, &buf[..n]);
                     }
                     processed += n;
                     if processed >= MAX_LOCKED_READ {

@@ -2,6 +2,8 @@ use gpui::{
     AlignItems, FontWeight, JustifyContent, ParentElement, StatefulInteractiveElement,
     Styled, relative,
 };
+#[cfg(test)]
+use gpui::InteractiveElement;
 use mx_rfw::decoders::{
     CrossAxisAlignment, FlexFit, MainAxisAlignment, MainAxisSize, StackFit, TextAlign, TextOverflow, TextStyle,
 };
@@ -68,7 +70,7 @@ fn node(cx: &mut Ctx, n: &Node, fit: Fit) -> El {
             pass(cx.el(), inner)
         }
         Local::FractionallySizedBox(f) => {
-            let inner = child(cx, f.child, Fit::BOTH);
+            let inner = cx.within(true, |cx| child(cx, f.child, Fit::BOTH));
             let mut el = cx.el();
             if let Some(w) = f.width_factor {
                 el = el.w(relative(w as f32));
@@ -155,11 +157,11 @@ fn flex(cx: &mut Ctx, f: &Flex, row: bool, fit: Fit) -> El {
         };
         el = match flexed {
             Some((inner, flex, FlexFit::Tight)) => {
-                let item = child(cx, inner, child_fit(true));
+                let item = cx.within(row || cx.bounded_w, |cx| child(cx, inner, child_fit(true)));
                 el.child(grow(item, flex as f32))
             }
             Some((inner, _, FlexFit::Loose)) => {
-                let mut item = child(cx, inner, child_fit(true));
+                let mut item = cx.within(row || cx.bounded_w, |cx| child(cx, inner, child_fit(true)));
                 let s = item.style();
                 s.flex_shrink = Some(1.0);
                 s.min_size.width = Some(pxf(0.0).into());
@@ -167,7 +169,7 @@ fn flex(cx: &mut Ctx, f: &Flex, row: bool, fit: Fit) -> El {
                 el.child(item)
             }
             None => {
-                let item = child(cx, c.clone(), child_fit(false));
+                let item = cx.within(!row && cx.bounded_w, |cx| child(cx, c.clone(), child_fit(false)));
                 el.child(rigid(item))
             }
         };
@@ -220,14 +222,14 @@ fn text(cx: &mut Ctx, t: &Text, turns: f64) -> El {
     }
     let ellipsis = t.overflow == Some(TextOverflow::Ellipsis);
     el = match t.max_lines {
-        Some(1) if ellipsis => el.truncate(),
-        Some(1) => el.whitespace_nowrap().overflow_hidden(),
-        Some(n) if n > 1 => {
+        Some(n) if n > 0 => {
             let el = el.line_clamp(n as usize).overflow_hidden();
             if ellipsis { el.text_ellipsis() } else { el }
         }
         _ => el,
     };
+    #[cfg(test)]
+    let el = el.debug_selector(|| format!("text:{}", t.text));
     el.child(t.text.clone())
 }
 
@@ -235,13 +237,14 @@ fn container(cx: &mut Ctx, c: &Container, fit: Fit) -> El {
     let w_fit = fit.w || c.width.is_some();
     let h_fit = fit.h || c.height.is_some();
     let inner_fit = Fit { w: w_fit, h: h_fit };
-    let mut el = match (c.alignment, c.child) {
+    let bounded = cx.bounded_w || c.width.is_some() || c.constraints.is_some_and(|k| k.max_width.is_finite());
+    let mut el = cx.within(bounded, |cx| match (c.alignment, c.child) {
         (Some(a), Some(w)) => aligned(cx, align_axes(&a), Some(w), inner_fit),
         (_, w) => {
             let inner = optional(cx, w, inner_fit);
             pass(cx.el(), inner)
         }
-    };
+    });
     let s = el.style();
     if let Some(p) = &c.padding {
         set_padding(s, p);
@@ -262,6 +265,9 @@ fn container(cx: &mut Ctx, c: &Container, fit: Fit) -> El {
     if let Some(h) = c.height {
         s.size.height = Some(pxf(h).into());
     }
+    if let Some(k) = &c.constraints {
+        constrain(s, k);
+    }
     if c.clip_behavior != mx_rfw::decoders::Clip::None {
         el = el.overflow_hidden();
     }
@@ -271,7 +277,7 @@ fn container(cx: &mut Ctx, c: &Container, fit: Fit) -> El {
 
 fn sized(cx: &mut Ctx, s: &SizedBox, fit: Fit) -> El {
     let inner_fit = Fit { w: fit.w || s.width.is_some(), h: fit.h || s.height.is_some() };
-    let inner = optional(cx, s.child, inner_fit);
+    let inner = cx.within(cx.bounded_w || s.width.is_some(), |cx| optional(cx, s.child, inner_fit));
     let mut el = pass(cx.el(), inner);
     if let Some(w) = s.width {
         el = el.w(pxf(w)).flex_none();
@@ -327,8 +333,10 @@ fn positioned(cx: &mut Ctx, p: &Positioned) -> El {
         w: p.width.is_some() || (p.start.is_some() && p.end.is_some()),
         h: p.height.is_some() || (p.top.is_some() && p.bottom.is_some()),
     };
-    let inner = child(cx, p.child.clone(), fit);
-    let mut el = pass(cx.el().absolute(), Some(inner));
+    let mut el = cx.within(fit.w, |cx| {
+        let inner = child(cx, p.child.clone(), fit);
+        pass(cx.el().absolute(), Some(inner))
+    });
     let s = el.style();
     let at = |v: Option<f64>| v.map(|v| pxf(v).into());
     s.inset.left = at(p.start);
@@ -366,4 +374,12 @@ fn wrap(cx: &mut Ctx, w: &Wrap, fit: Fit) -> El {
         el = el.child(rigid(item));
     }
     el
+}
+
+fn constrain(s: &mut gpui::StyleRefinement, k: &mx_rfw::decoders::BoxConstraints) {
+    let finite = |v: f64| (v.is_finite() && v > 0.0).then(|| pxf(v).into());
+    s.min_size.width = finite(k.min_width).or(s.min_size.width);
+    s.min_size.height = finite(k.min_height).or(s.min_size.height);
+    s.max_size.width = finite(k.max_width).or(s.max_size.width);
+    s.max_size.height = finite(k.max_height).or(s.max_size.height);
 }

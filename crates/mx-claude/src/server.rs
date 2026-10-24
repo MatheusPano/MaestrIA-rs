@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::{HeaderValue, Method, StatusCode, Uri, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use percent_encoding::percent_decode_str;
 use serde_json::{Map, Value};
@@ -31,6 +31,8 @@ pub enum ServerEvent {
     },
 }
 
+pub const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
+
 pub fn port_file(state_dir: &Path) -> PathBuf {
     state_dir.join("hook-port")
 }
@@ -43,6 +45,7 @@ type SharedSink = Arc<RwLock<Arc<dyn SuggestionSink>>>;
 
 #[derive(Clone)]
 struct Shared {
+    port: u16,
     events: UnboundedSender<ServerEvent>,
     sink: SharedSink,
 }
@@ -63,12 +66,13 @@ impl HookServer {
 
         let sink: SharedSink = Arc::new(RwLock::new(Arc::new(NoSink)));
         let shared = Shared {
+            port,
             events,
             sink: sink.clone(),
         };
         let app = Router::new()
             .fallback(route)
-            .layer(DefaultBodyLimit::disable())
+            .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
             .with_state(shared);
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
@@ -173,7 +177,31 @@ fn empty(status: StatusCode) -> Response {
     status.into_response()
 }
 
-async fn route(State(shared): State<Shared>, method: Method, uri: Uri, body: Bytes) -> Response {
+fn trusted(headers: &HeaderMap, port: u16) -> bool {
+    if headers.contains_key(header::ORIGIN) {
+        return false;
+    }
+    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+        return false;
+    };
+    let port = port.to_string();
+    ["127.0.0.1", "localhost"].iter().any(|name| {
+        host.strip_prefix(name)
+            .and_then(|rest| rest.strip_prefix(':'))
+            .is_some_and(|p| p == port)
+    })
+}
+
+async fn route(
+    State(shared): State<Shared>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if !trusted(&headers, shared.port) {
+        return empty(StatusCode::FORBIDDEN);
+    }
     let segments = segments(uri.path());
     let tab_id = segments.get(1).cloned().unwrap_or_default();
     let first = segments.first().map(String::as_str);
@@ -229,7 +257,36 @@ async fn mcp_route(shared: &Shared, method: &Method, tab_id: &str, body: &[u8]) 
 
 #[cfg(test)]
 mod tests {
-    use super::segments;
+    use axum::http::{HeaderMap, HeaderValue, header};
+
+    use super::{segments, trusted};
+
+    fn headers(host: Option<&'static str>, origin: Option<&'static str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(host) = host {
+            h.insert(header::HOST, HeaderValue::from_static(host));
+        }
+        if let Some(origin) = origin {
+            h.insert(header::ORIGIN, HeaderValue::from_static(origin));
+        }
+        h
+    }
+
+    #[test]
+    fn only_loopback_host_on_our_port_without_origin_is_trusted() {
+        assert!(trusted(&headers(Some("127.0.0.1:4321"), None), 4321));
+        assert!(trusted(&headers(Some("localhost:4321"), None), 4321));
+        assert!(!trusted(&headers(Some("127.0.0.1:4322"), None), 4321));
+        assert!(!trusted(&headers(Some("127.0.0.1"), None), 4321));
+        assert!(!trusted(&headers(Some("evil.example:4321"), None), 4321));
+        assert!(!trusted(&headers(Some("localhost.evil:4321"), None), 4321));
+        assert!(!trusted(&headers(None, None), 4321));
+        assert!(!trusted(
+            &headers(Some("127.0.0.1:4321"), Some("https://evil.example")),
+            4321
+        ));
+        assert!(!trusted(&headers(Some("127.0.0.1:4321"), Some("null")), 4321));
+    }
 
     #[test]
     fn path_segments_follow_dart_uri_semantics() {

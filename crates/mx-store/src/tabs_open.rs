@@ -238,6 +238,9 @@ impl Store {
         if let Some(t) = self.tab_mut(id) {
             t.exited = true;
             t.exit_code = code;
+            if matches!(t.hooks.status, ClaudeStatus::Starting | ClaudeStatus::Working | ClaudeStatus::Tool) {
+                t.hooks.status = ClaudeStatus::Ended;
+            }
         }
         if early {
             let text = mx_sys::shell::early_exit_message(&title, code, self.opts.platform);

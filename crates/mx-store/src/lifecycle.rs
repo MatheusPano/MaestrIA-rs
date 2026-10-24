@@ -132,6 +132,9 @@ impl Store {
         for term in self.terms.values_mut() {
             kills.push(self.p.rt.spawn(term.kill()));
         }
+        if let Some(plugins) = self.plugin.registry.clone() {
+            kills.push(self.p.rt.spawn(async move { plugins.stop_all().await }));
+        }
         async move {
             for k in kills {
                 let _ = k.await;

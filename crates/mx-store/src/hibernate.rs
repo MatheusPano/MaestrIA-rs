@@ -62,6 +62,12 @@ impl Store {
         });
     }
 
+    pub(crate) fn woken_after_kill(&mut self, id: &str) {
+        if self.tab(id).is_some_and(|t| !t.hibernated) {
+            self.relaunch_woken(id);
+        }
+    }
+
     pub(crate) fn relaunch_woken(&mut self, id: &str) {
         let Some(resume) = self.tab(id).map(|t| t.resume_id().map(str::to_owned)) else {
             return;

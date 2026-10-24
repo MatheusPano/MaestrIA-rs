@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::Platform;
 use crate::paths::dirname;
 use crate::runner::CommandRunner;
-use crate::shell::q;
+use crate::shell::{q, q_operand};
 
 pub fn encode_full(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -37,9 +37,9 @@ pub async fn reveal_on(runner: &dyn CommandRunner, platform: Platform, path: &st
             if runner.run(show_items_command(path), None).await.ok() {
                 return true;
             }
-            runner.run(format!("xdg-open {}", q(&dirname(path))), None).await.ok()
+            runner.run(format!("xdg-open {}", q_operand(&dirname(path))), None).await.ok()
         }
-        Platform::MacOs => runner.run(format!("open -R {}", q(path)), None).await.ok(),
+        Platform::MacOs => runner.run(format!("open -R {}", q_operand(path)), None).await.ok(),
     }
 }
 
@@ -52,7 +52,7 @@ pub async fn quick_look_on(runner: &dyn CommandRunner, platform: Platform, path:
         if !Path::new(path).is_file() {
             return false;
         }
-        if runner.run(format!("xdg-open {}", q(path)), None).await.ok() {
+        if runner.run(format!("xdg-open {}", q_operand(path)), None).await.ok() {
             return true;
         }
     }
@@ -68,5 +68,5 @@ pub async fn open_link_on(runner: &dyn CommandRunner, platform: Platform, url: &
         Platform::Linux => "xdg-open",
         Platform::MacOs => "open",
     };
-    runner.run(format!("{opener} {}", q(url)), None).await.ok()
+    runner.run(format!("{opener} {}", q_operand(url)), None).await.ok()
 }

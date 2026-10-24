@@ -38,7 +38,7 @@ async fn launch_command_keeps_mcp_config_first() {
     let cmd = &log.commands[0];
     assert!(cmd.starts_with("claude --mcp-config '{\"mcpServers\""));
     assert!(cmd.contains(" --name 'job' --settings '"));
-    assert!(cmd.ends_with("--append-system-prompt 'contexto' --resume 'abc' 'faz'"));
+    assert!(cmd.ends_with("--append-system-prompt 'contexto' --resume 'abc' -- 'faz'"));
     assert_eq!(
         log.displays[0].as_deref(),
         Some("claude --mcp-config <tarefas :4242> --name 'job' --settings <hooks :4242> --append-system-prompt <briefing de login> --resume … <prompt inicial>")
@@ -55,6 +55,28 @@ async fn an_early_exit_is_explained() {
     assert!(rig.t(&id).exited);
     assert!(rig.s.banner().unwrap().contains("não achei o `claude` no PATH"));
     assert!(rig.bus.names().contains(&"session.exited".to_owned()));
+    rig.s.settle().await;
+}
+
+#[tokio::test]
+async fn a_claude_that_dies_mid_work_stops_spinning() {
+    let mut rig = Rig::new();
+    let id = open(&mut rig);
+    rig.tm(&id).hooks.status = ClaudeStatus::Working;
+    rig.terms.exit(&id, 1);
+    rig.s.apply(StoreMsg::TermExited { tab_id: id.clone(), code: Some(1) });
+    assert_eq!(rig.t(&id).status(), ClaudeStatus::Ended);
+    rig.s.settle().await;
+}
+
+#[tokio::test]
+async fn a_claude_that_exits_while_waiting_keeps_its_status() {
+    let mut rig = Rig::new();
+    let id = open(&mut rig);
+    rig.tm(&id).hooks.status = ClaudeStatus::WaitingPermission;
+    rig.terms.exit(&id, 0);
+    rig.s.apply(StoreMsg::TermExited { tab_id: id.clone(), code: Some(0) });
+    assert_eq!(rig.t(&id).status(), ClaudeStatus::WaitingPermission);
     rig.s.settle().await;
 }
 
@@ -257,4 +279,24 @@ fn editor_for_a_missing_path_names_it() {
     let mut rig = Rig::new();
     rig.s.open_in_editor("/nao/existe.code-workspace");
     assert_eq!(rig.s.banner(), Some("Esse workspace não está mais lá: /nao/existe.code-workspace"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn shutdown_stops_the_running_plugins() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut rig = Rig::new();
+    let root = rig.mkdir("plugins");
+    let dir = std::path::Path::new(&root).join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let manifest = serde_json::json!({"id": "p", "version": "1", "main": ["./p.sh"]});
+    std::fs::write(dir.join(mx_plugins::MANIFEST_NAME), manifest.to_string()).unwrap();
+    let script = "#!/bin/sh\nwhile IFS= read -r l; do case \"$l\" in *initialize*) id=$(echo \"$l\" | sed 's/.*\"id\":\\([0-9]*\\).*/\\1/'); echo \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":$id,\\\"result\\\":{}}\";; esac; done\n";
+    std::fs::write(dir.join("p.sh"), script).unwrap();
+    std::fs::set_permissions(dir.join("p.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    rig.s.attach_plugins(mx_plugins::Plugins::with_dirs(root.into(), rig.mkdir("plugin-data").into()));
+    let plugins = rig.s.plugins().unwrap().clone();
+    let conn = plugins.start("p").await.expect("plugin started");
+    assert!(conn.alive());
+    rig.s.shutdown().await;
+    assert!(!conn.alive());
 }

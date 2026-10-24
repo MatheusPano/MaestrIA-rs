@@ -184,7 +184,7 @@ impl Store {
             Done::Worktree { task, outcome } => self.worktree_added(task, outcome),
             Done::GitFinished { message, ok } => self.git_done(message, ok),
             Done::EditorOpened { path, ok } => self.editor_opened(&path, ok),
-            Done::Killed { tab_id } => self.relaunch_woken(&tab_id),
+            Done::Killed { tab_id } => self.woken_after_kill(&tab_id),
             Done::Banner { text, sticky } => self.show_banner_with(&text, sticky),
             Done::OfferFailed { plugin, task, message } => self.offer_failed(&plugin, &task, &message),
             Done::PluginsChanged => self.plugins_changed(),

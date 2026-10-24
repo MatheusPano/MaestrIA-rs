@@ -2,7 +2,7 @@ use std::path::Path;
 
 use mx_core::model::Doc;
 use mx_core::persist::{
-    Config, Layout, LoadOutcome, PaneEntry, PaneKind, TreeRestore, load, resolve_theme, restore_tree,
+    Config, Layout, LoadOutcome, PaneEntry, PaneKind, TreeRestore, load, restore_tree,
 };
 
 use crate::changes::Areas;
@@ -35,9 +35,8 @@ impl Store {
         self.features = c.features_or_hotfixes;
         self.groups = c.groups;
         self.launchers = c.launchers;
-        let known = |id: &str| mx_theme::built_in(id).is_some();
         self.prefs = Prefs {
-            theme: resolve_theme(c.theme.as_deref(), &known),
+            theme: c.theme.filter(|t| !t.is_empty()).unwrap_or_else(|| mx_theme::DEFAULT_THEME_ID.to_owned()),
             typography: c.typography,
             sidebar_width: c.sidebar_width,
             sidebar_hidden: c.sidebar_hidden,
@@ -56,8 +55,23 @@ impl Store {
         if let Some(r) = &self.plugin.registry {
             r.load(&serde_json::Value::Object(self.prefs.plugins.clone()));
         }
+        self.settle_theme();
         if let Some(layout) = c.layout {
             self.restore_layout(&layout);
+        }
+    }
+
+    pub(crate) fn settle_theme(&mut self) {
+        let themes = self.plugin.registry.as_ref().map(mx_plugins::Plugins::themes);
+        let known = |id: &str| {
+            mx_theme::built_in(id).is_some() || themes.as_ref().is_some_and(|t| t.extra().iter().any(|p| p.id == id))
+        };
+        if known(&self.prefs.theme) {
+            return;
+        }
+        if let Some(to) = mx_theme::retired_alias(&self.prefs.theme).filter(|to| known(to)) {
+            self.prefs.theme = to.to_owned();
+            self.mark(Areas::PREFS);
         }
     }
 

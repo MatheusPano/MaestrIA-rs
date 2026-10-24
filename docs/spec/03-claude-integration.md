@@ -78,12 +78,12 @@ Maestria never edits `~/.claude/settings.json` or any project settings. Each Cla
 (`store._launchClaude`, joined with single spaces, run in the panel's pty via the login shell):
 
 ```
-claude --mcp-config <Sh.q(mcpConfigFor(tabId))> --name <Sh.q(name)> --settings <Sh.q(settingsFor(tabId, cwd: tab.cwd))> [--append-system-prompt <Sh.q(brief)>] [--resume <Sh.q(resumeId)>] [<Sh.q(prompt)>]
+claude --mcp-config <Sh.q(mcpConfigFor(tabId))> --name <Sh.q(name)> --settings <Sh.q(settingsFor(tabId, cwd: tab.cwd))> [--append-system-prompt <Sh.q(brief)>] [--resume <Sh.q(resumeId)>] [-- <Sh.q(prompt)>]
 ```
 
 - `--mcp-config` MUST come first (it is variadic and would swallow the positional prompt; `--name` terminates it).
 - `name` = panel label, or basename of cwd. `brief` = project ("feature/hotfix") brief, trimmed, only if non-empty.
-  `prompt` = trimmed opening prompt, only if non-empty (positional, last).
+  `prompt` = trimmed opening prompt, only if non-empty (positional, last, after `--` so a prompt starting with `-` is not read as an option).
 - Display line shown in the terminal instead of the real command:
   `claude --mcp-config <tarefas :PORT> --name 'NAME' --settings <hooks :PORT>` + ` --append-system-prompt <briefing de PROJECT>` (if brief) + ` --resume …` (if resume) + ` <prompt inicial>` (if prompt).
 - 3 s after launch, if the tab still exists and has not exited: `hooks.settle()` (§1.6) and notify listeners —
@@ -336,8 +336,12 @@ read its notices / clear `unseen`).
 
 ### 2.1 Transport
 
-MCP "streamable HTTP", JSON-only (no SSE, no `Mcp-Session-Id`, no `Accept`/`Origin` checks), on the hook
+MCP "streamable HTTP", JSON-only (no SSE, no `Mcp-Session-Id`, no `Accept` check), on the hook
 server at `POST /mcp/<tabId>`.
+
+- Every route of the hook server (hooks, status, MCP) answers `403`, empty body, to a request carrying an
+  `Origin` header or whose `Host` is not `127.0.0.1:<port>`/`localhost:<port>` (browser CSRF, DNS rebinding).
+  Bodies over 64 MiB are refused.
 
 - Non-POST → `405`, empty body.
 - Body read as UTF-8; JSON parse failure → answer = parse error. Any other exception while handling → parse error.
@@ -358,7 +362,8 @@ Constants: `server = "maestria"`, `suggestTool = "suggest_task"`, `dismissTool =
 
 `one(message)`:
 - not an object → `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}}`
-- `id` absent/null, **or** `method` not a string → no response (null).
+- `id` absent/null → no response (null).
+- `method` absent or not a string (with an id) → `{"jsonrpc":"2.0","id":<id>,"error":{"code":-32600,"message":"invalid request"}}`.
 - `params` = object or `{}`.
 - `initialize` → result:
   ```json
@@ -611,7 +616,7 @@ for each key not yet in `alerted`: `alert("MaestrIA", text)` and add; remove key
 
 | function | Linux | macOS |
 |---|---|---|
-| `alert(title, body)` | `Sh.run("notify-send -a maestria " + q(title) + " " + q(body))` ⇒ argv `[$SHELL, "-lc", "notify-send -a maestria 'MaestrIA' '<body>'"]` | `Sh.run("osascript -e " + q("display notification " + esc(body) + " with title " + esc(title)))`; `esc(v) = "\"" + v.replace("\\","\\\\").replace("\"","\\\"") + "\""` |
+| `alert(title, body)` | `Sh.run("notify-send -a maestria -- " + q(title) + " " + q(body))` ⇒ argv `[$SHELL, "-lc", "notify-send -a maestria -- 'MaestrIA' '<body>'"]` | `Sh.run("osascript -e " + q("display notification " + esc(body) + " with title " + esc(title)))`; `esc(v) = "\"" + v.replace("\\","\\\\").replace("\"","\\\"") + "\""` |
 | `badge(label)` | no-op (dedup by last value still applies) | native dock channel `badge` with `label ?? ""`; skipped if equal to last |
 | `quickLook(path)` | file must exist; `xdg-open q(path)`; on failure `reveal` | native Quick Look; fallback `reveal` |
 | `reveal(path)` | `dbus-send --session --print-reply --dest=org.freedesktop.FileManager1 /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:<q("file://" + encodeFull(path))> string:""`; on failure `xdg-open q(dirname(path))` | `open -R q(path)` |

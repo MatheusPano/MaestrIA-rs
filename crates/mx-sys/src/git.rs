@@ -1,10 +1,13 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 pub use mx_core::model::worktree::{DETACHED, WorktreeInfo};
 use mx_core::text::last_segment as basename;
 
 use crate::runner::CommandRunner;
 use crate::shell::{ShResult, q, stderr_or_stdout};
+
+pub const FETCH_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitOutcome {
@@ -153,7 +156,7 @@ impl Git {
         if self.sh(&format!("test -d {}", q(&path)), None).await.ok() {
             return GitOutcome::new(false, &path, format!("Worktree já existe em {path}"));
         }
-        self.sh("git fetch origin --quiet", Some(root)).await;
+        let _ = tokio::time::timeout(FETCH_TIMEOUT, self.sh("git fetch origin --quiet", Some(root))).await;
         let cmd = format!("git worktree add {} -b {} {}", q(&path), q(branch), q(base_ref));
         let r = self.sh(&cmd, Some(root)).await;
         if !r.ok() {

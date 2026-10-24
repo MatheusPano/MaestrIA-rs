@@ -2,7 +2,7 @@ mod conn;
 
 use std::path::{Path, PathBuf};
 
-pub use conn::{ConnHandlers, Connection, LogSink, RequestHandler, SHUTDOWN_GRACE};
+pub use conn::{ConnHandlers, Connection, LogSink, OUTBOX_LINES, RequestHandler, SHUTDOWN_GRACE};
 
 pub fn resolve_executable(exe: &str, dir: &Path, path: &str) -> Option<PathBuf> {
     let named = mx_core::paths::expand_home(exe);

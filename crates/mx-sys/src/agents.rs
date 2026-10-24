@@ -11,6 +11,7 @@ use crate::runner::CommandRunner;
 pub const EAGER_EVERY: Duration = Duration::from_secs(2);
 pub const IDLE_EVERY: Duration = Duration::from_secs(30);
 pub const COMMAND: &str = "claude agents --json";
+pub const TIMEOUT: Duration = Duration::from_secs(20);
 
 pub fn parse_agents(stdout: &str) -> Option<Vec<AgentInfo>> {
     AgentInfo::list_from_stdout(stdout)
@@ -29,8 +30,9 @@ impl Shared {
         if self.in_flight.swap(true, Ordering::AcqRel) {
             return;
         }
-        let r = self.runner.run(COMMAND.to_owned(), None).await;
-        if r.ok()
+        let r = tokio::time::timeout(TIMEOUT, self.runner.run(COMMAND.to_owned(), None)).await;
+        if let Ok(r) = r
+            && r.ok()
             && let Some(list) = parse_agents(&r.stdout)
         {
             self.latest.send_replace(Arc::new(list));

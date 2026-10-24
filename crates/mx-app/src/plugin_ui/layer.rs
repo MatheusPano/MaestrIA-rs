@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gpui::{
-    AnyElement, AnyView, AppContext, Context, Entity, FocusHandle, IntoElement, ParentElement, Render, Styled,
+    AnyElement, AnyView, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Render, Styled,
     Subscription, Window, deferred, div,
 };
 use mx_store::{Areas, DialogAsk};
@@ -24,6 +24,9 @@ pub struct PluginLayer {
     pub(super) grab: Option<floats::Grab>,
     dialog: Option<(u64, AnyView)>,
     local: Option<AnyView>,
+    local_focus: FocusHandle,
+    focus_local: bool,
+    escape_closes_local: bool,
     _sub: Subscription,
 }
 
@@ -47,6 +50,9 @@ impl PluginLayer {
             grab: None,
             dialog: None,
             local: None,
+            local_focus: cx.focus_handle(),
+            focus_local: false,
+            escape_closes_local: false,
             _sub: sub,
         }
     }
@@ -67,6 +73,8 @@ impl PluginLayer {
         let close = self.closer(cx);
         let plugin = plugin.to_owned();
         self.local = Some(cx.new(|cx| SettingsDialog::new(host, plugin, close, window, cx)).into());
+        self.focus_local = true;
+        self.escape_closes_local = true;
         cx.notify();
     }
 
@@ -75,13 +83,20 @@ impl PluginLayer {
         let close = self.closer(cx);
         let plugin = plugin.to_owned();
         self.local = Some(cx.new(|_| LogDialog::new(host, plugin, close)).into());
+        self.focus_local = true;
+        self.escape_closes_local = true;
         cx.notify();
+    }
+
+    pub fn covers(&self) -> bool {
+        self.local.is_some() || self.dialog.is_some() || self.modal.is_some()
     }
 
     pub fn open_install(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let host = self.host.clone();
         let close = self.closer(cx);
         self.local = Some(cx.new(|cx| super::install::InstallDialog::new(host, close, window, cx)).into());
+        self.escape_closes_local = false;
         cx.notify();
     }
 
@@ -123,11 +138,29 @@ impl Render for PluginLayer {
         if let Some(m) = modal::render(self, window, cx) {
             layers.push(m);
         }
+        let surfaces = self.floats.values().chain(self.modal.as_ref().map(|(_, s)| s));
+        let menus: Vec<AnyElement> = surfaces.filter_map(|s| s.menu_overlay(cx)).collect();
+        layers.extend(menus.into_iter().map(|m| deferred(m).with_priority(2).into_any_element()));
         if let Some((_, d)) = &self.dialog {
             layers.push(full(window, d.clone().into_any_element()).with_priority(3).into_any_element());
         }
+        if self.focus_local && self.local.is_some() {
+            self.focus_local = false;
+            window.focus(&self.local_focus);
+        }
         if let Some(l) = &self.local {
-            layers.push(full(window, l.clone().into_any_element()).with_priority(4).into_any_element());
+            let keyed = div()
+                .size_full()
+                .track_focus(&self.local_focus)
+                .capture_key_down(cx.listener(|layer, ev: &gpui::KeyDownEvent, _, cx| {
+                    if layer.escape_closes_local && ev.keystroke.key == "escape" {
+                        layer.local = None;
+                        cx.stop_propagation();
+                        cx.notify();
+                    }
+                }))
+                .child(l.clone());
+            layers.push(full(window, keyed.into_any_element()).with_priority(4).into_any_element());
         }
         div().children(layers)
     }

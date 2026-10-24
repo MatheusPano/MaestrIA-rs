@@ -3770,6 +3770,7 @@ version = "3.0.0"
 dependencies = [
  "chrono",
  "mx-core",
+ "nix 0.29.0",
  "regex",
  "serde_json",
  "tempfile",

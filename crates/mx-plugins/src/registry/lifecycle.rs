@@ -76,6 +76,7 @@ impl Plugins {
             (e.manifest.clone()?, e.dir.clone())
         };
         let main = m.main.clone().unwrap_or_default();
+        let (program, args) = main.split_first()?;
         let data_dir = self.data_dir(id);
         let mut env = self.inner.env.read().unwrap().clone();
         env.retain(|(k, _)| !k.starts_with("MAESTRIA_PLUGIN_") && k != "MAESTRIA_API");
@@ -84,8 +85,8 @@ impl Plugins {
         env.push(("MAESTRIA_PLUGIN_DIR".into(), dir.to_string_lossy().into_owned()));
         env.push(("MAESTRIA_PLUGIN_DATA".into(), data_dir.to_string_lossy().into_owned()));
         let path = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| v.clone()).unwrap_or_default();
-        let Some(exe) = resolve_executable(&main[0], &dir, &path) else {
-            self.fail(id, &format!("não achei \"{}\" — nem na pasta do plugin, nem no PATH", main[0]));
+        let Some(exe) = resolve_executable(program, &dir, &path) else {
+            self.fail(id, &format!("não achei \"{program}\" — nem na pasta do plugin, nem no PATH"));
             return None;
         };
         if let Err(e) = std::fs::create_dir_all(&data_dir) {
@@ -95,7 +96,7 @@ impl Plugins {
         let slot: Arc<std::sync::OnceLock<std::sync::Weak<Connection>>> = Arc::default();
         let mut attempt = 0;
         let conn = loop {
-            match Connection::spawn(&exe, &main[1..], &dir, &env, self.handlers(id, slot.clone())) {
+            match Connection::spawn(&exe, args, &dir, &env, self.handlers(id, slot.clone())) {
                 Ok(c) => break c,
                 // ETXTBSY: a just-written script whose fd leaked into a concurrent fork; transient.
                 Err(e) if e.raw_os_error() == Some(nix::libc::ETXTBSY) && attempt < 10 => {
@@ -162,7 +163,7 @@ impl Plugins {
         let mut p = Map::new();
         p.insert("apiVersion".into(), Value::from(PLUGIN_API));
         p.insert("blocks".into(), Value::from(BLOCKS_VERSION));
-        for (k, v) in [("rfw", 2), ("floats", 1), ("input", 1), ("form", 1), ("modal", 1)] {
+        for (k, v) in [("rfw", 2), ("floats", 1), ("input", 1), ("form", 1), ("modal", 1), ("editor", 1)] {
             p.insert(k.into(), Value::from(v));
         }
         p.insert("pluginId".into(), Value::from(id));

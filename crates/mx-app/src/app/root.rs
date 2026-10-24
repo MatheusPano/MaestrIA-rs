@@ -1,7 +1,7 @@
 use gpui::{
     AnyView, App, AppContext, ClipboardItem, Context, DragMoveEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
     KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder, px,
+    Window, deferred, div, prelude::FluentBuilder, px,
 };
 use mx_store::{Areas, Changes, Effect, Store};
 
@@ -18,9 +18,11 @@ use crate::chrome::widgets::tip_gate;
 use crate::panes::PaneArea;
 use crate::rail::{self, Rail};
 use crate::sidebar::{self, Sidebar};
-use crate::status_bar::{self, SessionList, StatusBar};
+use crate::status_bar::{self, SessionsView, StatusBar};
+use crate::chrome::anim::slots;
 
 const ROOT_CONTEXT: &str = "MaestriaRoot";
+const NOTICES_ABOVE_PLUGIN_LAYERS: usize = 5;
 
 #[derive(Debug, Clone, Copy)]
 struct SidebarGrip;
@@ -32,6 +34,8 @@ pub struct Root {
     sidebar: Entity<Sidebar>,
     status_bar: Entity<StatusBar>,
     panes: Entity<PaneArea>,
+    sessions: Entity<SessionsView>,
+    sessions_open: bool,
     theme: String,
     focus: FocusHandle,
 }
@@ -59,9 +63,14 @@ impl Root {
         let sidebar = cx.new(|cx| Sidebar::new(host.clone(), window, cx));
         let status_bar = cx.new(|_| StatusBar::new(host.clone()));
         let panes = cx.new(|_| PaneArea::new(host.clone()));
+        let sessions = cx.new(|_| SessionsView::new(host.clone()));
         cx.subscribe_in(&host, window, Self::on_store).detach();
         let ui = ui::get(cx);
-        cx.observe(&ui, |_, _, cx| cx.notify()).detach();
+        cx.observe(&ui, |this, _, cx| {
+            this.panes.update(cx, |_, cx| cx.notify());
+            cx.notify();
+        })
+        .detach();
         cx.observe_window_activation(window, |this, window, cx| {
             let active = window.is_window_active();
             update_store(&this.host, cx, |s| s.set_window_active(active));
@@ -77,6 +86,8 @@ impl Root {
             sidebar,
             status_bar,
             panes,
+            sessions,
+            sessions_open: false,
             theme,
             focus: cx.focus_handle(),
         }
@@ -117,8 +128,13 @@ impl Root {
         if rail {
             self.rail.update(cx, |_, cx| cx.notify());
         }
-        let sessions_open = self.host.read(cx).store.bell().sessions_open;
-        if root || (sessions_open && !ev.0.tabs.is_empty()) {
+        let open = self.host.read(cx).store.bell().sessions_open;
+        let opened = open && !self.sessions_open;
+        self.sessions_open = open;
+        if open && (opened || status) {
+            self.sessions.update(cx, |_, cx| cx.notify());
+        }
+        if root {
             cx.notify();
         }
     }
@@ -207,7 +223,7 @@ impl Render for Root {
         let top = prefs.status_bar_top;
         let hidden = prefs.sidebar_hidden;
         let width = fit_sidebar(prefs.sidebar_width as f32, f32::from(window.viewport_size().width));
-        let sessions = store.bell().sessions_open.then(|| SessionList::of(store));
+        let sessions_open = store.bell().sessions_open;
         let banner_text = store.banner().map(str::to_owned);
 
         let rail = AnyView::from(self.rail.clone())
@@ -219,13 +235,17 @@ impl Render for Root {
             StyleRefinement::default().w_full().h(px(status_bar::HEIGHT)).flex_none(),
         );
         let host = self.host.clone();
-        let close_host = self.host.clone();
+        let mut owners = vec![self.panes.entity_id()];
+        if !hidden {
+            owners.push(self.sidebar.entity_id());
+        }
 
         let stage = div()
             .flex_1()
             .relative()
             .child(panes)
-            .child(self.notices(banner_text, top, cx));
+            .child(slots::layer(owners))
+            .child(deferred(self.notices(banner_text, top, cx)).with_priority(NOTICES_ABOVE_PLUGIN_LAYERS));
 
         let body = div()
             .size_full()
@@ -264,20 +284,10 @@ impl Render for Root {
                     .min_h_0()
                     .relative()
                     .child(body)
-                    .when_some(sessions, |d, list| {
-                        let pos = div().absolute().left(px(status_bar::INSET));
-                        let pos = if top { pos.top(px(8.)) } else { pos.bottom(px(8.)) };
-                        d.child(
-                            pos.on_mouse_down_out(move |ev, window, cx: &mut App| {
-                                let y = f32::from(ev.position.y);
-                                let h = f32::from(window.viewport_size().height);
-                                let on_bar = if top { y < status_bar::HEIGHT } else { y > h - status_bar::HEIGHT };
-                                if !on_bar {
-                                    update_store(&close_host, cx, Store::close_sessions)
-                                }
-                            })
-                            .child(list.render(&mx, &self.host)),
-                        )
+                    .when(sessions_open, |d| {
+                        let view = AnyView::from(self.sessions.clone())
+                            .cached(StyleRefinement::default().absolute().inset_0());
+                        d.child(view).child(slots::layer(vec![self.sessions.entity_id()]))
                     }),
             )
             .when(!top, |d| d.child(status))

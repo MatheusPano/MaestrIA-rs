@@ -49,7 +49,7 @@ impl EntityInputHandler for TerminalView {
         cx: &mut Context<Self>,
     ) {
         let origin = match self.pending_key.take() {
-            Some(key) if key == text => TextOrigin::Key,
+            Some((key, origin)) if key == text => origin,
             _ => TextOrigin::Commit,
         };
         let had_marked = self.render.borrow_mut().marked.take().is_some();

@@ -6,8 +6,10 @@ mod header;
 mod terminals;
 mod view_header;
 
+use std::collections::HashMap;
+
 use gpui::{
-    AnyElement, AnyView, App, AppContext, Context, DragMoveEvent, Entity, Focusable, InteractiveElement,
+    AnyElement, AnyView, App, AppContext, Context, DragMoveEvent, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Render, SharedString, StyleRefinement, Styled,
     Subscription, Window, div, prelude::FluentBuilder, px, relative,
 };
@@ -29,6 +31,9 @@ pub struct PaneArea {
     hint: Option<(String, DropSide)>,
     resizing: Option<grip::GripDrag>,
     focused: Option<String>,
+    focused_handle: Option<FocusHandle>,
+    covered: bool,
+    plugin_focus: HashMap<String, FocusHandle>,
     bodies: bodies::Bodies,
     layer: Option<Entity<PluginLayer>>,
     watch: Option<Subscription>,
@@ -42,6 +47,9 @@ impl PaneArea {
             hint: None,
             resizing: None,
             focused: None,
+            focused_handle: None,
+            covered: false,
+            plugin_focus: HashMap::new(),
             bodies: bodies::Bodies::default(),
             layer: None,
             watch: None,
@@ -68,15 +76,37 @@ impl PaneArea {
     }
 
 
+    fn focus_target(&mut self, id: &str, cx: &mut Context<Self>) -> Option<FocusHandle> {
+        if let Some(view) = self.terminals.get(id) {
+            return Some(view.focus_handle(cx));
+        }
+        if let Some(handle) = self.bodies.focus_target(id, cx) {
+            return Some(handle);
+        }
+        let plugin = self.host.read(cx).store.tab(id).is_some_and(|t| t.kind == TabKind::Plugin);
+        plugin.then(|| self.plugin_focus.entry(id.to_owned()).or_insert_with(|| cx.focus_handle()).clone())
+    }
+
+    fn overlay_open(&self, cx: &App) -> bool {
+        crate::app::ui::get(cx).read(cx).top().is_some()
+            || self.host.read(cx).store.modal().is_some()
+            || self.layer.as_ref().is_some_and(|l| l.read(cx).covers())
+    }
+
     fn follow_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let focused = self.host.read(cx).store.focused_tab_id();
-        if focused == self.focused {
+        let covered = self.overlay_open(cx);
+        let uncovered = std::mem::replace(&mut self.covered, covered) && !covered;
+        if covered {
             return;
         }
-        self.focused = focused.clone();
-        if let Some(view) = focused.as_deref().and_then(|id| self.terminals.get(id)) {
-            let view = &view;
-            let handle = view.focus_handle(cx);
+        let focused = self.host.read(cx).store.focused_tab_id();
+        let handle = focused.clone().and_then(|id| self.focus_target(&id, cx));
+        if !uncovered && focused == self.focused && handle == self.focused_handle {
+            return;
+        }
+        self.focused = focused;
+        self.focused_handle = handle.clone();
+        if let Some(handle) = handle {
             window.focus(&handle);
         }
     }
@@ -125,10 +155,17 @@ impl PaneArea {
                 None => (bodies::placeholder(if hibernated { "Hibernada" } else { "" }, mx.fg_faint), true),
             },
             TabKind::Reader => (self.bodies.reader(id).unwrap_or_else(|| bodies::placeholder("", mx.fg_faint)), false),
-            TabKind::Plugin => (
-                self.bodies.surface(id).unwrap_or_else(|| bodies::placeholder(mx_plugins::ui::view::MISSING_PLUGIN, mx.fg_faint)),
-                false,
-            ),
+            TabKind::Plugin => {
+                let body = self
+                    .bodies
+                    .surface(id)
+                    .unwrap_or_else(|| bodies::placeholder(mx_plugins::ui::view::MISSING_PLUGIN, mx.fg_faint));
+                let body = match self.plugin_focus.get(id) {
+                    Some(h) => div().size_full().track_focus(h).child(body).into_any_element(),
+                    None => body,
+                };
+                (body, false)
+            }
             TabKind::Setup => (self.bodies.setup(id).unwrap_or_else(|| bodies::placeholder("Configuração do projeto", mx.fg_faint)), false),
         };
         let ring = if show_focus && focused {
@@ -247,6 +284,7 @@ impl PaneArea {
 
 impl Render for PaneArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::chrome::anim::slots::forget(cx.entity_id(), cx);
         self.attach(cx);
         let host = self.host.read(cx);
         let typo = host.store.prefs().typography.clone();
@@ -275,6 +313,11 @@ impl Render for PaneArea {
         };
         self.bodies.sync(&env, window, cx);
         self.follow_focus(window, cx);
+        let store = &self.host.read(cx).store;
+        let gone: Vec<String> = self.plugin_focus.keys().filter(|id| !store.has_tab(id)).cloned().collect();
+        for id in gone {
+            self.plugin_focus.remove(&id);
+        }
         let mx = Mx::get(cx).clone();
         let store = &self.host.read(cx).store;
         let tree = store.panes().cloned();

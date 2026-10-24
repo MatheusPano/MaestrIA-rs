@@ -27,6 +27,8 @@ use mx_store::StoreOptions;
 use host::StoreHost;
 use root::Root;
 
+const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
     if let Err(err) = cx.text_system().add_fonts(vec![Cow::Borrowed(icons::ICON_FONT)]) {
         log::error!("failed to load the shell icon font: {err}");
@@ -37,8 +39,14 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
     ui::install(host.clone(), cx);
     let quitting = host.clone();
     cx.on_app_quit(move |cx| {
-        quitting.update(cx, |h, _| drop(h.store.shutdown()));
-        cx.background_executor().timer(std::time::Duration::from_millis(300))
+        quitting.update(cx, |h, _| {
+            let rt = h.rt();
+            let done = h.store.shutdown();
+            rt.block_on(async move {
+                let _ = tokio::time::timeout(QUIT_GRACE, done).await;
+            });
+        });
+        std::future::ready(())
     })
     .detach();
     let bounds = Bounds::centered(None, size(px(1280.), px(720.)), cx);

@@ -45,6 +45,9 @@ impl EntityInputHandler for TextEditor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
         match range {
             Some(r) => {
                 let r = self.buffer.range_from_utf16(&r);
@@ -63,6 +66,9 @@ impl EntityInputHandler for TextEditor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
         let range = range
             .map(|r| self.buffer.range_from_utf16(&r))
             .or_else(|| self.buffer.marked())

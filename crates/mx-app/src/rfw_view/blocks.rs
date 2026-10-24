@@ -48,6 +48,7 @@ pub struct BlocksView {
     sink: ActionSink,
     scroll: ScrollHandle,
     pub(super) menu: Option<OpenMenu>,
+    hoisted_menu: bool,
 }
 
 impl HasMenu for BlocksView {
@@ -98,11 +99,21 @@ impl BlocksView {
             sink,
             scroll: ScrollHandle::new(),
             menu: None,
+            hoisted_menu: false,
         }
     }
 
     pub fn set_theme(&mut self, theme: Arc<Theme>) {
         self.theme = theme;
+    }
+
+    pub fn hoist_menu(&mut self) {
+        self.hoisted_menu = true;
+    }
+
+    pub fn menu_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let theme = self.theme.clone();
+        self.menu.as_ref().map(|m| menu::floating(&theme, cx, m).into_any_element())
     }
 
     pub fn set_zoom(&mut self, zoom: f32) {
@@ -314,12 +325,12 @@ impl Render for BlocksView {
                             .pt(px(18.0))
                             .px(px(22.0))
                             .pb(px(32.0))
-                            .child(content.w_full().max_w(px(760.0))),
+                            .child(content.w_full().min_w(px(0.0)).max_w(px(760.0))),
                     )
                     .into_any_element(),
             }
         };
-        let overlay = self.menu.as_ref().map(|m| menu::render(&theme, cx, m));
+        let overlay = self.menu.as_ref().filter(|_| !self.hoisted_menu).map(|m| menu::render(&theme, cx, m));
         root.child(body).children(overlay)
     }
 }

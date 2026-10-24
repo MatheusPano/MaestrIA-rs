@@ -36,6 +36,9 @@ fn a_disk_change_replaces_an_untouched_editor_and_flags_an_edited_one() {
     assert_eq!(doc.disk, "b");
     assert_eq!(doc.poll("c".into(), "typed"), Poll::Outside);
     assert!(doc.outside);
+    assert_eq!(doc.poll("c".into(), "typed"), Poll::Same);
+    assert_eq!(doc.poll("d".into(), "typed"), Poll::Same);
+    assert!(doc.outside);
     assert_eq!(doc.disk, "b");
     assert_eq!(doc.state(true, "typed"), ("Mudou no disco enquanto você editava", StateTone::Warn));
     assert!(doc.can_revert("b"));

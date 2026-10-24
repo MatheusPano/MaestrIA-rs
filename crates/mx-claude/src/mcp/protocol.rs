@@ -44,7 +44,9 @@ async fn one(message: &Value, tab_id: &str, sink: &dyn SuggestionSink) -> Option
         return Some(error(Value::Null, -32600, "invalid request"));
     };
     let id = message.get("id").filter(|id| !id.is_null())?.clone();
-    let method = message.get("method")?.as_str()?;
+    let Some(method) = message.get("method").and_then(Value::as_str) else {
+        return Some(error(id, -32600, "invalid request"));
+    };
     let empty = Map::new();
     let params = message
         .get("params")

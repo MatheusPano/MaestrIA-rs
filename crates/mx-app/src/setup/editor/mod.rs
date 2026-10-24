@@ -1,15 +1,18 @@
 mod buffer;
+mod code;
 mod element;
 mod input;
+mod keys;
 mod layout;
+pub mod syntax;
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, EventEmitter, FocusHandle, Focusable, Hsla,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    ParentElement, Pixels, Point, Render, ScrollWheelEvent, Styled,
-    Window, div, point, px,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Point,
+    Render, ScrollWheelEvent, Styled, Window, div, point, px,
 };
 
 pub use buffer::Buffer;
@@ -25,6 +28,37 @@ pub const PAD_BOTTOM: f32 = 24.;
 pub enum EditorEvent {
     Changed,
     Save,
+    Cursor,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SyntaxColors {
+    pub comment: Hsla,
+    pub string: Hsla,
+    pub number: Hsla,
+    pub keyword: Hsla,
+    pub kind: Hsla,
+    pub key: Hsla,
+    pub meta: Hsla,
+    pub added: Hsla,
+    pub removed: Hsla,
+}
+
+impl SyntaxColors {
+    pub fn of(&self, tone: syntax::Tone) -> Hsla {
+        use syntax::Tone;
+        match tone {
+            Tone::Comment => self.comment,
+            Tone::String => self.string,
+            Tone::Number => self.number,
+            Tone::Keyword => self.keyword,
+            Tone::Type => self.kind,
+            Tone::Key => self.key,
+            Tone::Meta => self.meta,
+            Tone::Added => self.added,
+            Tone::Removed => self.removed,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -35,6 +69,13 @@ pub struct EditorStyle {
     pub caret: Hsla,
     pub selection: Hsla,
     pub thumb: Hsla,
+    pub wrap: bool,
+    pub code: bool,
+    pub language: String,
+    pub syntax: Option<SyntaxColors>,
+    pub gutter: Option<(Hsla, Hsla)>,
+    pub found: Hsla,
+    pub found_current: Hsla,
 }
 
 impl Default for EditorStyle {
@@ -46,6 +87,13 @@ impl Default for EditorStyle {
             caret: gpui::white(),
             selection: gpui::blue().opacity(0.3),
             thumb: gpui::white().opacity(0.2),
+            wrap: true,
+            code: false,
+            language: String::new(),
+            syntax: None,
+            gutter: None,
+            found: gpui::yellow().opacity(0.25),
+            found_current: gpui::yellow().opacity(0.5),
         }
     }
 }
@@ -57,10 +105,15 @@ pub struct TextEditor {
     layout: Option<Rc<EditorLayout>>,
     bounds: Bounds<Pixels>,
     scroll_y: Pixels,
+    scroll_x: Pixels,
     autoscroll: bool,
+    center_next: bool,
     goal_x: Option<Pixels>,
     dragging: bool,
     drag_origin: usize,
+    read_only: bool,
+    found: Vec<Range<usize>>,
+    found_current: Option<usize>,
 }
 
 impl EventEmitter<EditorEvent> for TextEditor {}
@@ -80,10 +133,15 @@ impl TextEditor {
             layout: None,
             bounds: Bounds::default(),
             scroll_y: px(0.),
+            scroll_x: px(0.),
             autoscroll: false,
+            center_next: false,
             goal_x: None,
             dragging: false,
             drag_origin: 0,
+            read_only: false,
+            found: Vec::new(),
+            found_current: None,
         }
     }
 
@@ -99,13 +157,17 @@ impl TextEditor {
     pub fn set_text(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
         self.buffer.reset(text);
         self.scroll_y = px(0.);
+        self.scroll_x = px(0.);
         self.goal_x = None;
+        self.found.clear();
+        self.found_current = None;
         cx.notify();
     }
 
     pub fn set_style(&mut self, style: EditorStyle, cx: &mut Context<Self>) {
         if self.style != style {
             self.style = style;
+            self.layout = None;
             cx.notify();
         }
     }
@@ -122,29 +184,38 @@ impl TextEditor {
         self.goal_x = None;
         self.autoscroll = true;
         cx.emit(EditorEvent::Changed);
+        cx.emit(EditorEvent::Cursor);
         cx.notify();
     }
 
     fn moved(&mut self, cx: &mut Context<Self>) {
         self.autoscroll = true;
+        cx.emit(EditorEvent::Cursor);
         cx.notify();
     }
 
     pub fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
         self.buffer.insert(text);
         self.edited(cx);
     }
 
+    fn left(&self) -> Pixels {
+        px(PAD_LEFT) + self.layout.as_ref().map_or(px(0.), |l| l.gutter)
+    }
+
     fn to_content(&self, at: Point<Pixels>) -> Point<Pixels> {
         point(
-            at.x - self.bounds.origin.x - px(PAD_LEFT),
+            at.x - self.bounds.origin.x - self.left() + self.scroll_x,
             at.y - self.bounds.origin.y - px(PAD_TOP) + self.scroll_y,
         )
     }
 
     fn to_window(&self, at: Point<Pixels>) -> Point<Pixels> {
         point(
-            at.x + self.bounds.origin.x + px(PAD_LEFT),
+            at.x + self.bounds.origin.x + self.left() - self.scroll_x,
             at.y + self.bounds.origin.y + px(PAD_TOP) - self.scroll_y,
         )
     }
@@ -213,68 +284,6 @@ impl TextEditor {
         }
     }
 
-    fn key_down(&mut self, ev: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        let k = &ev.keystroke;
-        let m = k.modifiers;
-        let cmd = m.control || m.platform;
-        let shift = m.shift;
-        let word = m.control || m.alt;
-        let len = self.buffer.text().len();
-        let head = self.buffer.head();
-        match k.key.as_str() {
-            "left" => self.horizontal(false, shift, word, cx),
-            "right" => self.horizontal(true, shift, word, cx),
-            "up" => self.vertical(-1., shift, cx),
-            "down" => self.vertical(1., shift, cx),
-            "pageup" => self.vertical(-self.page_rows(), shift, cx),
-            "pagedown" => self.vertical(self.page_rows(), shift, cx),
-            "home" if cmd => self.jump(0, shift, cx),
-            "end" if cmd => self.jump(len, shift, cx),
-            "home" => self.jump(self.buffer.smart_home(head), shift, cx),
-            "end" => self.jump(self.buffer.line_end(head), shift, cx),
-            "backspace" => {
-                self.buffer.backspace(word);
-                self.edited(cx);
-            }
-            "delete" => {
-                self.buffer.delete(word);
-                self.edited(cx);
-            }
-            "enter" if !cmd => self.insert("\n", cx),
-            "tab" if !cmd && !shift => self.insert("  ", cx),
-            "a" if cmd => {
-                self.buffer.select_all();
-                cx.notify();
-            }
-            "c" if cmd => self.copy(cx),
-            "x" if cmd => {
-                if let Some(text) = self.buffer.cut() {
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    self.edited(cx);
-                }
-            }
-            "v" if cmd => self.paste(cx),
-            "z" if cmd && shift => {
-                if self.buffer.redo() {
-                    self.edited(cx);
-                }
-            }
-            "z" if cmd => {
-                if self.buffer.undo() {
-                    self.edited(cx);
-                }
-            }
-            "y" if cmd => {
-                if self.buffer.redo() {
-                    self.edited(cx);
-                }
-            }
-            "s" if cmd => cx.emit(EditorEvent::Save),
-            _ => return,
-        }
-        cx.stop_propagation();
-    }
-
     fn mouse_down(&mut self, at: Point<Pixels>, clicks: usize, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
         let Some(offset) = self.offset_at_window(at) else {
@@ -288,6 +297,7 @@ impl TextEditor {
         self.drag_origin = if shift { self.buffer.anchor() } else { self.buffer.selection().start };
         self.dragging = clicks == 1;
         self.goal_x = None;
+        cx.emit(EditorEvent::Cursor);
         cx.notify();
     }
 
@@ -305,11 +315,12 @@ impl TextEditor {
         self.dragging = false;
     }
 
-    fn scroll_by(&mut self, dy: Pixels, cx: &mut Context<Self>) {
-        let max = self.max_scroll();
-        let next = (self.scroll_y - dy).clamp(px(0.), max);
-        if next != self.scroll_y {
-            self.scroll_y = next;
+    fn scroll_by(&mut self, delta: Point<Pixels>, cx: &mut Context<Self>) {
+        let y = (self.scroll_y - delta.y).clamp(px(0.), self.max_scroll());
+        let x = (self.scroll_x - delta.x).clamp(px(0.), self.max_scroll_x());
+        if y != self.scroll_y || x != self.scroll_x {
+            self.scroll_y = y;
+            self.scroll_x = x;
             cx.notify();
         }
     }
@@ -319,21 +330,44 @@ impl TextEditor {
         (content - self.bounds.size.height).max(px(0.))
     }
 
+    fn view_width(&self) -> Pixels {
+        (self.bounds.size.width - self.left() - px(PAD_RIGHT)).max(px(0.))
+    }
+
+    fn max_scroll_x(&self) -> Pixels {
+        if self.style.wrap {
+            return px(0.);
+        }
+        let widest = self.layout.as_ref().map_or(px(0.), |l| l.width);
+        (widest + px(PAD_RIGHT) - self.view_width()).max(px(0.))
+    }
+
     fn adopt_layout(&mut self, layout: Rc<EditorLayout>, bounds: Bounds<Pixels>) {
         self.layout = Some(layout.clone());
         self.bounds = bounds;
         if self.autoscroll {
             self.autoscroll = false;
-            let caret = layout.position(self.buffer.head()).y + px(PAD_TOP);
+            let p = layout.position(self.buffer.head());
+            let caret = p.y + px(PAD_TOP);
             let lh = layout.line_height;
             let view = bounds.size.height;
-            if caret < self.scroll_y + lh {
+            if std::mem::take(&mut self.center_next) {
+                self.scroll_y = caret - view / 2.;
+            } else if caret < self.scroll_y + lh {
                 self.scroll_y = caret - lh;
             } else if caret + lh * 2. > self.scroll_y + view {
                 self.scroll_y = caret + lh * 2. - view;
             }
+            let width = self.view_width();
+            let margin = layout.font_size * 2.;
+            if p.x < self.scroll_x + margin {
+                self.scroll_x = p.x - margin;
+            } else if p.x + margin > self.scroll_x + width {
+                self.scroll_x = p.x + margin - width;
+            }
         }
         self.scroll_y = self.scroll_y.clamp(px(0.), self.max_scroll());
+        self.scroll_x = self.scroll_x.clamp(px(0.), self.max_scroll_x());
     }
 }
 
@@ -359,8 +393,11 @@ impl Render for TextEditor {
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.mouse_up()))
             .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, _| this.mouse_up()))
             .on_scroll_wheel(cx.listener(|this, ev: &ScrollWheelEvent, _, cx| {
-                let dy = ev.delta.pixel_delta(this.line_height()).y;
-                this.scroll_by(dy, cx);
+                let mut delta = ev.delta.pixel_delta(this.line_height());
+                if ev.modifiers.shift && delta.x == px(0.) {
+                    delta = point(delta.y, px(0.));
+                }
+                this.scroll_by(delta, cx);
             }))
             .cursor(CursorStyle::IBeam)
             .size_full()

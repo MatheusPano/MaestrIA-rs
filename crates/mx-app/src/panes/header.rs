@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, AppContext, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder,
+    AnyElement, App, AppContext, ClickEvent, ClipboardItem, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
+    Modifiers, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
     px,
 };
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
@@ -29,6 +29,9 @@ pub struct Header {
     relaunch: Option<String>,
     hibernated: bool,
     agent: bool,
+    name: Option<String>,
+    session: Option<String>,
+    twins: usize,
     pin: Option<bool>,
     done: bool,
     dim: bool,
@@ -60,6 +63,13 @@ impl Header {
             relaunch: launcher.filter(|_| t.exited).map(|l| l.command.clone()),
             hibernated: t.hibernated,
             agent: t.kind == TabKind::Claude,
+            name: t.agent_name.clone(),
+            session: t.resume_id().map(str::to_owned),
+            twins: store
+                .tabs()
+                .iter()
+                .filter(|x| x.id != t.id && !x.exited && x.agent_name.is_some() && x.agent_name == t.agent_name)
+                .count(),
             pin: (t.pinned || store.pane_count() > 1).then_some(t.pinned),
             done: t.done,
             dim: show_focus && !focused,
@@ -71,13 +81,23 @@ impl Header {
     fn button(
         &self,
         mx: &Mx,
-        (name, glyph, color): (&str, Icon, Hsla),
+        look: (&str, Icon, Hsla),
         tooltip: impl Into<SharedString>,
         host: &Entity<StoreHost>,
         act: impl Fn(&mut Store, &str) + 'static,
     ) -> AnyElement {
         let host = host.clone();
         let id = self.id.clone();
+        self.button_with(mx, look, tooltip, move |_, _, cx| update_store(&host, cx, |s| act(s, &id)))
+    }
+
+    fn button_with(
+        &self,
+        mx: &Mx,
+        (name, glyph, color): (&str, Icon, Hsla),
+        tooltip: impl Into<SharedString>,
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> AnyElement {
         div()
             .id(SharedString::from(format!("pane-{name}:{}", self.id)))
             .flex_none()
@@ -89,12 +109,24 @@ impl Header {
             .cursor_pointer()
             .hover(|s| s.bg(mx.bg_hover))
             .tooltip(tip(tooltip.into()))
-            .on_click(move |_, _, cx: &mut App| {
+            .on_click(move |ev, window, cx: &mut App| {
                 cx.stop_propagation();
-                update_store(&host, cx, |s| act(s, &id))
+                on_click(ev, window, cx)
             })
             .child(icon(glyph, 16., color))
             .into_any_element()
+    }
+
+    fn agent_button(&self, mx: &Mx, host: &Entity<StoreHost>) -> AnyElement {
+        let tooltip = agent_tooltip(self.name.as_deref(), self.session.as_deref());
+        let (host, name, session, twins) = (host.clone(), self.name.clone(), self.session.clone(), self.twins);
+        self.button_with(mx, ("agent", Icon::Fingerprint, mx.fg_faint), tooltip, move |ev, _, cx| {
+            let Some((value, banner)) = agent_copy(name.as_deref(), session.as_deref(), twins, ev.modifiers()) else {
+                return;
+            };
+            cx.write_to_clipboard(ClipboardItem::new_string(value));
+            update_store(&host, cx, |s| s.show_banner(&banner));
+        })
     }
 
     pub fn render(self, mx: &Mx, host: &Entity<StoreHost>) -> impl IntoElement {
@@ -107,7 +139,7 @@ impl Header {
             buttons.push(self.button(mx, ("wake", Icon::PlayArrow, faint), "Retomar a conversa", host, |s, id| s.wake(id)));
         }
         if self.agent {
-            buttons.push(self.button(mx, ("agent", Icon::Fingerprint, faint), "Copiar o nome da sessão", host, |_, _| {}));
+            buttons.push(self.agent_button(mx, host));
         }
         if let Some(pinned) = self.pin {
             let (glyph, color) = if pinned { (Icon::PushPin, mx.accent) } else { (Icon::PushPinOutlined, faint) };
@@ -122,8 +154,9 @@ impl Header {
             } else {
                 (Icon::CheckCircleOutline, faint, "Marcar esta sessão como concluída")
             };
-            buttons.push(self.button(mx, ("done", glyph, color), tooltip, host, move |s, id| {
-                s.set_done(id, !done);
+            let id = self.id.clone();
+            buttons.push(self.button_with(mx, ("done", glyph, color), tooltip, move |_, window, cx| {
+                crate::app::panel_actions::set_done(&id, !done, window, cx)
             }));
         }
         buttons.push(self.button(mx, ("close", Icon::CloseRounded, faint), close_tooltip(), host, |s, id| s.dismiss(id)));
@@ -191,6 +224,37 @@ impl Header {
     }
 }
 
+fn held_for_id(m: Modifiers) -> bool {
+    if cfg!(target_os = "linux") { m.control } else { m.alt }
+}
+
+pub fn agent_tooltip(name: Option<&str>, session: Option<&str>) -> String {
+    let click = if cfg!(target_os = "linux") { "Ctrl+clique" } else { "⌥ clique" };
+    let mut lines = Vec::new();
+    if let Some(name) = name {
+        lines.push(format!("Nome: {name}  ·  clique pra copiar"));
+    }
+    if let Some(id) = session {
+        lines.push(format!("Sessão: {id}  ·  {click} pra copiar"));
+    }
+    lines.join("\n")
+}
+
+pub fn agent_copy(name: Option<&str>, session: Option<&str>, twins: usize, m: Modifiers) -> Option<(String, String)> {
+    let wants_id = held_for_id(m) || name.is_none();
+    if wants_id {
+        let id = session?;
+        return Some((id.to_owned(), format!("Id da sessão copiado: {id}")));
+    }
+    let name = name?;
+    let banner = if twins == 0 {
+        format!("Nome copiado: {name} — outro agente fala com esta sessão por esse nome")
+    } else {
+        format!("Nome copiado: {name} — cuidado: mais {twins} sessão(ões) atendem por esse mesmo nome")
+    };
+    Some((name.to_owned(), banner))
+}
+
 fn more_button(mx: &Mx, tab: &str) -> AnyElement {
     let tab = tab.to_owned();
     div()
@@ -215,6 +279,36 @@ fn more_button(mx: &Mx, tab: &str) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clicking_the_fingerprint_copies_the_name_and_says_who_else_answers_to_it() {
+        let plain = Modifiers::none();
+        assert_eq!(
+            agent_copy(Some("api"), Some("abc"), 0, plain),
+            Some(("api".into(), "Nome copiado: api — outro agente fala com esta sessão por esse nome".into()))
+        );
+        assert_eq!(
+            agent_copy(Some("api"), Some("abc"), 2, plain).unwrap().1,
+            "Nome copiado: api — cuidado: mais 2 sessão(ões) atendem por esse mesmo nome"
+        );
+    }
+
+    #[test]
+    fn ctrl_click_or_a_nameless_session_copies_the_id() {
+        let ctrl = Modifiers { control: true, ..Modifiers::none() };
+        assert_eq!(agent_copy(Some("api"), Some("abc"), 0, ctrl), Some(("abc".into(), "Id da sessão copiado: abc".into())));
+        assert_eq!(agent_copy(None, Some("abc"), 0, Modifiers::none()).unwrap().0, "abc");
+        assert_eq!(agent_copy(None, None, 0, Modifiers::none()), None);
+    }
+
+    #[test]
+    fn the_fingerprint_tooltip_has_one_line_per_thing_it_can_copy() {
+        assert_eq!(
+            agent_tooltip(Some("api"), Some("abc")),
+            "Nome: api  ·  clique pra copiar\nSessão: abc  ·  Ctrl+clique pra copiar"
+        );
+        assert_eq!(agent_tooltip(Some("api"), None), "Nome: api  ·  clique pra copiar");
+    }
 
     #[test]
     fn the_close_tooltip_names_the_chord_that_ends_the_session() {

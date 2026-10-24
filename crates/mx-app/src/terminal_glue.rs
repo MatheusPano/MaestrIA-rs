@@ -86,8 +86,11 @@ pub fn follow(href: &str, tab: Option<&str>, cwd: Option<&str>, cx: &mut App) {
 
 fn open_external(target: &str) {
     let opener = if LINUX { "xdg-open" } else { "open" };
-    if let Err(err) = std::process::Command::new(opener).arg(target).spawn() {
-        log::warn!("{opener} {target}: {err}");
+    match std::process::Command::new(opener).arg(target).spawn() {
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        Err(err) => log::warn!("{opener} {target}: {err}"),
     }
 }
 

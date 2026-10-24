@@ -13,7 +13,7 @@ fn ok() -> ShResult {
 fn linux_alert_is_notify_send_with_quoted_title_and_body() {
     assert_eq!(
         alert_command(Platform::Linux, "MaestrIA", "api · it's waiting"),
-        r"notify-send -a maestria 'MaestrIA' 'api · it'\''s waiting'"
+        r"notify-send -a maestria -- 'MaestrIA' 'api · it'\''s waiting'"
     );
 }
 
@@ -32,7 +32,7 @@ async fn alert_runs_through_the_runner_without_cwd() {
     Notifier::on(fake.clone(), Platform::Linux).alert("MaestrIA", "t · c").await;
     assert_eq!(
         fake.calls(),
-        vec![Call { command: "notify-send -a maestria 'MaestrIA' 't · c'".into(), cwd: None }]
+        vec![Call { command: "notify-send -a maestria -- 'MaestrIA' 't · c'".into(), cwd: None }]
     );
 }
 
@@ -105,7 +105,7 @@ async fn editor_opens_with_code_and_jumps_to_a_line_with_dash_g() {
     let fake = FakeRunner::new().with_fallback(ok());
     assert!(editor::open_on(&fake, Platform::Linux, "/r", None).await);
     assert!(editor::open_on(&fake, Platform::Linux, "/r/a.rs", Some(12)).await);
-    assert_eq!(fake.commands(), ["code '/r'", "code -g '/r/a.rs:12'"]);
+    assert_eq!(fake.commands(), ["code -- '/r'", "code -g -- '/r/a.rs:12'"]);
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn editor_on_linux_falls_back_to_insiders_then_xdg_open() {
     let fake = FakeRunner::new();
     fake.respond("xdg-open", ok());
     assert!(editor::open_on(&fake, Platform::Linux, "/r", None).await);
-    assert_eq!(fake.commands(), ["code '/r'", "code-insiders '/r'", "xdg-open '/r'"]);
+    assert_eq!(fake.commands(), ["code -- '/r'", "code-insiders -- '/r'", "xdg-open '/r'"]);
     let none = FakeRunner::new();
     assert!(!editor::open_on(&none, Platform::Linux, "/r", None).await);
 }
@@ -123,5 +123,29 @@ async fn editor_on_mac_falls_back_to_open_dash_a() {
     let fake = FakeRunner::new();
     fake.respond("open -a", ok());
     assert!(editor::open_on(&fake, Platform::MacOs, "/r", None).await);
-    assert_eq!(fake.commands(), ["code '/r'", "open -a 'Visual Studio Code' '/r'"]);
+    assert_eq!(fake.commands(), ["code -- '/r'", "open -a 'Visual Studio Code' '/r'"]);
+}
+
+#[tokio::test]
+async fn operands_that_look_like_options_are_never_read_as_options() {
+    assert_eq!(
+        alert_command(Platform::Linux, "-t 1", "--help"),
+        "notify-send -a maestria -- '-t 1' '--help'"
+    );
+    let fake = FakeRunner::new();
+    fake.respond("xdg-open", ok());
+    fake.respond("open", ok());
+    assert!(editor::open_on(&fake, Platform::Linux, "-r", Some(3)).await);
+    assert!(open_link_on(&fake, Platform::Linux, "--help").await);
+    assert!(reveal_on(&fake, Platform::MacOs, "-x").await);
+    assert_eq!(
+        fake.commands(),
+        [
+            "code -g -- '-r:3'",
+            "code-insiders -- '-r'",
+            "xdg-open './-r'",
+            "xdg-open './--help'",
+            "open -R './-x'"
+        ]
+    );
 }

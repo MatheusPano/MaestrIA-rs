@@ -145,3 +145,28 @@ async fn a_tick_is_skipped_while_one_is_in_flight() {
     settle().await;
     assert_eq!(slow.calls.load(Ordering::SeqCst), 2);
 }
+
+struct Hung {
+    calls: AtomicUsize,
+}
+
+impl CommandRunner for Hung {
+    fn run(&self, _: String, _: Option<String>) -> BoxFuture<'_, ShResult> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hung_poll_is_abandoned_after_the_timeout_and_polling_resumes() {
+    let hung = Arc::new(Hung { calls: AtomicUsize::new(0) });
+    let mut w = AgentsWatcher::new(hung.clone());
+    w.start();
+    settle().await;
+    tokio::time::sleep(mx_sys::agents::TIMEOUT - Duration::from_millis(100)).await;
+    settle().await;
+    assert_eq!(hung.calls.load(Ordering::SeqCst), 1);
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    settle().await;
+    assert_eq!(hung.calls.load(Ordering::SeqCst), 2);
+}

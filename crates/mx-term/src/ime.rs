@@ -8,6 +8,7 @@ const ECHO_CAP: usize = 16;
 pub enum TextOrigin {
     Key,
     Commit,
+    CommitKey,
 }
 
 #[derive(Debug, Default)]
@@ -17,6 +18,7 @@ pub struct TextInputGuard {
     composing: bool,
     held: Vec<String>,
     echoes: VecDeque<(String, Instant)>,
+    commit_echoes: VecDeque<(String, Instant)>,
 }
 
 impl TextInputGuard {
@@ -44,6 +46,7 @@ impl TextInputGuard {
         self.composing = !text.is_empty();
         if self.composing {
             self.echoes.clear();
+            self.commit_echoes.clear();
         }
     }
 
@@ -62,27 +65,46 @@ impl TextInputGuard {
         match origin {
             TextOrigin::Key => {
                 self.composing = false;
-                if self.echoes.len() == ECHO_CAP {
-                    self.echoes.pop_front();
+                if take_echo(&mut self.commit_echoes, text, now) {
+                    return false;
                 }
-                self.echoes.push_back((text.to_owned(), now));
+                remember(&mut self.echoes, text, now);
             }
             TextOrigin::Commit if self.composing => self.composing = false,
             TextOrigin::Commit => {
-                self.echoes
-                    .retain(|(_, at)| now.saturating_duration_since(*at) <= ECHO_WINDOW);
-                if let Some(i) = self.echoes.iter().position(|(t, _)| t == text) {
-                    self.echoes.remove(i);
+                if take_echo(&mut self.echoes, text, now) || !self.unspent && self.last.as_deref() == Some(text) {
                     return false;
                 }
-                if !self.unspent && self.last.as_deref() == Some(text) {
+            }
+            TextOrigin::CommitKey => {
+                self.composing = false;
+                if take_echo(&mut self.echoes, text, now) {
                     return false;
                 }
+                remember(&mut self.commit_echoes, text, now);
             }
         }
         self.unspent = false;
         self.last = Some(text.to_owned());
         true
+    }
+}
+
+fn remember(echoes: &mut VecDeque<(String, Instant)>, text: &str, now: Instant) {
+    if echoes.len() == ECHO_CAP {
+        echoes.pop_front();
+    }
+    echoes.push_back((text.to_owned(), now));
+}
+
+fn take_echo(echoes: &mut VecDeque<(String, Instant)>, text: &str, now: Instant) -> bool {
+    echoes.retain(|(_, at)| now.saturating_duration_since(*at) <= ECHO_WINDOW);
+    match echoes.iter().position(|(t, _)| t == text) {
+        Some(i) => {
+            echoes.remove(i);
+            true
+        }
+        None => false,
     }
 }
 
@@ -249,6 +271,45 @@ mod tests {
         let mut p = Pane::new();
         p.down("a").key_text("a").up("a").down("a").commit("").key_text("a");
         assert_eq!(p.written, ["a", "a"]);
+    }
+
+    #[test]
+    fn wayland_one_byte_commit_after_the_real_key_is_dropped() {
+        let mut p = Pane::new();
+        p.down("a").key_text("a").input("a", TextOrigin::CommitKey).up("a");
+        assert_eq!(p.written, ["a"]);
+    }
+
+    #[test]
+    fn wayland_one_byte_commit_after_release_is_dropped() {
+        let mut p = Pane::new();
+        p.down("a").key_text("a").up("a").input("a", TextOrigin::CommitKey);
+        assert_eq!(p.written, ["a"]);
+    }
+
+    #[test]
+    fn wayland_one_byte_commit_before_the_real_key_writes_once() {
+        let mut p = Pane::new();
+        p.input("a", TextOrigin::CommitKey).down("a").key_text("a").up("a");
+        assert_eq!(p.written, ["a"]);
+    }
+
+    #[test]
+    fn wayland_commit_only_typing_keeps_double_letters() {
+        let mut p = Pane::new();
+        for c in ["h", "e", "l", "l", "o"] {
+            p.input(c, TextOrigin::CommitKey);
+        }
+        assert_eq!(p.written.concat(), "hello");
+    }
+
+    #[test]
+    fn wayland_mixed_keys_and_commits_write_each_keystroke_once() {
+        let mut p = Pane::new();
+        p.down("l").key_text("l").input("l", TextOrigin::CommitKey).up("l");
+        p.down("l").key_text("l").up("l").input("l", TextOrigin::CommitKey);
+        p.input("l", TextOrigin::CommitKey);
+        assert_eq!(p.written.concat(), "lll");
     }
 
     #[test]

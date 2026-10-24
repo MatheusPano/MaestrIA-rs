@@ -86,8 +86,7 @@ impl Render for PickDialog {
                     .px(px(16.))
                     .py(px(7.))
                     .flex()
-                    .items_baseline()
-                    .gap(px(10.))
+                    .flex_col()
                     .cursor_pointer()
                     .when(on, |d| d.bg(hsla(t.bg_active)))
                     .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
@@ -99,7 +98,7 @@ impl Render for PickDialog {
                     .on_click(move |_, _, cx| answer(&host, DialogAnswer::Text(Some(value.clone())), cx))
                     .child(div().text_size(px(13.5)).text_color(hsla(t.fg)).child(item.label.clone()))
                     .when_some(item.detail.clone(), |d, detail| {
-                        d.child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(hsla(t.fg_faint)).child(detail))
+                        d.child(div().min_w_0().truncate().text_size(px(12.)).text_color(hsla(t.fg_faint)).child(detail))
                     }),
             );
         }

@@ -29,6 +29,8 @@ pub struct Sidebar {
     search_focus: FocusHandle,
     scroll: ScrollHandle,
     revealed: Option<(String, Option<String>)>,
+    search_marked: Option<std::ops::Range<usize>>,
+    search_bounds: gpui::Bounds<gpui::Pixels>,
 }
 
 pub fn no_hits_text(query: &str, filters: usize) -> String {
@@ -49,7 +51,14 @@ impl Sidebar {
         let search_focus = cx.focus_handle();
         cx.on_focus(&search_focus, window, |_, _, cx| cx.notify()).detach();
         cx.on_blur(&search_focus, window, |_, _, cx| cx.notify()).detach();
-        Sidebar { host, search_focus, scroll: ScrollHandle::new(), revealed: None }
+        Sidebar {
+            host,
+            search_focus,
+            scroll: ScrollHandle::new(),
+            revealed: None,
+            search_marked: None,
+            search_bounds: gpui::Bounds::default(),
+        }
     }
 
     pub fn focus_search(&self, window: &mut Window) {
@@ -220,6 +229,7 @@ fn no_hits(mx: &Mx, host: &Entity<StoreHost>, store: &Store) -> AnyElement {
 
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::chrome::anim::slots::forget(cx.entity_id(), cx);
         let mx = Mx::get(cx).clone();
         let plugin_tab = self.host.read(cx).store.shown_plugin().and_then(|_| crate::plugin_ui::sidebar_view(cx));
         let frame = div()

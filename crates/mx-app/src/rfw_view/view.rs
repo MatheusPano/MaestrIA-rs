@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -7,6 +6,7 @@ use mx_rfw::{DynamicContent, Library, evaluate, parse_error_text, parse_library_
 use mx_theme::{Palette, Theme, Typography};
 
 use super::ActionSink;
+use super::code_editor::CodeEditors;
 use super::layout::{Ctx, DragNow, Fit, grow};
 use super::menu::{self, HasMenu, OpenMenu};
 use super::style::{UI_FONT, UI_LINE, hsla, rfw_theme};
@@ -31,8 +31,9 @@ pub struct RfwView {
     sink: ActionSink,
     background: Option<gpui::Hsla>,
     pub(super) menu: Option<OpenMenu>,
+    hoisted_menu: bool,
     pub(super) dragging: Option<DragNow>,
-    pub(super) measured: HashMap<u64, f32>,
+    editors: CodeEditors,
 }
 
 impl HasMenu for RfwView {
@@ -56,8 +57,9 @@ impl RfwView {
             sink,
             background: None,
             menu: None,
+            hoisted_menu: false,
             dragging: None,
-            measured: HashMap::new(),
+            editors: CodeEditors::default(),
         }
     }
 
@@ -73,6 +75,15 @@ impl RfwView {
             }
             Err(e) => self.error = Some(parse_error_text(&e)),
         }
+    }
+
+    pub fn hoist_menu(&mut self) {
+        self.hoisted_menu = true;
+    }
+
+    pub fn menu_overlay(&mut self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        let theme = self.theme.clone();
+        self.menu.as_ref().map(|m| menu::floating(&theme, cx, m).into_any_element())
     }
 
     pub fn set_root(&mut self, root: &str) {
@@ -92,13 +103,17 @@ impl RfwView {
         self.dir = dir;
     }
 
+    pub(super) fn code_pane(&self, doc: &str) -> Option<gpui::Entity<super::code_pane::CodePane>> {
+        self.editors.pane(doc).cloned()
+    }
+
     pub fn set_background(&mut self, background: Option<gpui::Hsla>) {
         self.background = background;
     }
 }
 
 impl Render for RfwView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !cx.has_active_drag() {
             self.dragging = None;
         }
@@ -119,6 +134,7 @@ impl Render for RfwView {
         }
         let Some(lib) = &self.library else { return root.into_any_element() };
         let tree = evaluate(lib, &self.root, &self.content);
+        self.editors.sync(&tree, &self.theme, &self.sink, window, cx);
         let mut ctx = Ctx {
             palette: &self.theme,
             dir: self.dir.as_deref(),
@@ -128,11 +144,12 @@ impl Render for RfwView {
             drops: Vec::new(),
             dragging: self.dragging.clone(),
             turns: 0.0,
-            measured: &self.measured,
             interactive: true,
+            bounded_w: true,
+            editors: Some(&self.editors),
         };
         let body = grow(render(&mut ctx, &tree, Fit::BOTH), 1.0);
-        let overlay = self.menu.as_ref().map(|m| menu::render(&p, cx, m));
+        let overlay = self.menu.as_ref().filter(|_| !self.hoisted_menu).map(|m| menu::render(&p, cx, m));
         root.child(body).children(overlay).into_any_element()
     }
 }

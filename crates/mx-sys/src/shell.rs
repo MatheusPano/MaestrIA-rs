@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::OnceLock;
+use std::time::Duration;
+
+use nix::sys::signal::{Signal, killpg};
+use nix::unistd::Pid;
 
 use crate::Platform;
 
@@ -44,6 +48,10 @@ pub fn shell() -> &'static str {
 
 pub fn q(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
+}
+
+pub fn q_operand(value: &str) -> String {
+    if value.starts_with('-') { q(&format!("./{value}")) } else { q(value) }
 }
 
 pub fn bin_dirs(home: &str, platform: Platform) -> Vec<String> {
@@ -133,7 +141,13 @@ pub fn early_exit_message(title: &str, code: Option<i32>, platform: Platform) ->
     format!("{title}: o Claude saiu na largada (código {code}) — abra o painel pra ver o motivo")
 }
 
+pub const TIMED_OUT: i32 = 124;
+
 pub async fn run(command: &str, cwd: Option<&str>) -> ShResult {
+    run_with_timeout(command, cwd, None).await
+}
+
+pub async fn run_with_timeout(command: &str, cwd: Option<&str>, limit: Option<Duration>) -> ShResult {
     let mut cmd = tokio::process::Command::new(shell());
     cmd.arg("-lc")
         .arg(command)
@@ -141,17 +155,45 @@ pub async fn run(command: &str, cwd: Option<&str>) -> ShResult {
         .envs(env())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .kill_on_drop(true);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    match cmd.output().await {
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => return ShResult::spawn_failure(e.to_string()),
+    };
+    let mut group = GroupKill(child.id());
+    let waited = child.wait_with_output();
+    let done = match limit {
+        None => waited.await,
+        Some(limit) => match tokio::time::timeout(limit, waited).await {
+            Ok(done) => done,
+            Err(_) => {
+                return output(TIMED_OUT, "", format!("timed out after {} ms", limit.as_millis()));
+            }
+        },
+    };
+    group.0 = None;
+    match done {
         Ok(out) => output(
             exit_code(&out.status),
             String::from_utf8_lossy(&out.stdout).trim(),
             String::from_utf8_lossy(&out.stderr).trim(),
         ),
         Err(e) => ShResult::spawn_failure(e.to_string()),
+    }
+}
+
+struct GroupKill(Option<u32>);
+
+impl Drop for GroupKill {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0.and_then(|p| i32::try_from(p).ok()) {
+            let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+pub mod code_editor;
 pub mod core_layout;
 pub mod core_widgets;
 pub mod maestria;
@@ -5,6 +6,7 @@ pub mod maestria;
 use crate::decoders::{Color, color};
 use crate::tree::{LocalLibrary, Node};
 
+use self::code_editor::CodeEditor;
 use self::core_layout::{SingleChildScrollView, SizedBox, Stack, Text, Wrap};
 use self::core_widgets::{
     Align, Center, Container, Expanded, Flex, FractionallySizedBox, GestureDetector, Opacity, Padding, Positioned,
@@ -66,6 +68,7 @@ pub enum Local<'a> {
     MenuButton(Box<Pressable<'a>>),
     Draggable(Draggable<'a>),
     DropTarget(DropTarget<'a>),
+    CodeEditor(Box<CodeEditor<'a>>),
     Unsupported(&'a Node),
 }
 
@@ -108,6 +111,7 @@ pub fn decode(n: &Node) -> Local<'_> {
             "MenuButton" => Local::MenuButton(Box::new(Pressable::from_node(n, true))),
             "Draggable" => Local::Draggable(Draggable::from_node(n)),
             "DropTarget" => Local::DropTarget(DropTarget::from_node(n)),
+            "CodeEditor" => Local::CodeEditor(Box::new(CodeEditor::from_node(n))),
             _ => Local::Unsupported(n),
         },
         _ => Local::Unsupported(n),

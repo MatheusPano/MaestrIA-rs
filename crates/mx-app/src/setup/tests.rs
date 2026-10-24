@@ -202,6 +202,57 @@ fn a_disk_change_reloads_an_untouched_file_and_flags_an_edited_one(cx: &mut Test
 }
 
 #[gpui::test]
+fn a_read_started_before_saving_does_not_bring_the_old_text_back(cx: &mut TestAppContext) {
+    let dir = Scratch::new();
+    let root = dir.root();
+    setup::write(&root, "CLAUDE.md", "one").unwrap();
+    let (p, cx) = open(cx, &root, Some("CLAUDE.md"));
+    let read = p.view.read_with(cx, |v, _| v.reads);
+    focus_editor(&p, cx);
+    cx.simulate_input("x");
+    cx.simulate_keystrokes("ctrl-s");
+    assert_eq!(setup::read(&root, "CLAUDE.md"), "xone");
+    let slots = setup::scan(&root);
+    let stale = Some(("CLAUDE.md".to_owned(), "one".to_owned()));
+    p.view.update(cx, |v, cx| v.tick_read(read, slots, stale, cx));
+    assert_eq!(text(&p, cx), "xone");
+}
+
+#[gpui::test]
+fn a_hidden_setup_stops_polling_the_disk(cx: &mut TestAppContext) {
+    let dir = Scratch::new();
+    let (p, cx) = open(cx, &dir.root(), Some("CLAUDE.md"));
+    assert!(p.view.read_with(cx, |v, _| v.poll.is_some()));
+    p.view.update(cx, |v, cx| v.set_visible(false, cx));
+    assert!(p.view.read_with(cx, |v, _| v.poll.is_none()));
+    p.view.update(cx, |v, cx| v.set_visible(true, cx));
+    assert!(p.view.read_with(cx, |v, _| v.poll.is_some()));
+}
+
+#[gpui::test]
+fn resyncing_the_same_props_does_not_repaint(cx: &mut TestAppContext) {
+    let dir = Scratch::new();
+    let (p, cx) = open(cx, &dir.root(), Some("CLAUDE.md"));
+    let theme = p.view.read_with(cx, |v, _| v.theme.clone());
+    let count = Rc::new(RefCell::new(0));
+    let seen = count.clone();
+    let _watch = cx.update(|_, cx| cx.observe(&p.view, move |_, _| *seen.borrow_mut() += 1));
+    p.view.update(cx, |v, cx| {
+        v.set_theme(theme.clone(), cx);
+        v.set_zoom(0., cx);
+        v.set_title(None, cx);
+        v.set_pinned(false, cx);
+        v.set_header(true, cx);
+        v.set_visible(true, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(*count.borrow(), 0);
+    p.view.update(cx, |v, cx| v.set_pinned(true, cx));
+    cx.run_until_parked();
+    assert_eq!(*count.borrow(), 1);
+}
+
+#[gpui::test]
 fn the_question_mark_opens_the_section_help_and_entendi_closes_it(cx: &mut TestAppContext) {
     let dir = Scratch::new();
     let (p, cx) = open(cx, &dir.root(), None);

@@ -49,7 +49,9 @@ impl DocState {
             return Poll::Same;
         }
         if self.edited(text) {
-            self.outside = true;
+            if std::mem::replace(&mut self.outside, true) {
+                return Poll::Same;
+            }
             return Poll::Outside;
         }
         self.disk = now.clone();

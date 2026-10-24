@@ -1,4 +1,4 @@
-use gpui::{App, Entity, KeyDownEvent, Window};
+use gpui::{App, Entity, KeyContext, KeyDownEvent, Window};
 use mx_plugins::Plugins;
 use mx_plugins::chord::KeyPress;
 use mx_store::{ClaudeSpec, DocPlace, Store};
@@ -162,11 +162,17 @@ pub fn run_action(store: &mut Store, a: Action) -> Option<UiRequest> {
     None
 }
 
+const TEXT_CONTEXTS: [&str; 4] = ["TextField", "SidebarSearch", "SetupEditor", "CodeEditor"];
+
 pub fn focus_of(window: &Window) -> Focus {
+    focus_from(&window.context_stack())
+}
+
+pub fn focus_from(stack: &[KeyContext]) -> Focus {
     let mut f = Focus::default();
-    for ctx in window.context_stack() {
+    for ctx in stack {
         f.terminal |= ctx.contains("Terminal");
-        f.text_field |= ctx.contains("TextField") || ctx.contains("SidebarSearch");
+        f.text_field |= TEXT_CONTEXTS.iter().any(|name| ctx.contains(name));
     }
     f
 }

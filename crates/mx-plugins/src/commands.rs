@@ -46,12 +46,67 @@ pub fn sh_quote(v: &str) -> String {
 static VAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{([A-Za-z0-9_]+)\}").unwrap());
 
 pub fn expand(template: &str, lookup: impl Fn(&str) -> Option<String>, quote: bool) -> String {
-    VAR.replace_all(template, |c: &Captures| match lookup(&c[1]) {
-        None => c[0].to_owned(),
-        Some(v) if quote => sh_quote(&v),
-        Some(v) => v,
-    })
-    .into_owned()
+    if quote {
+        return expand_for_shell(template, lookup);
+    }
+    VAR.replace_all(template, |c: &Captures| lookup(&c[1]).unwrap_or_else(|| c[0].to_owned())).into_owned()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Quoting {
+    Bare,
+    Single,
+    Double,
+    Backtick,
+}
+
+fn expand_for_shell(template: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut stack = vec![Quoting::Bare];
+    let mut rest = template;
+    while let Some(c) = rest.chars().next() {
+        let top = *stack.last().unwrap_or(&Quoting::Bare);
+        if let Some(found) = VAR.find(rest).filter(|m| m.start() == 0) {
+            match lookup(&rest[2..found.end() - 1]) {
+                None => out.push_str(found.as_str()),
+                Some(v) => match top {
+                    Quoting::Single => out.push_str(&format!("'{}'", sh_quote(&v))),
+                    Quoting::Double => out.push_str(&format!("\"{}\"", sh_quote(&v))),
+                    Quoting::Bare | Quoting::Backtick => out.push_str(&sh_quote(&v)),
+                },
+            }
+            rest = &rest[found.end()..];
+            continue;
+        }
+        let mut step = c.len_utf8();
+        match (top, c) {
+            (Quoting::Single, '\'') => {
+                stack.pop();
+            }
+            (Quoting::Single, _) => {}
+            (_, '\\') => step += rest[1..].chars().next().map_or(0, char::len_utf8),
+            (Quoting::Double, '"') => {
+                stack.pop();
+            }
+            (Quoting::Bare | Quoting::Backtick, '\'') => stack.push(Quoting::Single),
+            (Quoting::Bare | Quoting::Backtick, '"') => stack.push(Quoting::Double),
+            (Quoting::Backtick, '`') => {
+                stack.pop();
+            }
+            (_, '`') => stack.push(Quoting::Backtick),
+            (_, '$') if rest[1..].starts_with('(') => {
+                stack.push(Quoting::Bare);
+                step += 1;
+            }
+            (Quoting::Bare, ')') if stack.len() > 1 => {
+                stack.pop();
+            }
+            _ => {}
+        }
+        out.push_str(&rest[..step]);
+        rest = &rest[step..];
+    }
+    out
 }
 
 pub fn expand_values(template: &str, values: &CommandValues, quote: bool) -> String {
@@ -97,4 +152,45 @@ pub fn no_session_banner(title: &str) -> String {
 
 pub fn failure_banner(title: &str, message: &str) -> String {
     format!("{title}: {message}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand;
+
+    fn values(name: &str) -> Option<String> {
+        match name {
+            "title" => Some(r#"x" $(touch /tmp/pwned) '; rm -rf ~; '"#.to_owned()),
+            "cwd" => Some("/repo/it's".to_owned()),
+            _ => None,
+        }
+    }
+
+    fn words(command: &str) -> Vec<String> {
+        let script = format!("for w in {command}; do printf '%s\\n' \"$w\"; done");
+        let out = std::process::Command::new("sh").arg("-c").arg(script).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap().lines().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn bare_placeholders_keep_the_documented_single_quoting() {
+        assert_eq!(
+            expand("cd ${cwd} && echo ${title} ${nada}", values, true),
+            r#"cd '/repo/it'\''s' && echo 'x" $(touch /tmp/pwned) '\''; rm -rf ~; '\''' ${nada}"#
+        );
+        assert_eq!(expand("revise ${cwd}", values, false), "revise /repo/it's");
+    }
+
+    #[test]
+    fn placeholders_inside_quotes_cannot_break_out() {
+        let title = values("title").unwrap();
+        let cwd = values("cwd").unwrap();
+        assert_eq!(words(&expand(r#""${title}""#, values, true)), [title.as_str()]);
+        assert_eq!(words(&expand("'${cwd}'", values, true)), [cwd.as_str()]);
+        assert_eq!(words(&expand(r#""[${title}] em ${cwd}""#, values, true)), [format!("[{title}] em {cwd}")]);
+        assert_eq!(words(&expand("'a ${title} b'", values, true)), [format!("a {title} b")]);
+        assert_eq!(words(&expand(r#""$(printf %s ${cwd})""#, values, true)), [cwd.as_str()]);
+        assert_eq!(words(&expand(r#"\"${cwd}"#, values, true)), [format!("\"{cwd}")]);
+    }
 }

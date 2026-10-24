@@ -64,19 +64,26 @@ pub fn open_menu(rows: Vec<MenuRow>, cx: &mut Context<BlocksView>) -> impl Fn(gp
     }
 }
 
-pub fn icon_button(p: &mut Paint, icon: &'static str, color: Hsla, tip: Option<String>, action: Option<String>, cx: &mut Context<BlocksView>) -> AnyElement {
+fn icon_face(p: &mut Paint, icon: &'static str, color: Hsla, tip: Option<String>, enabled: bool) -> gpui::Stateful<gpui::Div> {
     let fg = p.view.theme.fg;
     let mut el = div().id(p.id("ib")).size(px(30.0)).flex_none().flex().items_center().justify_center().rounded_full();
-    let enabled = action.is_some();
     let color = if enabled { color } else { alpha(p.view.theme.fg_faint, 0.5) };
     el = el.child(named(icon, 17.0, color));
     if let Some(t) = tip {
         el = el.tooltip(tooltip::builder(t, &p.view.theme));
     }
-    if let Some(a) = action {
-        el = el.cursor_pointer().hover(move |s| s.bg(alpha(fg, 0.08))).on_click(on_act(a, cx));
+    if enabled {
+        el = el.cursor_pointer().hover(move |s| s.bg(alpha(fg, 0.08)));
     }
-    el.into_any_element()
+    el
+}
+
+pub fn icon_button(p: &mut Paint, icon: &'static str, color: Hsla, tip: Option<String>, action: Option<String>, cx: &mut Context<BlocksView>) -> AnyElement {
+    let el = icon_face(p, icon, color, tip, action.is_some());
+    match action {
+        Some(a) => el.on_click(on_act(a, cx)).into_any_element(),
+        None => el.into_any_element(),
+    }
 }
 
 pub fn button(p: &mut Paint, b: &Button, cx: &mut Context<BlocksView>) -> AnyElement {
@@ -85,8 +92,12 @@ pub fn button(p: &mut Paint, b: &Button, cx: &mut Context<BlocksView>) -> AnyEle
     let icon = plugin_icon(b.icon.as_deref());
     if b.icon_only() {
         let color = if b.tone.is_none() { hsla(p.view.theme.fg_dim) } else { tone(p, b.tone.as_deref()) };
-        let act = if has_menu { Some(String::new()) } else { action };
-        let el = icon_button(p, icon.unwrap_or("circle"), color, b.shown_tooltip(), act.clone(), cx);
+        let name = icon.unwrap_or("circle");
+        let el = if has_menu {
+            icon_face(p, name, color, b.shown_tooltip(), true).into_any_element()
+        } else {
+            icon_button(p, name, color, b.shown_tooltip(), action, cx)
+        };
         return with_menu(p, el, b, cx);
     }
     let th = &p.view.theme;
@@ -139,6 +150,7 @@ fn with_menu(p: &mut Paint, el: AnyElement, b: &Button, cx: &mut Context<BlocksV
     let open = open_menu(menu_rows(p, &b.menu), cx);
     div()
         .id(p.id("menu-btn"))
+        .debug_selector(|| "block-menu".into())
         .flex_none()
         .child(el)
         .on_click(move |e, _, app| {
@@ -146,4 +158,94 @@ fn with_menu(p: &mut Paint, el: AnyElement, b: &Button, cx: &mut Context<BlocksV
             open(e.position() + point(px(-12.0), px(18.0)), app);
         })
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use gpui::{AppContext, Context, Entity, IntoElement, Modifiers, ParentElement, Render, Styled, TestAppContext, Window, deferred, div};
+    use mx_theme::{Typography, default_theme};
+    use serde_json::json;
+
+    use super::super::ViewAction;
+    use super::super::blocks::{BlocksMode, BlocksView};
+
+    fn menu_header() -> serde_json::Map<String, serde_json::Value> {
+        json!({"type": "header", "title": "TASK#1", "actions": [
+            {"icon": "more", "tooltip": "mais", "menu": [{"action": "link:1", "label": "copiar o link"}]}
+        ]})
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+
+    struct Overlay(Entity<BlocksView>);
+
+    impl Render for Overlay {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let menu = self.0.update(cx, |v, cx| v.menu_overlay(cx));
+            div()
+                .size_full()
+                .child(deferred(div().size_full().child(self.0.clone())).with_priority(2))
+                .children(menu.map(|m| deferred(m).with_priority(2)))
+        }
+    }
+
+    #[gpui::test]
+    fn a_menu_opened_inside_a_modal_is_drawn_by_the_host_instead_of_a_nested_deferred(cx: &mut TestAppContext) {
+        let slot: Rc<RefCell<Option<Entity<BlocksView>>>> = Rc::default();
+        let slot2 = slot.clone();
+        let (_, cx) = cx.add_window_view(move |_, cx| {
+            let view = cx.new(|cx| {
+                let mut v = BlocksView::new(default_theme(), &Typography::standard(), None, BlocksMode::Modal, Rc::new(|_, _, _| {}));
+                v.hoist_menu();
+                v.set_blocks(vec![menu_header()], cx);
+                v
+            });
+            *slot2.borrow_mut() = Some(view.clone());
+            Overlay(view)
+        });
+        let view = slot.borrow().clone().unwrap();
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let b = cx.debug_bounds("block-menu").expect("menu button drawn");
+        cx.simulate_click(b.center(), Modifiers::none());
+        cx.run_until_parked();
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |v, _| v.menu.is_some()));
+    }
+
+    #[gpui::test]
+    fn an_icon_only_header_menu_opens_on_click_and_sends_only_the_picked_action(cx: &mut TestAppContext) {
+        let sent: Rc<RefCell<Vec<ViewAction>>> = Rc::default();
+        let s = sent.clone();
+        let slot: Rc<RefCell<Option<Entity<BlocksView>>>> = Rc::default();
+        let slot2 = slot.clone();
+        let (_, cx) = cx.add_window_view(move |_, cx| {
+            let sink: super::super::ActionSink = Rc::new(move |a, _, _| s.borrow_mut().push(a));
+            let mut v = BlocksView::new(default_theme(), &Typography::standard(), None, BlocksMode::Framed, sink);
+            v.set_blocks(vec![menu_header()], cx);
+            *slot2.borrow_mut() = Some(cx.entity());
+            v
+        });
+        let view = slot.borrow().clone().unwrap();
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let b = cx.debug_bounds("block-menu").expect("menu button drawn");
+        cx.simulate_click(b.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert!(sent.borrow().is_empty(), "sent {:?}", sent.borrow());
+        assert!(view.read_with(cx, |v, _| v.menu.is_some()));
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let item = cx.debug_bounds("menu-item:copiar o link").expect("menu item drawn");
+        cx.simulate_click(item.center(), Modifiers::none());
+        cx.run_until_parked();
+        let sent = sent.borrow();
+        assert_eq!(sent.iter().map(|a| a.action.as_str()).collect::<Vec<_>>(), ["link:1"]);
+        assert!(view.read_with(cx, |v, _| v.menu.is_none()));
+    }
 }

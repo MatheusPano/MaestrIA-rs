@@ -38,6 +38,7 @@ pub fn render(cx: &mut Ctx, local: Local, fit: Fit, turns: f64) -> El {
         Local::MenuButton(p) => menu_button(cx, &p),
         Local::Draggable(d) => draggable(cx, &d, fit, cx.palette.clone()),
         Local::DropTarget(d) => drop_target(cx, &d, fit),
+        Local::CodeEditor(e) => super::code_editor::render(cx, &e),
         _ => error_text(cx, "widget sem desenho", hsla(cx.palette.yellow)),
     }
 }

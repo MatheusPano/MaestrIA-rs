@@ -4,7 +4,7 @@ use mx_plugins::chord::{Chord, Key, KeyPress};
 use serde_json::json;
 
 use super::chord::{chord_id, press, slot_of};
-use super::dispatch::{Focus, Hit, resolve};
+use super::dispatch::{Focus, Hit, focus_from, resolve};
 use super::settings::{edit, shortcut_rows, stolen_banner};
 use super::*;
 use crate::chrome::settings::{ChordCheck, KeyPress as RecPress, SettingsAction};
@@ -330,4 +330,23 @@ fn terminal_fixed_keys_by_platform() {
     assert_eq!(terminal_key(&pressed("meta+a"), false), Some(TerminalKey::SelectAll));
     assert_eq!(terminal_key(&pressed("ctrl+a"), true), None);
     assert_eq!(terminal_key(&pressed("ctrl+c"), true), None);
+}
+
+#[test]
+fn the_setup_and_code_editors_count_as_text_fields() {
+    for name in ["SetupEditor", "CodeEditor", "TextField", "SidebarSearch"] {
+        let stack = [gpui::KeyContext::parse("Root").unwrap(), gpui::KeyContext::parse(name).unwrap()];
+        assert_eq!(focus_from(&stack), Focus { terminal: false, text_field: true }, "{name}");
+    }
+    let stack = [gpui::KeyContext::parse("Terminal").unwrap()];
+    assert_eq!(focus_from(&stack), Focus { terminal: true, text_field: false });
+}
+
+#[test]
+fn ctrl_shift_arrows_select_words_in_the_setup_editor_instead_of_switching_sessions() {
+    let m = Keymap::defaults(true);
+    let f = focus_from(&[gpui::KeyContext::parse("SetupEditor").unwrap()]);
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), f, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+right"), f, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), Focus::default(), no_plugin), Some(Hit::Action(Action::PrevSession)));
 }

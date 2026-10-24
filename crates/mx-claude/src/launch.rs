@@ -159,7 +159,7 @@ impl ClaudeLaunch {
             parts.push(format!("--resume {}", sh_quote(resume)));
         }
         if let Some(prompt) = self.prompt() {
-            parts.push(sh_quote(prompt));
+            parts.push(format!("-- {}", sh_quote(prompt)));
         }
         parts.join(" ")
     }

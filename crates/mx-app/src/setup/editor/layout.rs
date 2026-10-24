@@ -11,7 +11,9 @@ pub struct EditorLayout {
     pub rows: Vec<Row>,
     pub line_height: Pixels,
     pub height: Pixels,
+    pub width: Pixels,
     pub wrap_width: Pixels,
+    pub gutter: Pixels,
     pub font_size: Pixels,
     pub version: u64,
 }

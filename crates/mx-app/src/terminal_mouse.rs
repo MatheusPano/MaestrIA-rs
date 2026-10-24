@@ -14,6 +14,7 @@ pub struct Press {
     reporting: bool,
     selecting: bool,
     clicks: usize,
+    cell: (usize, usize),
 }
 
 fn mods(m: &gpui::Modifiers) -> mx_term::Mods {
@@ -42,7 +43,13 @@ impl TerminalView {
                 _ => self.session.start_selection(col, row, right, SelectionKind::Line),
             }
         }
-        self.press = Some(Press { at: event.position, reporting, selecting: event.click_count > 1, clicks: event.click_count });
+        self.press = Some(Press {
+            at: event.position,
+            reporting,
+            selecting: event.click_count > 1,
+            clicks: event.click_count,
+            cell: (col, row),
+        });
         cx.notify();
     }
 
@@ -61,7 +68,11 @@ impl TerminalView {
         }
         let (col, row, right) = self.cell(event.position);
         if press.reporting {
-            self.session.mouse_report(MouseButton::Left, MouseAction::Drag, col, row, mods(&event.modifiers));
+            if press.cell != (col, row) {
+                press.cell = (col, row);
+                self.press = Some(press);
+                self.session.mouse_report(MouseButton::Left, MouseAction::Drag, col, row, mods(&event.modifiers));
+            }
             return;
         }
         if !press.selecting {

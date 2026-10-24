@@ -52,6 +52,7 @@ pub struct Surface {
     consoles: Vec<(String, u64)>,
     theme: Option<Arc<Theme>>,
     zoom: f32,
+    overlaid: bool,
 }
 
 impl Surface {
@@ -66,7 +67,20 @@ impl Surface {
             consoles: Vec::new(),
             theme: None,
             zoom: 0.0,
+            overlaid: false,
         }
+    }
+
+    pub fn overlaid(mut self) -> Surface {
+        self.overlaid = true;
+        self
+    }
+
+    pub fn menu_overlay(&self, cx: &mut App) -> Option<AnyElement> {
+        if let Some(r) = &self.rfw {
+            return r.update(cx, |v, cx| v.menu_overlay(cx));
+        }
+        self.blocks.as_ref()?.update(cx, |v, cx| v.menu_overlay(cx))
     }
 
     pub fn sync(&mut self, view: &PluginView, env: &SurfaceEnv, cx: &mut App) {
@@ -90,7 +104,14 @@ impl Surface {
                 let dir = env.dir_of(&view.plugin_id, cx);
                 let sink = sink_for(&env.host, &self.tab);
                 let (theme, typo) = (env.theme.clone(), env.typography.clone());
-                let e = cx.new(|_| RfwView::new(theme, &typo, dir, sink));
+                let overlaid = self.overlaid;
+                let e = cx.new(|_| {
+                    let mut v = RfwView::new(theme, &typo, dir, sink);
+                    if overlaid {
+                        v.hoist_menu();
+                    }
+                    v
+                });
                 self.rfw = Some(e.clone());
                 self.rfw_revision = None;
                 e
@@ -123,8 +144,12 @@ impl Surface {
                 let sink = sink_for(&env.host, &self.tab);
                 let (theme, typo, mode) = (env.theme.clone(), env.typography.clone(), self.mode);
                 let terms = env.terms.clone();
+                let overlaid = self.overlaid;
                 let e = cx.new(|_| {
                     let mut b = BlocksView::new(theme, &typo, dir, mode, sink);
+                    if overlaid {
+                        b.hoist_menu();
+                    }
                     b.set_terminal_slot(Some(Box::new(move |id: &str, _: &mut App| {
                         terms.borrow().get(id).map(|t| AnyView::from(t.clone()))
                     })));

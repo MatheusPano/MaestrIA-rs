@@ -10,6 +10,7 @@ use super::icons::named;
 use super::style::{alpha, hsla};
 
 pub const MENU_WIDTH: f32 = 216.0;
+const MENU_MAX_WIDTH: f32 = 340.0;
 const ROW: f32 = 36.0;
 const PAD: f32 = 14.0;
 const GLYPH: f32 = 16.0;
@@ -54,7 +55,8 @@ pub fn color_dot(color: Option<Hsla>, p: &Palette) -> gpui::Div {
 
 fn panel(p: &Palette) -> gpui::Div {
     div()
-        .w(px(MENU_WIDTH))
+        .min_w(px(MENU_WIDTH))
+        .max_w(px(MENU_MAX_WIDTH))
         .py(px(5.0))
         .flex()
         .flex_col()
@@ -86,6 +88,10 @@ fn row_base(id: ElementId, p: &Palette, icon: Option<gpui::AnyElement>) -> gpui:
 }
 
 pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> AnyElement {
+    deferred(floating(p, cx, menu)).with_priority(2).into_any_element()
+}
+
+pub fn floating<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> gpui::Anchored {
     let close = cx.listener(|v: &mut V, _: &gpui::MouseDownEvent, _, cx| {
         *v.menu_slot() = None;
         cx.notify();
@@ -97,7 +103,9 @@ pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> 
             MenuRow::Item { action, label, icon, color, disabled } => {
                 let fg = if *disabled { hsla(p.fg_faint) } else { color.unwrap_or(hsla(p.fg)) };
                 let glyph = icon.map(|i| named(i, 14.0, color.unwrap_or(hsla(p.fg_dim))));
+                let selector = format!("menu-item:{label}");
                 let mut r = row_base(ElementId::NamedInteger("menu".into(), i as u64), p, glyph)
+                    .debug_selector(move || selector.clone())
                     .text_color(fg)
                     .child(div().flex_1().truncate().child(label.clone()))
                     .on_hover(cx.listener(move |v: &mut V, on: &bool, _, cx| {
@@ -112,7 +120,8 @@ pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> 
                     r = r.cursor_pointer().on_click(cx.listener(move |v: &mut V, _, window, cx| {
                         *v.menu_slot() = None;
                         cx.notify();
-                        pick(action.clone(), window, cx);
+                        let (pick, action) = (pick.clone(), action.clone());
+                        window.defer(cx, move |window, app| pick(action, window, app));
                     }));
                 }
                 r.into_any_element()
@@ -131,7 +140,7 @@ pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> 
                         }
                     }));
                 if menu.sub == Some(i) {
-                    let mut sub = panel(p).absolute().left(px(MENU_WIDTH - 6.0)).top(px(-5.0));
+                    let mut sub = panel(p).absolute().left(gpui::relative(1.0)).ml(px(-4.0)).top(px(-5.0));
                     for (j, (action, label, dot)) in children.iter().enumerate() {
                         let pick = menu.pick.clone();
                         let action = action.clone();
@@ -143,7 +152,8 @@ pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> 
                                 .on_click(cx.listener(move |v: &mut V, _, window, cx| {
                                     *v.menu_slot() = None;
                                     cx.notify();
-                                    pick(action.clone(), window, cx);
+                                    let (pick, action) = (pick.clone(), action.clone());
+                                    window.defer(cx, move |window, app| pick(action, window, app));
                                 })),
                         );
                     }
@@ -153,7 +163,5 @@ pub fn render<V: HasMenu>(p: &Palette, cx: &mut Context<V>, menu: &OpenMenu) -> 
             }
         });
     }
-    deferred(anchored().position(menu.at).snap_to_window_with_margin(px(8.0)).child(list))
-        .with_priority(2)
-        .into_any_element()
+    anchored().position(menu.at).snap_to_window_with_margin(px(8.0)).child(list)
 }

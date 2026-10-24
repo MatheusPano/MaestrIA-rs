@@ -62,5 +62,7 @@ No UI dependency; the renderer (mx-app) matches on `widgets::Local` and draws.
   (list text concatenated, default ""), Wrap; material: CircularProgressIndicator (`value: None` = spinning);
   maestria: Svg, Glyph, IconButton (`enabled()`), Tooltip, Pressable / MenuButton (`menu: Vec<MenuItem>`,
   `MenuItem::is_divider`, `shown_label`, submenu `color` int), Draggable (`draggable()`, `fits(id)`), DropTarget
-  (`drop_extra(payload)` → `{payload, to}`); anything else → `Local::Unsupported(&Node)`.
+  (`drop_extra(payload)` → `{payload, to}`), CodeEditor (`code_editor::CodeEditor`: doc, text, revision, language,
+  line/column, jump, readOnly, wordWrap, fontSize (int or double, default 13), onChange/onSave/onCursor);
+  anything else → `Local::Unsupported(&Node)`.
 - `maestria::menu_extra(choice)` → `{action: choice}` for `onMenu`.

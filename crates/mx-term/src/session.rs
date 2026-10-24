@@ -13,10 +13,12 @@ use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::tty;
 use mx_theme::TerminalPalette;
 
+use crate::events::{Fanout, Subscriber};
 use crate::ime::{TextInputGuard, TextOrigin};
-use crate::io::{self, Feeder, LifeIo, LifeOwner, Port, Proxy, SharedTerm};
+use crate::io::{self, ChildPoll, Feeder, LifeIo, LifeOwner, Port, Proxy, SharedTerm};
 use crate::keys::Mods;
 use crate::mouse::{self, MouseAction, MouseButton};
+use crate::paste::paste_bytes;
 use crate::signals;
 use crate::snapshot::{Snapshot, snapshot_into};
 use crate::spawn::{self, Launch};
@@ -129,10 +131,9 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl TerminalSession {
     pub fn new(size: GridSize, palette: TerminalPalette, scrollback: usize) -> Self {
-        let (tx, rx) = async_channel::bounded(256);
+        let (fanout, rx) = Fanout::new();
         let port = Arc::new(Port {
-            events: tx,
-            dirty: AtomicBool::new(false),
+            fanout,
             writer: Mutex::new(None),
             size: Mutex::new(size),
             palette: Mutex::new(Arc::new(palette)),
@@ -184,6 +185,10 @@ impl TerminalSession {
         self.shared.events.clone()
     }
 
+    pub fn subscribe(&self) -> Subscriber {
+        self.shared.port.fanout.subscribe()
+    }
+
     pub fn same(&self, other: &TerminalSession) -> bool {
         Arc::ptr_eq(&self.shared, &other.shared)
     }
@@ -226,6 +231,7 @@ impl TerminalSession {
     fn finish_without_child(&self, code: Option<i32>) {
         {
             let mut st = lock(&self.shared.state);
+            self.retire_life(&mut st);
             st.started = true;
             st.exited = true;
             st.exit_code = code;
@@ -247,11 +253,8 @@ impl TerminalSession {
         };
         let size = self.size();
         let mut st = lock(&self.shared.state);
-        if let Some(old) = st.life.take() {
-            old.shutdown();
-        }
+        self.retire_life(&mut st);
         let pty = tty::new(&options, size.window_size(), 0)?;
-        st.generation += 1;
         st.started = true;
         st.exited = false;
         st.exit_code = None;
@@ -266,6 +269,13 @@ impl TerminalSession {
             owner,
         )?);
         Ok(())
+    }
+
+    fn retire_life(&self, st: &mut State) {
+        st.life = None;
+        st.pid = None;
+        st.generation += 1;
+        lock(&self.shared.feeder).adopt(st.generation);
     }
 
     pub fn park_now(&self) {
@@ -313,25 +323,25 @@ impl TerminalSession {
 
     pub fn kill_and_wait(&self) -> async_channel::Receiver<()> {
         let (tx, rx) = async_channel::bounded(1);
-        let (pid, generation) = {
+        let Some(generation) = ({
             let st = lock(&self.shared.state);
-            (st.pid.filter(|_| !st.exited), st.generation)
-        };
-        let Some(pid) = pid else {
+            st.pid.filter(|_| !st.exited).map(|_| st.generation)
+        }) else {
             let _ = tx.try_send(());
             return rx;
         };
         let shared = self.shared.clone();
         std::thread::spawn(move || {
-            if signals::hang_up(pid) {
-                let st = lock(&shared.state);
+            let live = |s: &State| s.generation == generation && !s.exited;
+            let st = lock(&shared.state);
+            if let Some(pid) = st.pid.filter(|_| live(&st))
+                && signals::hang_up(pid)
+            {
                 let (st, _) = shared
                     .exit_cv
-                    .wait_timeout_while(st, signals::GRACE, |s| s.generation == generation && !s.exited)
+                    .wait_timeout_while(st, signals::GRACE, |s| live(s))
                     .unwrap_or_else(|e| e.into_inner());
-                let alive = st.generation == generation && !st.exited;
-                drop(st);
-                if alive {
+                if live(&st) {
                     signals::force_kill(pid);
                 }
             }
@@ -383,12 +393,7 @@ impl TerminalSession {
 
     pub fn paste(&self, text: &str) {
         lock(&self.shared.guard).forget_last();
-        let text = text.replace("\r\n", "\r").replace('\n', "\r");
-        if self.mode().contains(TermMode::BRACKETED_PASTE) {
-            self.write(format!("\x1b[200~{text}\x1b[201~").as_bytes());
-        } else {
-            self.write(text.as_bytes());
-        }
+        self.write(&paste_bytes(text, self.mode().contains(TermMode::BRACKETED_PASTE)));
     }
 
     pub fn paste_clipboard(&self, text: Option<&str>, images_via_ctrl_v: bool) -> PasteOutcome {
@@ -451,6 +456,8 @@ impl TerminalSession {
         let mut term = self.shared.term.lock();
         term.scroll_display(Scroll::Delta(lines));
         self.shared.scrolled.store(term.grid().display_offset() != 0, Ordering::Release);
+        drop(term);
+        self.shared.port.wake();
     }
 
     pub fn mode(&self) -> TermMode {
@@ -458,7 +465,7 @@ impl TerminalSession {
     }
 
     pub fn take_dirty(&self) -> bool {
-        self.shared.port.dirty.swap(false, Ordering::AcqRel)
+        self.shared.port.fanout.take_dirty()
     }
 
     pub fn snapshot_into(&self, out: &mut Snapshot) {
@@ -550,17 +557,16 @@ fn side(right_half: bool) -> Side {
 }
 
 impl LifeOwner for Shared {
-    fn exited(&self, generation: u64, code: Option<i32>) {
-        {
-            let mut st = lock(&self.state);
-            if st.generation != generation || st.exited {
-                return;
-            }
-            st.exited = true;
-            st.exit_code = code;
-            st.pid = None;
-            st.life = None;
+    fn reap(&self, generation: u64, poll: ChildPoll<'_>) -> bool {
+        let mut st = lock(&self.state);
+        let Some(code) = poll() else { return false };
+        if st.generation != generation || st.exited {
+            return true;
         }
+        st.exited = true;
+        st.exit_code = code;
+        st.pid = None;
+        drop(st);
         self.exit_cv.notify_all();
         lock(&self.feeder).feed(&self.term, &self.port, spawn::exit_line(code).as_bytes());
         self.port.emit(TermEvent::Exited(code));
@@ -568,6 +574,7 @@ impl LifeOwner for Shared {
         if let Some(hook) = hook {
             hook(code);
         }
+        true
     }
 }
 
@@ -576,9 +583,6 @@ impl Drop for Shared {
         let st = lock(&self.state);
         if let Some(pid) = st.pid.filter(|_| !st.exited) {
             signals::hang_up(pid);
-        }
-        if let Some(life) = st.life.as_ref() {
-            life.shutdown();
         }
     }
 }

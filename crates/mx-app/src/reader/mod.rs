@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use chrono::Timelike;
 use gpui::{
-    App, ClipboardItem, Context, IntoElement, ParentElement, Pixels, Render, ScrollHandle,
+    App, ClipboardItem, Context, FocusHandle, Focusable, IntoElement, ParentElement, Pixels, Render, ScrollHandle,
     SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div, point,
     prelude::*, px,
 };
@@ -72,6 +72,13 @@ pub struct ReaderView {
     scroll: ScrollHandle,
     width: Rc<Cell<Pixels>>,
     poll: Option<Task<()>>,
+    focus: FocusHandle,
+}
+
+impl Focusable for ReaderView {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus.clone()
+    }
 }
 
 #[allow(dead_code)]
@@ -93,6 +100,7 @@ impl ReaderView {
             scroll: ScrollHandle::new(),
             width: Rc::new(Cell::new(px(COLUMN))),
             poll: None,
+            focus: cx.focus_handle(),
         };
         view.set_doc(doc, cx);
         view
@@ -117,19 +125,25 @@ impl ReaderView {
     }
 
     pub fn set_theme(&mut self, theme: Arc<Theme>, cx: &mut Context<Self>) {
-        self.theme = theme;
-        cx.notify();
+        if !Arc::ptr_eq(&self.theme, &theme) {
+            self.theme = theme;
+            cx.notify();
+        }
     }
 
     pub fn set_zoom(&mut self, zoom: f32, cx: &mut Context<Self>) {
-        self.zoom = zoom;
-        cx.notify();
+        if self.zoom != zoom {
+            self.zoom = zoom;
+            cx.notify();
+        }
     }
 
     pub fn set_header(&mut self, title: Option<String>, subtitle: Option<String>, cx: &mut Context<Self>) {
-        self.title = title;
-        self.subtitle = subtitle;
-        cx.notify();
+        if self.title != title || self.subtitle != subtitle {
+            self.title = title;
+            self.subtitle = subtitle;
+            cx.notify();
+        }
     }
 
     pub fn set_paths(&mut self, cwd: Option<String>, home: Option<String>) {
@@ -138,8 +152,10 @@ impl ReaderView {
     }
 
     pub fn set_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
-        self.pinned = pinned;
-        cx.notify();
+        if self.pinned != pinned {
+            self.pinned = pinned;
+            cx.notify();
+        }
     }
 
     pub fn set_actions(&mut self, actions: ReaderActions, cx: &mut Context<Self>) {
@@ -369,6 +385,7 @@ impl Render for ReaderView {
         );
         let body = self.body(&sheet, window);
         div()
+            .track_focus(&self.focus)
             .size_full()
             .flex()
             .flex_col()
@@ -377,5 +394,37 @@ impl Render for ReaderView {
             .text_color(sheet.fg)
             .child(top)
             .child(body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use gpui::{AppContext, TestAppContext};
+    use mx_claude::docs::{DocSource, MxDoc};
+
+    use super::{ReaderActions, ReaderView};
+
+    #[gpui::test]
+    fn resyncing_the_same_props_does_not_repaint(cx: &mut TestAppContext) {
+        let theme = mx_theme::default_theme().clone();
+        let doc = MxDoc::new(DocSource::Message, "Plano", "# oi");
+        let view = cx.new(|cx| ReaderView::new(doc, theme.clone(), ReaderActions::default(), cx));
+        let count = Rc::new(RefCell::new(0));
+        let seen = count.clone();
+        let _watch = cx.update(|cx| cx.observe(&view, move |_, _| *seen.borrow_mut() += 1));
+        view.update(cx, |v, cx| {
+            v.set_theme(theme.clone(), cx);
+            v.set_zoom(0., cx);
+            v.set_header(None, None, cx);
+            v.set_pinned(false, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(*count.borrow(), 0);
+        view.update(cx, |v, cx| v.set_zoom(1., cx));
+        cx.run_until_parked();
+        assert_eq!(*count.borrow(), 1);
     }
 }

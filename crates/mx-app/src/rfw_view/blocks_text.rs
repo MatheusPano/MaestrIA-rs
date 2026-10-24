@@ -11,42 +11,128 @@ use super::blocks_button::tone;
 use super::style::hsla;
 use super::view::mono_family;
 
-fn inline(text: &str, code_bg: Hsla) -> StyledText {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Span {
+    pub bold: bool,
+    pub code: bool,
+    pub link: bool,
+}
+
+pub fn parse_inline(text: &str) -> (String, Vec<(Range<usize>, Span)>) {
     let mut out = String::new();
-    let mut marks: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
-    let mut rest = text;
-    while !rest.is_empty() {
-        let (marker, style) = if rest.starts_with("**") {
-            ("**", HighlightStyle { font_weight: Some(FontWeight::BOLD), ..Default::default() })
-        } else if rest.starts_with('`') {
-            ("`", HighlightStyle { background_color: Some(code_bg), ..Default::default() })
-        } else {
-            let ch = rest.chars().next().unwrap_or(' ');
-            out.push(ch);
-            rest = &rest[ch.len_utf8()..];
-            continue;
-        };
-        let body = &rest[marker.len()..];
-        match body.find(marker) {
-            Some(end) => {
-                let start = out.len();
-                out.push_str(&body[..end]);
-                marks.push((start..out.len(), style));
-                rest = &body[end + marker.len()..];
+    let mut marks = Vec::new();
+    scan(text, false, &mut out, &mut marks);
+    (out, marks)
+}
+
+fn push(out: &mut String, marks: &mut Vec<(Range<usize>, Span)>, text: &str, span: Span) {
+    if text.is_empty() {
+        return;
+    }
+    let start = out.len();
+    out.push_str(text);
+    if span == Span::default() {
+        return;
+    }
+    match marks.last_mut() {
+        Some((r, last)) if r.end == start && *last == span => r.end = out.len(),
+        _ => marks.push((start..out.len(), span)),
+    }
+}
+
+fn link_at(rest: &str) -> Option<(&str, usize)> {
+    let mut depth = 0usize;
+    let mut close = None;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(i);
+                    break;
+                }
             }
-            None => {
-                out.push_str(marker);
-                rest = body;
-            }
+            '\n' => return None,
+            _ => {}
         }
     }
+    let close = close?;
+    let target = rest[close + 1..].strip_prefix('(')?;
+    let end = target.find(')')?;
+    let label = &rest[1..close];
+    let label = match label.strip_prefix("![").and_then(|l| l.find("](").map(|i| &l[..i])) {
+        Some(alt) => alt,
+        None => label,
+    };
+    (!label.is_empty()).then_some((label, close + 2 + end + 1))
+}
+
+fn scan(text: &str, bold: bool, out: &mut String, marks: &mut Vec<(Range<usize>, Span)>) {
+    let plain = Span { bold, ..Span::default() };
+    let mut rest = text;
+    while let Some(ch) = rest.chars().next() {
+        if let Some(body) = rest.strip_prefix('`')
+            && let Some(end) = body.find('`')
+        {
+            push(out, marks, &body[..end], Span { code: true, ..plain });
+            rest = &body[end + 1..];
+        } else if !bold
+            && let Some(body) = rest.strip_prefix("**")
+            && let Some(end) = body.find("**")
+        {
+            scan(&body[..end], true, out, marks);
+            rest = &body[end + 2..];
+        } else if ch == '[' && let Some((label, used)) = link_at(rest) {
+            push(out, marks, label, Span { link: true, ..plain });
+            rest = &rest[used..];
+        } else if ch == '!' && rest[1..].starts_with('[') && let Some((label, used)) = link_at(&rest[1..]) {
+            push(out, marks, label, Span { link: true, ..plain });
+            rest = &rest[1 + used..];
+        } else {
+            push(out, marks, &rest[..ch.len_utf8()], plain);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+}
+
+fn inline(text: &str, code_bg: Hsla, link: Hsla) -> StyledText {
+    let (out, spans) = parse_inline(text);
+    let marks = spans.into_iter().map(|(r, s)| {
+        let mut style = HighlightStyle::default();
+        if s.bold {
+            style.font_weight = Some(FontWeight::BOLD);
+        }
+        if s.code {
+            style.background_color = Some(code_bg);
+        }
+        if s.link {
+            style.color = Some(link);
+            style.underline = Some(gpui::UnderlineStyle { thickness: px(1.0), color: Some(link), wavy: false });
+        }
+        (r, style)
+    });
     StyledText::new(out).with_highlights(marks)
+}
+
+fn list_item(t: &str) -> Option<(String, &str)> {
+    if let Some(item) = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")) {
+        return Some(("•".to_owned(), item));
+    }
+    let digits = t.chars().take_while(char::is_ascii_digit).count();
+    if digits == 0 || digits > 9 {
+        return None;
+    }
+    let after = &t[digits..];
+    let item = after.strip_prefix(". ").or_else(|| after.strip_prefix(") "))?;
+    Some((format!("{}.", &t[..digits]), item))
 }
 
 pub fn markdown(p: &Paint, text: &str) -> AnyElement {
     let th = &p.view.theme;
     let s = p.size();
     let code_bg = hsla(th.bg_active);
+    let link = hsla(th.accent);
     let mut col = div().flex().flex_col().gap(px(8.0)).text_size(px(s)).line_height(relative(1.5)).text_color(hsla(th.fg));
     let mut fence: Option<String> = None;
     let mut para = String::new();
@@ -55,7 +141,7 @@ pub fn markdown(p: &Paint, text: &str) -> AnyElement {
             para.clear();
             return col;
         }
-        let el = div().child(inline(para.trim(), code_bg));
+        let el = div().child(inline(para.trim(), code_bg, link));
         para.clear();
         col.child(el)
     };
@@ -88,9 +174,9 @@ pub fn markdown(p: &Paint, text: &str) -> AnyElement {
             let level = 1 + h.chars().take_while(|c| *c == '#').count();
             let size = s + [9.0, 6.0, 3.5, 2.0, 1.0, 0.5][level.min(6) - 1];
             col = col.child(div().text_size(px(size)).font_weight(FontWeight::SEMIBOLD).child(h.trim_start_matches('#').trim().to_owned()));
-        } else if let Some(item) = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")) {
+        } else if let Some((bullet, item)) = list_item(t) {
             col = flush(&mut para, col);
-            col = col.child(div().flex().flex_row().gap(px(8.0)).pl(px(4.0)).child("•").child(div().flex_1().child(inline(item, code_bg))));
+            col = col.child(div().flex().flex_row().gap(px(8.0)).pl(px(4.0)).child(bullet).child(div().flex_1().min_w(px(0.0)).child(inline(item, code_bg, link))));
         } else if t.is_empty() {
             col = flush(&mut para, col);
         } else {
@@ -157,4 +243,59 @@ pub fn console(p: &Paint, id: &str, empty: &str) -> AnyElement {
         list = list.child(line(p, l));
     }
     frame.child(list).into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spans(text: &str) -> (String, Vec<(String, Span)>) {
+        let (out, marks) = parse_inline(text);
+        let named = marks.into_iter().map(|(r, s)| (out[r].to_owned(), s)).collect();
+        (out, named)
+    }
+
+    #[test]
+    fn code_inside_bold_is_both_bold_and_code_without_backticks() {
+        let (out, marks) = spans("o else **para qualquer `$teamId` e ignorando**.");
+        assert_eq!(out, "o else para qualquer $teamId e ignorando.");
+        let bold = Span { bold: true, ..Span::default() };
+        assert_eq!(
+            marks,
+            vec![
+                ("para qualquer ".to_owned(), bold),
+                ("$teamId".to_owned(), Span { code: true, ..bold }),
+                (" e ignorando".to_owned(), bold),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_markdown_link_shows_only_its_label() {
+        let (out, marks) = spans("veja [a tarefa](https://wiboor.com/t/1) agora");
+        assert_eq!(out, "veja a tarefa agora");
+        assert_eq!(marks, vec![("a tarefa".to_owned(), Span { link: true, ..Span::default() })]);
+    }
+
+    #[test]
+    fn an_image_link_shows_the_image_name() {
+        let (out, marks) = spans("anexo: [![print.png](https://x/p.png)](https://x/p.png) fim");
+        assert_eq!(out, "anexo: print.png fim");
+        assert_eq!(marks, vec![("print.png".to_owned(), Span { link: true, ..Span::default() })]);
+        assert_eq!(spans("![foto](https://x/f.jpg)").0, "foto");
+    }
+
+    #[test]
+    fn unclosed_markers_stay_literal() {
+        assert_eq!(spans("2 ** 3 e `x").0, "2 ** 3 e `x");
+        assert_eq!(spans("[sem link] aqui").0, "[sem link] aqui");
+    }
+
+    #[test]
+    fn numbered_lines_are_list_items() {
+        assert_eq!(list_item("1. Levantar"), Some(("1.".to_owned(), "Levantar")));
+        assert_eq!(list_item("12) doze"), Some(("12.".to_owned(), "doze")));
+        assert_eq!(list_item("- item"), Some(("•".to_owned(), "item")));
+        assert_eq!(list_item("2026 foi"), None);
+    }
 }

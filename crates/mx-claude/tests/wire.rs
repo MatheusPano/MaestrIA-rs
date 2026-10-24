@@ -77,7 +77,7 @@ fn launch_puts_mcp_config_first_and_the_prompt_last() {
     };
     assert_eq!(
         launch.command_line(),
-        r#"claude --mcp-config '{"m":1}' --name 'repo' --settings '{"s":'\''x'\''}' --append-system-prompt 'briefing' --resume 'abc' 'faz isso'"#
+        r#"claude --mcp-config '{"m":1}' --name 'repo' --settings '{"s":'\''x'\''}' --append-system-prompt 'briefing' --resume 'abc' -- 'faz isso'"#
     );
     assert_eq!(
         launch.display_line(),
@@ -92,5 +92,24 @@ fn launch_puts_mcp_config_first_and_the_prompt_last() {
     assert_eq!(
         bare.display_line(),
         "claude --mcp-config <tarefas :4321> --name 'repo' --settings <hooks :4321>"
+    );
+}
+
+#[test]
+fn a_prompt_that_looks_like_an_option_stays_the_positional_prompt() {
+    let launch = mx_claude::ClaudeLaunch {
+        port: 4321,
+        mcp_config: "{}".into(),
+        settings: "{}".into(),
+        name: "repo".into(),
+        brief: None,
+        project: None,
+        resume_id: None,
+        prompt: Some("- item um\n- item dois".into()),
+    };
+    assert!(
+        launch
+            .command_line()
+            .ends_with("--settings '{}' -- '- item um\n- item dois'")
     );
 }

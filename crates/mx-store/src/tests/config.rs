@@ -206,10 +206,63 @@ fn unparseable_config_is_backed_up() {
 }
 
 #[test]
-fn retired_theme_ids_map_forward() {
+fn retired_theme_ids_map_forward_only_onto_a_theme_that_exists() {
     let mut rig = Rig::new();
-    load(&mut rig, json!({"folders": [], "theme": "rose-pine"}));
-    assert_eq!(rig.s.prefs().theme, "catppuccin-mocha");
-    load(&mut rig, json!({"folders": [], "theme": "nada"}));
+    load(&mut rig, json!({"folders": [], "theme": "tokyo-night"}));
     assert_eq!(rig.s.prefs().theme, "maestria");
+    load(&mut rig, json!({"folders": [], "theme": "chatgpt-dark"}));
+    assert_eq!(rig.s.prefs().theme, "graphite");
+    load(&mut rig, json!({"folders": [], "theme": "rose-pine"}));
+    assert_eq!(rig.s.prefs().theme, "rose-pine");
+    load(&mut rig, json!({"folders": [], "theme": "nada"}));
+    assert_eq!(rig.s.prefs().theme, "nada");
+}
+
+fn theme_plugin(rig: &Rig, ids: &[&str]) -> mx_plugins::Plugins {
+    let root = rig.mkdir("plugins");
+    let dir = std::path::Path::new(&root).join("temas");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut paths = Vec::new();
+    for id in ids {
+        let mut palette: Value =
+            serde_json::from_str(include_str!("../../../mx-plugins/tests/fixtures/tema-e-atalhos/themes/aurora.json"))
+                .unwrap();
+        palette["id"] = json!(id);
+        std::fs::write(dir.join(format!("{id}.json")), palette.to_string()).unwrap();
+        paths.push(format!("{id}.json"));
+    }
+    let manifest = json!({"id": "temas", "version": "1", "contributes": {"themes": paths}});
+    std::fs::write(dir.join(mx_plugins::MANIFEST_NAME), manifest.to_string()).unwrap();
+    mx_plugins::Plugins::with_dirs(root.into(), rig.mkdir("plugin-data").into())
+}
+
+#[test]
+fn a_plugin_theme_survives_the_load_that_happens_before_plugins_attach() {
+    let mut rig = Rig::new();
+    let plugins = theme_plugin(&rig, &["kanagawa-wave"]);
+    load(&mut rig, json!({"folders": [], "theme": "kanagawa-wave"}));
+    assert_eq!(rig.s.prefs().theme, "kanagawa-wave");
+    rig.s.attach_plugins(plugins);
+    assert_eq!(rig.s.prefs().theme, "kanagawa-wave");
+    rig.s.toggle_groups_collapsed();
+    assert_eq!(rig.written()["theme"], "kanagawa-wave");
+}
+
+#[test]
+fn a_retired_id_moves_to_its_plugin_target_once_plugins_are_scanned() {
+    let mut rig = Rig::new();
+    let plugins = theme_plugin(&rig, &["catppuccin-mocha"]);
+    load(&mut rig, json!({"folders": [], "theme": "rose-pine"}));
+    rig.s.attach_plugins(plugins);
+    assert_eq!(rig.s.prefs().theme, "catppuccin-mocha");
+}
+
+#[test]
+fn a_theme_whose_plugin_is_gone_is_kept_not_replaced_by_the_default() {
+    let mut rig = Rig::new();
+    let plugins = theme_plugin(&rig, &["outro"]);
+    load(&mut rig, json!({"folders": [], "theme": "kanagawa-wave"}));
+    rig.s.attach_plugins(plugins);
+    rig.s.toggle_groups_collapsed();
+    assert_eq!(rig.written()["theme"], "kanagawa-wave");
 }

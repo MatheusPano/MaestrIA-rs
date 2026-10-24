@@ -41,7 +41,7 @@ Dev profile: `opt-level=1` for workspace crates, `opt-level=2` for all deps (kee
 
 `gpui` is gpui 0.2.2 copied from crates.io into `vendor/gpui` and wired with
 `[patch.crates-io]` in the root `Cargo.toml` (`exclude = ["vendor"]` keeps it out of the workspace,
-so it builds with the deps profile and without our lints). One change, in
+so it builds with the deps profile and without our lints). Two changes. First, in
 `src/platform/linux/x11/client.rs` `X11Client::run`:
 
 - **Bug:** the X11 loop is a calloop `Generic` source on the xcb fd, so it only wakes when the
@@ -58,6 +58,14 @@ so it builds with the deps profile and without our lints). One change, in
   (`crates/gpui_linux/src/linux/x11/client.rs`) has the same fd-only source. Drop the patch when
   a release fixes it.
 - The e2e harness no longer needs `nudge`; `E2E_NUDGE=0` disables it.
+
+Second change, in `src/elements/text.rs` `TextLayout::layout`:
+
+- **Bug:** the measure closure owns the text runs and `truncate_line` shortens them in place. Taffy
+  measures a text several times per frame (e.g. at width 0 inside an `Expanded`), so after a narrow
+  pass the runs cover only the first few bytes and the rest of the line loses its weight/color
+  (`ellipsis` texts showed "**pro**ducao…").
+- **Fix:** each measurement truncates a clone of the runs.
 
 ## How the terminal works
 

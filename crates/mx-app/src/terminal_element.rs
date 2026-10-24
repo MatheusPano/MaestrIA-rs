@@ -103,6 +103,11 @@ impl RenderState {
         (x.floor(), y.floor(), x.fract() >= 0.5)
     }
 
+    #[cfg(test)]
+    pub fn snapshot(&self) -> &Snapshot {
+        &self.snap
+    }
+
     fn invalidate(&mut self) {
         self.cache.iter_mut().for_each(|r| r.valid = false);
     }
@@ -161,6 +166,10 @@ fn run(text_len: usize, style: &CellStyle, fg: Rgb) -> TextRun {
     }
 }
 
+fn is_blank(cell: &SnapCell) -> bool {
+    cell.c == ' ' && cell.marks.is_empty() && !cell.style.underline && !cell.style.strikeout
+}
+
 fn rebuild_row(row: &mut RowCache, cells: &[SnapCell], background: Rgb, font_size: Pixels, m: CellMetrics, window: &Window) {
     row.cells.clear();
     row.cells.extend_from_slice(cells);
@@ -193,20 +202,22 @@ fn rebuild_row(row: &mut RowCache, cells: &[SnapCell], background: Rgb, font_siz
     let mut col = 0;
     while col < cells.len() {
         let cell = &cells[col];
-        if cell.spacer || cell.c == ' ' && !cell.style.underline && !cell.style.strikeout {
+        if cell.spacer || is_blank(cell) {
             col += 1;
             continue;
         }
         let start = col;
         text.clear();
+        let alone = cell.wide || !cell.marks.is_empty();
         while col < cells.len() {
             let c = &cells[col];
-            if c.spacer || c.style != cell.style || c.c == ' ' && !c.style.underline && !c.style.strikeout {
+            if c.spacer || c.style != cell.style || is_blank(c) || col > start && (c.wide || !c.marks.is_empty()) {
                 break;
             }
             text.push(c.c);
+            text.extend(c.marks.chars());
             col += 1;
-            if c.wide {
+            if alone {
                 break;
             }
         }
@@ -214,7 +225,7 @@ fn rebuild_row(row: &mut RowCache, cells: &[SnapCell], background: Rgb, font_siz
             SharedString::from(text.clone()),
             font_size,
             &[run(text.len(), &cell.style, cell.style.fg)],
-            Some(m.width),
+            cell.marks.is_empty().then_some(m.width),
         );
         row.texts.push((start, shaped));
     }
@@ -279,6 +290,7 @@ impl Element for TerminalElement {
         let view = self.view.read(cx);
         let focused = view.focus().is_focused(window);
         let session = view.session().clone();
+        let dirty = view.dirty.take();
         let render = view.render().clone();
         let mut st = render.borrow_mut();
         st.painted = true;
@@ -292,10 +304,13 @@ impl Element for TerminalElement {
                 m
             }
         };
-        session.resize(grid_size(bounds, m, window.scale_factor()));
-        session.take_dirty();
+        let grid = grid_size(bounds, m, window.scale_factor());
+        let resized = session.size() != grid;
+        session.resize(grid);
         let st = &mut *st;
-        session.snapshot_into(&mut st.snap);
+        if dirty || resized || st.snap.cols == 0 {
+            session.snapshot_into(&mut st.snap);
+        }
         st.origin = point(bounds.origin.x + px(PAD_X), bounds.origin.y + px(PAD_Y));
         st.cols = st.snap.cols;
         st.rows = st.snap.rows;
@@ -315,13 +330,13 @@ impl Element for TerminalElement {
             let at = point(st.origin.x + m.width * c.col as f32, st.origin.y + m.height * c.row as f32);
             st.cursor_bounds = Some(Bounds::new(at, size(m.width, m.height)));
             let cell = st.snap.row(c.row)[c.col];
-            if focused && c.kind == CursorKind::Block && cell.c != ' ' && st.marked.is_none() {
-                let text = cell.c.to_string();
+            if focused && c.kind == CursorKind::Block && (cell.c != ' ' || !cell.marks.is_empty()) && st.marked.is_none() {
+                let text: String = std::iter::once(cell.c).chain(cell.marks.chars()).collect();
                 let shaped = window.text_system().shape_line(
                     SharedString::from(text.clone()),
                     font_size,
                     &[run(text.len(), &cell.style, st.snap.background)],
-                    Some(m.width),
+                    cell.marks.is_empty().then_some(m.width),
                 );
                 st.cursor_text = Some((at, shaped));
             }

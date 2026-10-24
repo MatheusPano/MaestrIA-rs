@@ -35,7 +35,7 @@ pub fn render(layer: &mut PluginLayer, window: &mut Window, cx: &mut Context<Plu
     let env = layer.env(cx);
     let fresh = layer.modal.as_ref().is_none_or(|(t, _)| *t != tab);
     if fresh {
-        layer.modal = Some((tab.clone(), Surface::new(&tab, BlocksMode::Modal)));
+        layer.modal = Some((tab.clone(), Surface::new(&tab, BlocksMode::Modal).overlaid()));
         window.focus(&layer.focus);
     }
     let surface = &mut layer.modal.as_mut()?.1;

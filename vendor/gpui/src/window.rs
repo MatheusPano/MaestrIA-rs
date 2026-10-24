@@ -3543,6 +3543,7 @@ impl Window {
             PlatformInput::KeyDown(KeyDownEvent {
                 keystroke: keystroke.clone(),
                 is_held: false,
+                ime_commit: false,
             }),
             cx,
         );
@@ -3950,6 +3951,7 @@ impl Window {
             let event = KeyDownEvent {
                 keystroke: replay.keystroke.clone(),
                 is_held: false,
+                ime_commit: false,
             };
 
             cx.propagate_event = true;

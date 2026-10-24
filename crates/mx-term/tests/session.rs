@@ -119,6 +119,23 @@ fn bracketed_paste_wraps_text() {
 }
 
 #[test]
+fn bracketed_paste_strips_escape_so_the_clipboard_cannot_end_the_paste() {
+    let dir = tempfile::tempdir().unwrap();
+    let (t, file) = capture(dir.path(), 27);
+    t.feed(b"\x1b[?2004h");
+    t.paste("x\x1b[201~rm -rf ~\r");
+    assert_eq!(read_when(&file, 27), b"\x1b[200~x[201~rm -rf ~\r\x1b[201~");
+}
+
+#[test]
+fn submit_strips_escape_from_the_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut t, file) = capture(dir.path(), 5);
+    Term::submit(&mut t, "\x1b[Aok");
+    assert_eq!(read_when(&file, 5), b"[Aok\r");
+}
+
+#[test]
 fn wheel_in_alt_screen_with_mouse_reports_sgr() {
     let dir = tempfile::tempdir().unwrap();
     let (t, file) = capture(dir.path(), 21);

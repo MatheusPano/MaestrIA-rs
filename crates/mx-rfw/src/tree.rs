@@ -45,6 +45,7 @@ impl LocalLibrary {
             ],
             LocalLibrary::Maestria => &[
                 "Svg", "Glyph", "IconButton", "Tooltip", "Pressable", "MenuButton", "Draggable", "DropTarget",
+                "CodeEditor",
             ],
         }
     }

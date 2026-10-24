@@ -179,10 +179,13 @@ impl SettingsDialog {
         if s.kind != SettingType::Boolean {
             col = col.child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(hsla(t.fg)).child(s.title.clone()));
         }
-        if !s.description.is_empty() {
-            col = col.child(div().text_size(px(11.5)).text_color(hsla(t.fg_dim)).child(s.description.clone()));
-        }
-        col = col.child(self.control(s, value, cx));
+        let description = (!s.description.is_empty())
+            .then(|| div().text_size(px(11.5)).text_color(hsla(t.fg_dim)).child(s.description.clone()));
+        col = if s.kind == SettingType::Boolean {
+            col.child(self.control(s, value, cx)).children(description)
+        } else {
+            col.children(description).child(self.control(s, value, cx))
+        };
         if *value != s.resolve(None) {
             let me = cx.weak_entity();
             let setting = s.clone();

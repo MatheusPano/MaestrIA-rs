@@ -149,6 +149,22 @@
       "peak_rss_mb": 1074.0,
       "speedup": 1.0,
       "notes": "Metric = CPU ms consumed per wall-clock second averaged over 5d23h of real use (10.1% CPU); RSS 944MB current / 1074MB peak; 169 threads. Measured on the user's running /opt/maestria/maestria 2.7.0."
+    },
+    {
+      "stage": "safe_rust",
+      "label": "2. Safe Rust (release, no LTO, codegen-units=16)",
+      "wall_time_ms": 8.7,
+      "peak_rss_mb": 121.4,
+      "speedup": 11.61,
+      "notes": "Commit 4dbb885. CPU ms per wall-second with 12 idle bash panes after 60s settle, 30s window, real X11 display :0 + GPU: 8.7 ms/s, RSS 115.7 MB idle / 121.4 MB peak, 43 threads, first window 1029 ms (cold), throughput 6.1 MB/s (50 MB yes, visible 29x5 pane). Xvfb+lavapipe (CPU rendering): 7.0 ms/s, 154 MB, 69 threads, window 506 ms / first frame 908 ms, 4.6 MB/s, key->PTY median 0.48 ms (p99 1.03), key->echo on screen median 32.7 ms; under 16 busy loops key->PTY median 0.90 ms (p99 3.9, max 56), echo median 80 ms; 2000-char typing test 0 duplicates / 0 missing idle and under load. Binary 37.9 MB."
+    },
+    {
+      "stage": "soa_simd",
+      "label": "Zero-alloc render path + fat LTO",
+      "wall_time_ms": 7.7,
+      "peak_rss_mb": 120.9,
+      "speedup": 13.12,
+      "notes": "Commit 4dbb885, release profile (fat LTO, codegen-units=1, panic=abort); reused grid snapshot buffers. Real display :0 + GPU, 12 idle bash panes, 60s settle, 30s window: 7.7 CPU ms/s, RSS 115.4 MB idle / 120.9 MB peak, 42 threads, first window 336 ms, throughput 6.1 MB/s. Xvfb+lavapipe: 6.7 ms/s, 153 MB, 69 threads, window 507 ms / first frame 936 ms, 4.6 MB/s, key->PTY median 0.55 ms (p99 1.06), echo median 32.6 ms; 16 busy loops: key->PTY median 1.01 ms (p99 5.9, max 71), echo median 81 ms; 0 duplicates / 0 missing. Binary 29.2 MB unstripped."
     }
   ],
   "time_buckets": [],

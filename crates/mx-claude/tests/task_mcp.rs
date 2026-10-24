@@ -277,3 +277,18 @@ async fn mcp_config_and_permission_point_at_the_same_server() {
         json!(["mcp__maestria__suggest_task", "mcp__maestria__dismiss_task"])
     );
 }
+
+#[tokio::test]
+async fn request_with_an_id_but_no_string_method_is_an_invalid_request_for_that_id() {
+    for body in [
+        json!({"jsonrpc": "2.0", "id": 5}),
+        json!({"jsonrpc": "2.0", "id": "x", "method": 3}),
+    ] {
+        let id = body["id"].clone();
+        let r = handle(body, "tab1", &NoSink).await.unwrap();
+        assert_eq!(
+            r,
+            json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32600, "message": "invalid request"}})
+        );
+    }
+}

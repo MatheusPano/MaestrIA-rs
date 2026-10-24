@@ -163,7 +163,7 @@ async fn the_process_gets_the_plugin_env_and_initialize_params() {
     assert_eq!(env.trim(), format!("1|env|{}|{}", dir.display(), data.display()));
     let line = std::fs::read_to_string(data.join("initialize.json")).unwrap();
     let expected = format!(
-        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"apiVersion":1,"blocks":2,"rfw":2,"floats":1,"input":1,"form":1,"modal":1,"pluginId":"env","pluginDir":"{}","dataDir":"{}","permissions":["hooks","notifications"],"settings":{{"n":3}}}}}}"#,
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"apiVersion":1,"blocks":2,"rfw":2,"floats":1,"input":1,"form":1,"modal":1,"editor":1,"pluginId":"env","pluginDir":"{}","dataDir":"{}","permissions":["hooks","notifications"],"settings":{{"n":3}}}}}}"#,
         dir.display(),
         data.display()
     );

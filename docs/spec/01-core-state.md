@@ -1566,6 +1566,9 @@ Every external command (git, editor, `claude agents`, plugin background commands
 **`<Sh.shell> -lc "<command string>"`** with `cwd` (optional) and environment `Sh.env`.
 stdout/stderr are captured and **trimmed**. A spawn failure (ProcessException) →
 `ShResult(code: -1, stdout: '', stderr: <message>)`. `ok = code == 0`.
+The shell runs in its own process group; when a run is abandoned (caller drops it) or passes
+its optional time limit, the whole group gets SIGKILL and a timed-out run answers
+`ShResult(code: 124, stdout: '', stderr: 'timed out after <ms> ms')`.
 
 `Sh.shell` (computed once):
 - macOS → `/bin/zsh`.
@@ -1613,7 +1616,7 @@ and on Linux `/home/linuxbrew/.linuxbrew/bin`.
 | `branchOf(path)` | `git rev-parse --abbrev-ref HEAD` | path | ok → stdout else `''` |
 | `dirtyCount(path)` | `git status --porcelain` | path | !ok → 0 if not a repo else null; empty → 0; else count non-blank lines |
 | `defaultRemoteRef(root)` | `git symbolic-ref --quiet refs/remotes/origin/HEAD \|\| echo` then `git rev-parse --verify --quiet '<name>'` | root | if first ok and non-empty: name = stdout minus `refs/remotes/`; verify ok → name. Else try `git rev-parse --verify 'origin/master'`, then `'origin/main'`; first ok wins; else null |
-| `addWorktree(root, dirName, branch, baseRef)` | 1) `test -d '<root>/.claude/worktrees/<dirName>'` (no cwd) 2) `git fetch origin --quiet` 3) `git worktree add '<path>' -b '<branch>' '<baseRef>'` | –, root, root | exists → (false, path, `'Worktree já existe em <path>'`); fetch result ignored; add !ok → (false, path, stderr or stdout); ok → (true, path, `'Worktree criada em <path> (branch <branch>)'`) |
+| `addWorktree(root, dirName, branch, baseRef)` | 1) `test -d '<root>/.claude/worktrees/<dirName>'` (no cwd) 2) `git fetch origin --quiet` (abandoned after 60 s) 3) `git worktree add '<path>' -b '<branch>' '<baseRef>'` | –, root, root | exists → (false, path, `'Worktree já existe em <path>'`); fetch result ignored; add !ok → (false, path, stderr or stdout); ok → (true, path, `'Worktree criada em <path> (branch <branch>)'`) |
 | `safetyOf(w, root)` | `dirtyCount(w.path)`; `defaultRemoteRef(root)`; `git rev-list --count '<base>'..HEAD` | w.path | prunable → (0,0); count parse failure → base=null, unmerged 0. `risky = dirty != 0 \|\| unmerged > 0`; `forceBranch = base != null && risky` |
 | `removeWorktree(root, w, force, forceBranch?, deleteBranch)` | isMain → (false, `'Essa é a checkout principal — ela não se remove'`). prunable → `git worktree prune`; else `git worktree remove [--force ]'<path>'`. Then if deleteBranch && branch ≠ `(detached)`: `git branch -D\|-d '<branch>'` (`-D` iff `forceBranch ?? force`) | root | !ok → (false, stderr or stdout). Message parts joined `' · '`: `'Registros fantasmas limpos'` (prunable) or `'Worktree removida: <basename>'`; branch: `'branch <b> apagada'` or `'branch mantida (<stderr or stdout>)'` |
 | `prune(root)` | `git worktree prune -v` | root | !ok → (false, stderr or stdout); count non-blank lines of `stdout + '\n' + stderr`: 0 → `'Nenhuma worktree fantasma pra limpar'`, else `'<n> registro(s) limpo(s)'` |
@@ -1632,7 +1635,7 @@ and on Linux `/home/linuxbrew/.linuxbrew/bin`.
 4. `--settings <q(hooks.settingsFor(tabId, cwd))>`
 5. `--append-system-prompt <q(brief)>` if the tab's feature has a non-blank (trimmed) brief
 6. `--resume <q(resumeId)>` if resumeId
-7. `<q(trimmed prompt)>` if non-blank (positional, last)
+7. `-- <q(trimmed prompt)>` if non-blank (positional, last; `--` keeps a prompt starting with `-` from being read as an option)
 
 `mcpConfigFor` and `settingsFor` return **inline JSON strings** (xref hooks):
 `{"mcpServers":{"<TaskMcp.server>":{"type":"http","url":"http://127.0.0.1:<port>/mcp/<tabId>","alwaysLoad":true}}}`
@@ -1648,15 +1651,16 @@ Display line (what the terminal shows instead of the huge command):
 - `start()`: tick now, then periodic every **2 s** if eager else **30 s**.
 - Setting `eager` changes the period (reschedule) and, if becoming eager and running,
   ticks immediately. Initial `eager = true`.
-- Tick: skip if one in flight; !ok → ignore; parse from the first `[` in stdout; must be a
+- Tick: skip if one in flight; a run still going after **20 s** is abandoned (counts as !ok); !ok → ignore; parse from the first `[` in stdout; must be a
   list; objects → `AgentInfo`; set `latest`, broadcast. Any error swallowed.
 
 ### 4.5 Editor
 
 `Editor.open(path, line?)`:
-1. `code '<path>'` or, with line, `code -g '<path>:<line>'` (one quoted arg).
-2. If !ok on Linux: `code-insiders '<path>'`; then `xdg-open '<path>'` (result = its ok).
+1. `code -- '<path>'` or, with line, `code -g -- '<path>:<line>'` (one quoted arg).
+2. If !ok on Linux: `code-insiders -- '<path>'`; then `xdg-open '<path>'` (result = its ok).
 3. If !ok on macOS: `open -a 'Visual Studio Code' '<path>'`.
+`xdg-open` and `open` have no `--`: an operand starting with `-` (path, url) is passed as `./<operand>`.
 
 ### 4.6 Other system actions (xref notify/platform)
 `Notifier.alert(title, body)`, `Notifier.badge(text?)`, `Notifier.openLink(url)`,

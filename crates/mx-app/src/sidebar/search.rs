@@ -1,6 +1,9 @@
+use std::ops::Range;
+
 use gpui::{
-    App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
-    ParentElement, Styled, Window, div, prelude::FluentBuilder, px,
+    App, Bounds, Context, ElementInputHandler, EntityInputHandler, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseButton, ParentElement, Pixels, Point, Styled, UTF16Selection, Window, canvas, div,
+    prelude::FluentBuilder, point, px, size,
 };
 
 use crate::app::host::update_store;
@@ -20,25 +23,53 @@ pub fn filter_tooltip(active: usize) -> String {
     }
 }
 
-pub fn edited(query: &str, key: &str, key_char: Option<&str>) -> Option<String> {
-    match key {
-        "backspace" => {
-            let mut q = query.to_owned();
-            q.pop()?;
-            Some(q)
+pub fn erased(query: &str) -> Option<String> {
+    let mut q = query.to_owned();
+    q.pop()?;
+    Some(q)
+}
+
+fn byte_at(text: &str, units: usize) -> usize {
+    let mut seen = 0;
+    for (i, c) in text.char_indices() {
+        if seen >= units {
+            return i;
         }
-        _ => {
-            let ch = key_char.filter(|c| !c.chars().any(char::is_control))?;
-            Some(format!("{query}{ch}"))
-        }
+        seen += c.len_utf16();
     }
+    text.len()
+}
+
+fn units_at(text: &str, byte: usize) -> usize {
+    text[..byte.min(text.len())].encode_utf16().count()
+}
+
+pub fn spliced(query: &str, range: Option<Range<usize>>, marked: Option<Range<usize>>, text: &str) -> (String, Range<usize>) {
+    let end = query.len();
+    let r = range
+        .map(|r| byte_at(query, r.start)..byte_at(query, r.end))
+        .or(marked)
+        .unwrap_or(end..end);
+    let start = r.start.min(end);
+    let stop = r.end.clamp(start, end);
+    let text = text.replace(['\n', '\r', '\t'], " ");
+    let mut q = query.to_owned();
+    if !q.is_char_boundary(start) || !q.is_char_boundary(stop) {
+        return (format!("{q}{text}"), end..end + text.len());
+    }
+    q.replace_range(start..stop, &text);
+    (q, start..start + text.len())
 }
 
 impl Sidebar {
     pub(super) fn on_search_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = &ev.keystroke;
         if k.modifiers.control || k.modifiers.platform || k.modifiers.alt {
+            self.search_marked = None;
             return;
+        }
+        if k.key_char.is_none() {
+            self.search_marked = None;
         }
         let store = &self.host.read(cx).store;
         if k.key == "escape" {
@@ -50,11 +81,17 @@ impl Sidebar {
             cx.stop_propagation();
             return;
         }
-        let query = store.search().query.clone();
-        if let Some(q) = edited(&query, &k.key, k.key_char.as_deref()) {
+        if k.key != "backspace" {
+            return;
+        }
+        if let Some(q) = erased(&store.search().query) {
             update_store(&self.host, cx, |s| s.set_query(&q));
             cx.stop_propagation();
         }
+    }
+
+    fn query(&self, cx: &App) -> String {
+        self.host.read(cx).store.search().query.clone()
     }
 
     pub(super) fn search_field(&self, mx: &Mx, window: &Window, cx: &Context<Self>) -> impl IntoElement {
@@ -88,8 +125,19 @@ impl Sidebar {
         }
         let clear_host = self.host.clone();
         let focus: FocusHandle = self.search_focus.clone();
+        let (input_focus, me) = (self.search_focus.clone(), cx.entity());
+        let input = canvas(
+            |_, _, _| {},
+            move |bounds, _, window, cx| {
+                me.update(cx, |s, _| s.search_bounds = bounds);
+                window.handle_input(&input_focus, ElementInputHandler::new(bounds, me.clone()), cx);
+            },
+        )
+        .absolute()
+        .inset_0();
         div()
             .id("sidebar-search")
+            .relative()
             .track_focus(&self.search_focus)
             .key_context("SidebarSearch")
             .on_key_down(cx.listener(Self::on_search_key))
@@ -121,6 +169,60 @@ impl Sidebar {
                 filter_tooltip(active),
                 |window, cx| menus::open(Target::Filter, window, cx),
             ))
+            .child(input)
+    }
+}
+
+impl EntityInputHandler for Sidebar {
+    fn text_for_range(&mut self, range: Range<usize>, adjusted: &mut Option<Range<usize>>, _: &mut Window, cx: &mut Context<Self>) -> Option<String> {
+        let q = self.query(cx);
+        let r = byte_at(&q, range.start)..byte_at(&q, range.end);
+        adjusted.replace(units_at(&q, r.start)..units_at(&q, r.end));
+        Some(q[r].to_owned())
+    }
+
+    fn selected_text_range(&mut self, _: bool, _: &mut Window, cx: &mut Context<Self>) -> Option<UTF16Selection> {
+        let end = units_at(&self.query(cx), usize::MAX);
+        Some(UTF16Selection { range: end..end, reversed: false })
+    }
+
+    fn marked_text_range(&self, _: &mut Window, cx: &mut Context<Self>) -> Option<Range<usize>> {
+        let q = self.query(cx);
+        self.search_marked.as_ref().map(|r| units_at(&q, r.start)..units_at(&q, r.end))
+    }
+
+    fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {
+        self.search_marked = None;
+    }
+
+    fn replace_text_in_range(&mut self, range: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+        if text.chars().any(char::is_control) {
+            return;
+        }
+        let (q, _) = spliced(&self.query(cx), range, self.search_marked.take(), text);
+        update_store(&self.host, cx, |s| s.set_query(&q));
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range: Option<Range<usize>>,
+        text: &str,
+        _: Option<Range<usize>>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (q, placed) = spliced(&self.query(cx), range, self.search_marked.take(), text);
+        self.search_marked = (!placed.is_empty()).then_some(placed);
+        update_store(&self.host, cx, |s| s.set_query(&q));
+    }
+
+    fn bounds_for_range(&mut self, _: Range<usize>, element: Bounds<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<Bounds<Pixels>> {
+        let b = if self.search_bounds.size.width > px(0.) { self.search_bounds } else { element };
+        Some(Bounds::new(point(b.origin.x + px(28.), b.origin.y + px(6.)), size(px(1.), px(16.))))
+    }
+
+    fn character_index_for_point(&mut self, _: Point<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
+        None
     }
 }
 
@@ -136,10 +238,17 @@ mod tests {
     }
 
     #[test]
-    fn typing_appends_and_backspace_removes_the_last_char() {
-        assert_eq!(edited("ab", "c", Some("c")).as_deref(), Some("abc"));
-        assert_eq!(edited("ação", "backspace", None).as_deref(), Some("açã"));
-        assert_eq!(edited("", "backspace", None), None);
-        assert_eq!(edited("a", "tab", Some("\t")), None);
+    fn backspace_removes_the_last_char() {
+        assert_eq!(erased("ação").as_deref(), Some("açã"));
+        assert_eq!(erased(""), None);
+    }
+
+    #[test]
+    fn typing_appends_and_a_composed_accent_replaces_its_dead_key() {
+        assert_eq!(spliced("ab", None, None, "c"), ("abc".to_owned(), 2..3));
+        let (q, marked) = spliced("S", None, None, "~");
+        assert_eq!((q.as_str(), marked.clone()), ("S~", 1..2));
+        assert_eq!(spliced(&q, None, Some(marked), "ã").0, "Sã");
+        assert_eq!(spliced("é😀", Some(1..3), None, "x").0, "éx");
     }
 }

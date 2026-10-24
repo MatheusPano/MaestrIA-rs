@@ -1,7 +1,9 @@
+use std::ops::Range;
+
 use gpui::{
-    App, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, ParentElement, Render, SharedString, Styled, Window,
-    div, px,
+    App, Bounds, ClipboardItem, Context, ElementInputHandler, EventEmitter, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseButton, ParentElement, Pixels, Render, SharedString, Styled, Window,
+    canvas, div, px,
 };
 
 use crate::chrome::style::{MONO, hsla, theme};
@@ -18,6 +20,8 @@ pub struct TextField {
     text: String,
     cursor: usize,
     all_selected: bool,
+    marked: Option<Range<usize>>,
+    bounds: Bounds<Pixels>,
     label: Option<SharedString>,
     hint: SharedString,
     lines: Option<(usize, usize)>,
@@ -41,6 +45,8 @@ impl TextField {
             text: String::new(),
             cursor: 0,
             all_selected: false,
+            marked: None,
+            bounds: Bounds::default(),
             label: None,
             hint: SharedString::default(),
             lines: None,
@@ -98,6 +104,7 @@ impl TextField {
         self.text = text.into();
         self.cursor = self.text.len();
         self.all_selected = false;
+        self.marked = None;
         cx.notify();
     }
 
@@ -121,15 +128,35 @@ impl TextField {
     }
 
     pub fn insert(&mut self, s: &str, cx: &mut Context<Self>) {
-        let s = if self.lines.is_some() {
-            s.to_owned()
-        } else {
-            s.replace(['\n', '\r'], " ")
-        };
-        self.take_selection();
-        self.text.insert_str(self.cursor, &s);
-        self.cursor += s.len();
+        let target = self.target(None);
+        self.replace(target, s);
         self.changed(cx);
+    }
+
+    fn clean(&self, s: &str) -> String {
+        if self.lines.is_some() { s.to_owned() } else { s.replace(['\n', '\r'], " ") }
+    }
+
+    fn selection(&self) -> Range<usize> {
+        if self.all_selected { 0..self.text.len() } else { self.cursor..self.cursor }
+    }
+
+    fn target(&self, utf16: Option<Range<usize>>) -> Range<usize> {
+        utf16
+            .map(|r| byte_at(&self.text, r.start)..byte_at(&self.text, r.end))
+            .or_else(|| self.marked.clone())
+            .unwrap_or_else(|| self.selection())
+    }
+
+    fn replace(&mut self, range: Range<usize>, s: &str) -> Range<usize> {
+        let s = self.clean(s);
+        let start = floor_char(&self.text, range.start);
+        let end = floor_char(&self.text, range.end.max(start));
+        self.text.replace_range(start..end, &s);
+        self.all_selected = false;
+        self.marked = None;
+        self.cursor = start + s.len();
+        start..self.cursor
     }
 
     fn changed(&mut self, cx: &mut Context<Self>) {
@@ -155,6 +182,9 @@ impl TextField {
         let k = &ev.keystroke;
         let m = k.modifiers;
         let command = m.control || m.platform;
+        if command || k.key_char.is_none() {
+            self.marked = None;
+        }
         if self.all_selected && !matches!(k.key.as_str(), "a" | "c" | "x" | "backspace" | "delete") && (command || k.key_char.is_none()) {
             self.all_selected = false;
             cx.notify();
@@ -212,18 +242,7 @@ impl TextField {
             "c" if command && m.shift => {
                 cx.write_to_clipboard(ClipboardItem::new_string(self.text.clone()));
             }
-            _ => {
-                if command || m.function {
-                    return;
-                }
-                match &k.key_char {
-                    Some(ch) if !ch.chars().any(char::is_control) => {
-                        let ch = ch.clone();
-                        self.insert(&ch, cx);
-                    }
-                    _ => return,
-                }
-            }
+            _ => return,
         }
         cx.stop_propagation();
     }
@@ -310,8 +329,19 @@ impl Render for TextField {
             );
         }
         let selector = self.selector.clone();
+        let (focus, me) = (self.focus.clone(), cx.entity());
+        let input = canvas(
+            |_, _, _| {},
+            move |bounds, _, window, cx| {
+                me.update(cx, |f, _| f.bounds = bounds);
+                window.handle_input(&focus, ElementInputHandler::new(bounds, me.clone()), cx);
+            },
+        )
+        .absolute()
+        .inset_0();
         div()
             .id(SharedString::from(format!("field:{selector}")))
+            .relative()
             .debug_selector(move || format!("field:{selector}"))
             .track_focus(&self.focus)
             .key_context("TextField")
@@ -321,5 +351,32 @@ impl Render for TextField {
                 cx.listener(|this, _, window, _| window.focus(&this.focus)),
             )
             .child(outer)
+            .child(input)
     }
 }
+
+pub(super) fn byte_at(text: &str, units: usize) -> usize {
+    let mut seen = 0;
+    for (i, c) in text.char_indices() {
+        if seen >= units {
+            return i;
+        }
+        seen += c.len_utf16();
+    }
+    text.len()
+}
+
+fn floor_char(text: &str, mut at: usize) -> usize {
+    at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+pub(super) fn units_at(text: &str, byte: usize) -> usize {
+    text[..byte.min(text.len())].encode_utf16().count()
+}
+
+#[path = "text_field_ime.rs"]
+mod ime;
