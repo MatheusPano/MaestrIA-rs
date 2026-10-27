@@ -1,0 +1,2 @@
+{"clock": "24:13", "label": "foco", "running": true, "progress": 0.42, "color": 4294901760, "phase": "focus",
+ "menu": [{"label": "Zerar", "icon": "undo", "action": "zerar"}, {"divider": true}, {"label": "Pular", "action": "pular"}]}

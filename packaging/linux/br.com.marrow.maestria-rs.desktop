@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MaestrIA (Rust)
+Comment=Cockpit para sessões do Claude Code — versão em Rust
+Exec=/usr/bin/maestria-rs
+Icon=br.com.marrow.maestria-rs
+Terminal=false
+Categories=Development;
+StartupWMClass=br.com.marrow.maestria-rs

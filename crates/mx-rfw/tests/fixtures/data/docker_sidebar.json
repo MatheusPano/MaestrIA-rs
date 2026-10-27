@@ -1,0 +1,13 @@
+{"head": {"title": "Containers", "sub": "3 rodando", "menu": [{"label": "Atualizar", "action": "atualizar", "icon": "refresh"}]},
+ "rows": [
+  {"kind": "label", "title": "Projetos"},
+  {"kind": "project", "title": "loja", "sub": "compose", "svg": "<svg/>", "dot": "green", "dim": false, "selected": false,
+   "strong": true, "open": true, "toggle": "t:loja", "action": "abrir:loja", "pill": "3",
+   "actions": [{"icon": "stop", "tooltip": "parar", "action": "parar:loja"}],
+   "menu": [{"label": "Cor", "icon": "dot", "action": "", "children": [{"label": "Laranja", "action": "cor:orange", "color": 4294080046}]}]},
+  {"kind": "container", "title": "api", "sub": "nginx", "svg": "<svg/>", "dot": "red", "dim": true, "selected": true,
+   "strong": false, "indent": 1, "action": "abrir:1", "pill": "", "actions": [], "menu": [{"label": "Parar", "action": "parar:1"}]},
+  {"kind": "container", "title": "db", "sub": "postgres", "svg": "<svg/>", "dot": "none", "dim": false, "selected": false,
+   "strong": false, "indent": 0, "action": "abrir:2", "pill": "", "actions": [], "menu": []},
+  {"kind": "term", "title": "logs", "sub": "api", "dot": "yellow", "action": "term:1"}
+ ]}

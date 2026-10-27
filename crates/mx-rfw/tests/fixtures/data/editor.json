@@ -1,0 +1,84 @@
+{
+  "mode": "editor",
+  "tabs": [
+    {
+      "name": "hello.js",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect width=\"16\" height=\"16\" fill=\"#f5de19\"/></svg>",
+      "hint": [],
+      "active": true,
+      "dirty": true,
+      "deleted": false,
+      "open": "focus:/proj/src/hello.js",
+      "close": "close:/proj/src/hello.js",
+      "menu": [
+        { "label": "Fechar", "action": "close:/proj/src/hello.js", "icon": "clear" },
+        { "label": "Fechar todas", "action": "close-all" },
+        { "divider": true },
+        { "label": "Copiar o caminho", "action": "copy:/proj/src/hello.js", "icon": "copy" }
+      ]
+    },
+    {
+      "name": "index.js",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect width=\"16\" height=\"16\" fill=\"#f5de19\"/></svg>",
+      "hint": ["lib"],
+      "active": false,
+      "dirty": false,
+      "deleted": true,
+      "open": "focus:/proj/lib/index.js",
+      "close": "close:/proj/lib/index.js",
+      "menu": []
+    }
+  ],
+  "crumb": {
+    "path": "src  ›  hello.js",
+    "buttons": [
+      { "icon": "folder", "tooltip": "mostrar na árvore", "a": "reveal:/proj/src/hello.js" },
+      { "icon": "open", "tooltip": "abrir no VS Code", "a": "vscode:/proj/src/hello.js" }
+    ]
+  },
+  "banner": {
+    "show": true,
+    "text": "Este arquivo mudou no disco enquanto você também mexia nele.",
+    "actions": [
+      { "label": "Usar o do disco", "a": "take-disk", "primary": false },
+      { "label": "Manter o meu", "a": "keep-mine", "primary": true }
+    ]
+  },
+  "status": {
+    "left": [
+      { "text": "Ln 3, Col 7", "a": "goto", "icon": [], "tone": "" },
+      { "text": "não salvo", "a": "save-active", "icon": [], "tone": "yellow" }
+    ],
+    "right": [
+      { "text": "main", "a": "", "icon": ["branch"], "tone": "" },
+      { "text": "LF", "a": "", "icon": [], "tone": "" },
+      { "text": "JavaScript", "a": "language", "icon": [], "tone": "" }
+    ]
+  },
+  "opts": { "fontSize": 13, "wordWrap": false },
+  "empty": {
+    "title": "proj",
+    "sub": "~/proj · main",
+    "actions": [
+      { "icon": "search", "label": "Abrir arquivo pelo nome", "chord": "⌘P", "a": "quick", "detail": [] },
+      { "icon": "folder", "label": "Abrir outra pasta…", "chord": "", "a": "pick-root", "detail": [] }
+    ],
+    "recentTitle": ["PASTAS RECENTES"],
+    "recent": [{ "icon": "folder", "label": "outro", "detail": ["~/outro"], "chord": "", "a": "root:/outro" }]
+  },
+  "error": {
+    "title": "imagem.png",
+    "text": "Não abre aqui: é um arquivo binário.",
+    "actions": [{ "label": "Fechar a aba", "a": "close:/proj/imagem.png" }]
+  },
+  "file": {
+    "path": "/proj/src/hello.js",
+    "text": "const a = 1;\nfunction soma(x) {\n  return x + a;\n}\n",
+    "rev": 2,
+    "language": "javascript",
+    "jump": 1,
+    "readOnly": false,
+    "line": 3,
+    "column": 7
+  }
+}

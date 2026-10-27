@@ -1,0 +1,14 @@
+{
+  "id": "e2e.keys",
+  "version": "1.0.0",
+  "name": "Teclas",
+  "description": "Plugin de teste do e2e: a API de sessões.",
+  "author": "e2e",
+  "main": ["python3", "-u", "main.py"],
+  "permissions": ["terminal.write", "sessions.create"],
+  "contributes": {
+    "commands": [
+      {"id": "type", "title": "Digitar no terminal", "key": "ctrl+alt+k"}
+    ]
+  }
+}
