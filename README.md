@@ -13,7 +13,8 @@ recomeço em Rust.
 
 ## Estado
 
-Primeiro commit. Ainda não tem código, só este README.
+Porte completo da 2.7.0 (gpui + alacritty_terminal). Specs em `docs/spec/`,
+arquitetura em `docs/BLUEPRINT.md`. Pacote Linux: `cargo deb -p mx-app --variant rs`.
 
 ## Plugins
 

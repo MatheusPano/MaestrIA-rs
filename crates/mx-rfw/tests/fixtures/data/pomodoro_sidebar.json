@@ -1,0 +1,12 @@
+{"phases": [{"active": true, "id": "focus", "label": "Foco"}, {"active": false, "id": "short", "label": "Pausa"}],
+ "progress": 0.31, "color": 4294901760, "clock": "17:20", "label": "foco", "running": false,
+ "dots": [true, true, false, false], "focusColor": 4278255360, "today": "3 focos hoje",
+ "presets": [{"active": true, "id": "25", "label": "25/5"}, {"active": false, "id": "50", "label": "50/10"}],
+ "steppers": [{"label": "Foco", "atMin": false, "atMax": true, "id": "focus", "value": "25 min"}],
+ "toggles": [{"id": "sound", "label": "Som", "on": true, "hint": ["toca", "um sino"]}],
+ "panel": [{"id": "auto", "label": "Auto", "on": false, "hint": []}],
+ "anim": {"phases": [{"active": true, "id": "a", "label": "A"}],
+          "icons": [{"label": "Tomate", "active": true, "id": "tomato", "emoji": "T"}],
+          "colors": [{"label": "Vermelho", "id": "red", "value": 4294901760, "active": true}],
+          "toggles": [{"id": "pulse", "label": "Pulsar", "on": true, "hint": ["x"]}],
+          "color": 4294901760, "test": "testar"}}

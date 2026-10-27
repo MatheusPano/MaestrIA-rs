@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ce49af65d07a6e4820ad1a6894fab383095171c3eb5a711ca342244ab22f75d5 # shrinks to c = Config { folders: [], workspaces: [], root_order: [], features_or_hotfixes: [], groups: [], launchers: [], sidebar_width: 474.22579536710924, sidebar_hidden: false, status_bar_top: false, rail_order: [], sidebar_view: None, do_not_disturb: false, suggestions_to_plugin: false, floats: {}, groups_collapsed: false, hibernate_minutes: 0, theme: None, typography: Typography { mono: "Hack", size: 13.0, line: 1.2 }, shortcuts: {}, plugins: {}, layout: None }

@@ -1,0 +1,8 @@
+{"head": {"title": "SSH", "sub": "4 hosts", "newHost": "novo"},
+ "crumb": {"group": "prod", "menu": [{"label": "Renomear", "action": "renomear"}]},
+ "sections": [
+  {"title": "Produção", "count": "2", "empty": "", "items": [
+    {"title": "web-1", "sub": "10.0.0.1", "icon": "server", "tone": "green", "status": "green", "action": "abrir:web-1", "menu": [], "edit": "editar:web-1"},
+    {"title": "db-1", "sub": "10.0.0.2", "icon": "drive", "tone": "purple", "status": "", "action": "abrir:db-1", "menu": [{"label": "Copiar", "action": "copiar"}], "edit": "editar:db-1"}]},
+  {"title": "Vazio", "count": "0", "empty": "nada aqui", "items": []}],
+ "hint": "dica"}

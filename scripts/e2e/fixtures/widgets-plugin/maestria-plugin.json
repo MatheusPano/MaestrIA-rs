@@ -1,0 +1,13 @@
+{
+  "id": "e2e.widgets",
+  "version": "1.0.0",
+  "name": "Widgets",
+  "description": "Plugin de teste do e2e: os widgets da 2.7.",
+  "author": "e2e",
+  "main": ["python3", "-u", "main.py"],
+  "contributes": {
+    "commands": [
+      {"id": "widgets", "title": "Abrir widgets", "key": "ctrl+alt+w"}
+    ]
+  }
+}

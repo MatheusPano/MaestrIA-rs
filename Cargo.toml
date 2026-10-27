@@ -1,0 +1,63 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "3.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+mx-core = { path = "crates/mx-core" }
+mx-term = { path = "crates/mx-term" }
+mx-claude = { path = "crates/mx-claude" }
+mx-plugins = { path = "crates/mx-plugins" }
+mx-theme = { path = "crates/mx-theme" }
+gpui = "0.2.2"
+alacritty_terminal = "0.26"
+async-channel = "2"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+libc = "=0.2.189"
+mx-sys = { path = "crates/mx-sys" }
+mx-store = { path = "crates/mx-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "fs", "sync", "io-util", "net"] }
+chrono = "0.4"
+regex = "1"
+thiserror = "2"
+axum = "0.8"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+comrak = { version = "0.39", default-features = false, features = ["shortcodes"] }
+base64 = "0.22"
+rand = "0.9"
+nix = { version = "0.29", features = ["signal", "process"] }
+dirs = "6"
+proptest = "1"
+tempfile = "3"
+
+[patch.crates-io]
+gpui = { path = "vendor/gpui" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

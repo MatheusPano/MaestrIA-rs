@@ -1,0 +1,52 @@
+import core.widgets;
+import maestria;
+
+widget root = Column(
+  crossAxisAlignment: "stretch",
+  children: [
+    SizedBox(
+      height: 60.0,
+      child: Row(
+        children: [
+          Anchor(id: "grow", child: Pressable(color: 0xFF2E7DF2, onTap: event "grow" {}, child: SizedBox(width: 40.0, height: 40.0))),
+          SizedBox(width: 20.0),
+          Sprite(sheet: "sprite.png", columns: 2, rows: 1, frames: 2, fps: 4.0, width: 40.0, height: 40.0),
+        ],
+      ),
+    ),
+    SizedBox(
+      height: 150.0,
+      child: Selectable(
+        child: Column(
+          crossAxisAlignment: "stretch",
+          children: [
+            Markdown(text: "primeiro parágrafo\n\nsegundo **parágrafo**"),
+            Text(text: "no meio"),
+            Markdown(text: "- um item\n- outro item"),
+          ],
+        ),
+      ),
+    ),
+    SizedBox(
+      height: 120.0,
+      child: ZoomView(
+        maxScale: 4.0,
+        onZoom: event "zoom" {},
+        child: Container(color: 0xFF3A3A60, child: Center(child: Text(text: data.zoomLabel))),
+      ),
+    ),
+    SizedBox(height: 20.0),
+    TextInput(
+      id: "chat",
+      placeholder: "fale com ele",
+      multiline: true,
+      clear: data.sent,
+      sendIcon: "send",
+      commands: [{ name: "clear", description: "limpa" }, { name: "compact", description: "resume" }, { name: "context" }],
+      onSubmit: event "send" {},
+      onArrow: event "arrow" {},
+    ),
+  ],
+);
+
+widget grown = Center(child: Text(text: "cresci", style: { fontSize: 20.0 }));
