@@ -33,7 +33,7 @@ APP_SRC=$(ls -1d "$BUNDLE_DIR"/*.app 2>/dev/null | head -1 || true)
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-APP="$STAGE/maestria.app"
+APP="$STAGE/maestria-rs.app"
 ditto "$APP_SRC" "$APP"
 
 EXE="$APP/Contents/MacOS/maestria"
@@ -56,9 +56,9 @@ plist_set() {
   /usr/libexec/PlistBuddy -c "Set :$1 $3" "$PLIST" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Add :$1 $2 $3" "$PLIST"
 }
-plist_set CFBundleName string MaestrIA
-plist_set CFBundleDisplayName string MaestrIA
-plist_set CFBundleIdentifier string br.com.marrow.maestria
+plist_set CFBundleName string MaestrIA-rs
+plist_set CFBundleDisplayName string "MaestrIA (Rust)"
+plist_set CFBundleIdentifier string br.com.marrow.maestria-rs
 plist_set CFBundleExecutable string maestria
 plist_set CFBundleShortVersionString string "$VERSION"
 plist_set CFBundleVersion string "$REVISION"
@@ -67,7 +67,7 @@ plist_set NSPrincipalClass string NSApplication
 plist_set NSHighResolutionCapable bool true
 plist_set NSHumanReadableCopyright string "Copyright © 2026 br.com.marrow. All rights reserved."
 
-echo "==> maestria ${FULL} (${ARCHS})"
+echo "==> maestria-rs ${FULL} (${ARCHS})"
 
 codesign --force --deep --sign - --entitlements "$HERE/entitlements.plist" "$APP"
 codesign --verify --deep "$APP" \
@@ -76,11 +76,11 @@ codesign --verify --deep "$APP" \
 ln -s /Applications "$STAGE/Applications"
 
 mkdir -p "$DIST"
-OUT="$DIST/maestria_${FULL}_macos.dmg"
+OUT="$DIST/maestria-rs_${FULL}_macos.dmg"
 rm -f "$OUT"
 
 echo "==> hdiutil"
-hdiutil create -quiet -volname "maestria ${VERSION}" -srcfolder "$STAGE" \
+hdiutil create -quiet -volname "maestria-rs ${VERSION}" -srcfolder "$STAGE" \
   -ov -format UDZO "$OUT"
 
 echo

@@ -5,14 +5,16 @@ RUST_VERSION ?= 1.93.0
 export RUST_VERSION
 
 CARGO    ?= cargo
+REMOTE   ?= upstream
+REPO     ?= MatheusPano/MaestrIA-rs
 DIST     := packaging/linux/dist
 MAC_DIST := packaging/macos/dist
 RAW_VERSION := $(shell sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)
 REVISION    := $(shell sed -n '/^\[package.metadata.deb\]/,/^\[/s/^revision *= *"\([^"]*\)".*/\1/p' crates/mx-app/Cargo.toml | head -1)
 VERSION     := $(RAW_VERSION)-$(or $(REVISION),1)
-DEB         := $(DIST)/maestria_$(VERSION)_amd64.deb
+DEB         := $(DIST)/maestria-rs_$(VERSION)_amd64.deb
 
-.PHONY: help deb deb-only deb-test dmg release analyze clippy test bench bump clean tag version
+.PHONY: help deb deb-only deb-test dmg release publish analyze clippy test bench bump clean tag version
 
 help:
 	@echo "maestria $(VERSION)"
@@ -24,6 +26,7 @@ help:
 	@echo "  make release    clippy, testes, .deb e smoke test -- o caminho completo"
 	@echo
 	@echo "  make tag        publica a v$(RAW_VERSION) no GitHub (.deb e .dmg saem do CI)"
+	@echo "  make publish    gera o .deb nesta máquina e sobe na release v$(RAW_VERSION) (cria se faltar)"
 	@echo
 	@echo "  make clippy     cargo clippy --workspace -D warnings"
 	@echo "  make test       cargo test --workspace"
@@ -50,7 +53,7 @@ bench:
 deb: clippy deb-only
 
 deb-only:
-	@./packaging/linux/build-deb.sh
+	@./packaging/linux/build-deb.sh --variant rs
 
 deb-test:
 	@./packaging/linux/smoke-test.sh
@@ -65,10 +68,10 @@ release: clippy test deb-only deb-test
 tag:
 	@git diff --quiet || { echo "há alterações não commitadas -- commite antes de taguear."; exit 1; }
 	@git tag "v$(RAW_VERSION)"
-	@git push origin "v$(RAW_VERSION)"
+	@git push $(REMOTE) "v$(RAW_VERSION)"
 	@echo
 	@echo "v$(RAW_VERSION) empurrada. o .deb e o .dmg aparecem em"
-	@echo "https://github.com/MatheusPano/MaestrIA/releases/tag/v$(RAW_VERSION)"
+	@echo "https://github.com/MatheusPano/MaestrIA-rs/releases/tag/v$(RAW_VERSION)"
 
 bump:
 ifndef V
@@ -80,3 +83,13 @@ endif
 clean:
 	@rm -rf $(DIST) $(MAC_DIST)
 	@echo "$(DIST) e $(MAC_DIST) limpos"
+
+publish:
+	@git diff --quiet || { echo "há alterações não commitadas -- commite antes de publicar."; exit 1; }
+	@NATIVE=1 ./packaging/linux/build-deb.sh --variant rs
+	@git rev-parse -q --verify "refs/tags/v$(RAW_VERSION)" >/dev/null || git tag "v$(RAW_VERSION)"
+	@git push $(REMOTE) "v$(RAW_VERSION)" 2>/dev/null || true
+	@gh release view "v$(RAW_VERSION)" -R $(REPO) >/dev/null 2>&1 \
+	  && gh release upload "v$(RAW_VERSION)" "$(DEB)" -R $(REPO) --clobber \
+	  || gh release create "v$(RAW_VERSION)" "$(DEB)" -R $(REPO) --title "maestria-rs $(RAW_VERSION)" --notes "$$(sed "s/{TAG}/v$(RAW_VERSION)/g" packaging/NOTAS-DA-RELEASE.md)"
+	@echo "https://github.com/$(REPO)/releases/tag/v$(RAW_VERSION)"
