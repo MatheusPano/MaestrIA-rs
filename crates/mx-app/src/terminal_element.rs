@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Instant;
 
 use gpui::{
     App, BorderStyle, Bounds, Element, ElementId, ElementInputHandler, Entity, Font, FontFallbacks,
@@ -66,6 +67,7 @@ pub struct RenderState {
     pub cols: usize,
     pub rows: usize,
     pub painted: bool,
+    pub painted_at: Option<Instant>,
     pub cursor_bounds: Option<Bounds<Pixels>>,
     pub marked: Option<String>,
     pub hits: Vec<HitQuad>,
@@ -85,6 +87,7 @@ impl RenderState {
             cols: 80,
             rows: 24,
             painted: false,
+            painted_at: None,
             cursor_bounds: None,
             marked: None,
             hits: Vec::new(),
@@ -321,6 +324,7 @@ impl Element for TerminalElement {
         let render = view.render().clone();
         let mut st = render.borrow_mut();
         st.painted = true;
+        st.painted_at = Some(cx.background_executor().now());
         let t = st.typography;
         let m = match st.metrics {
             Some((key, m)) if key == t => m,
@@ -413,33 +417,35 @@ impl Element for TerminalElement {
         let m = st.cell();
         let origin = st.origin;
         let cell_at = |row: usize, col: usize| point(origin.x + m.width * col as f32, origin.y + m.height * row as f32);
-        window.paint_quad(fill(bounds, hsla(st.snap.background)));
-        for (r, row) in st.cache.iter().enumerate() {
-            for &(col, len, bg) in &row.bg {
-                window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), hsla(bg)));
-            }
-        }
-        if !st.hits.is_empty() {
-            let yellow = crate::chrome::style::theme(cx).yellow;
-            for q in &st.hits {
-                let a = if q.current { CURRENT_ALPHA } else { OTHER_ALPHA };
-                let quad = Bounds::new(cell_at(q.row, q.col), size(m.width * q.len as f32, m.height));
-                window.paint_quad(fill(quad, color(yellow.with_alpha(a))));
-            }
-        }
-        let selection = color(st.selection);
-        for (r, row) in st.cache.iter().enumerate() {
-            for &(col, len) in &row.selected {
-                window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), selection));
-            }
-        }
-        for (r, row) in st.cache.iter().enumerate() {
-            for (col, line) in &row.texts {
-                if let Err(err) = line.paint(cell_at(r, *col), m.height, window, cx) {
-                    log::warn!("terminal line paint failed: {err}");
+        window.paint_layer(bounds, |window| {
+            window.paint_quad(fill(bounds, hsla(st.snap.background)));
+            for (r, row) in st.cache.iter().enumerate() {
+                for &(col, len, bg) in &row.bg {
+                    window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), hsla(bg)));
                 }
             }
-        }
+            if !st.hits.is_empty() {
+                let yellow = crate::chrome::style::theme(cx).yellow;
+                for q in &st.hits {
+                    let a = if q.current { CURRENT_ALPHA } else { OTHER_ALPHA };
+                    let quad = Bounds::new(cell_at(q.row, q.col), size(m.width * q.len as f32, m.height));
+                    window.paint_quad(fill(quad, color(yellow.with_alpha(a))));
+                }
+            }
+            let selection = color(st.selection);
+            for (r, row) in st.cache.iter().enumerate() {
+                for &(col, len) in &row.selected {
+                    window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), selection));
+                }
+            }
+            for (r, row) in st.cache.iter().enumerate() {
+                for (col, line) in &row.texts {
+                    if let Err(err) = line.paint(cell_at(r, *col), m.height, window, cx) {
+                        log::warn!("terminal line paint failed: {err}");
+                    }
+                }
+            }
+        });
         if let (Some(c), Some(b)) = (st.snap.cursor, st.cursor_bounds)
             && focused
             && c.kind == CursorKind::Block

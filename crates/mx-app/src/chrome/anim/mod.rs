@@ -1,3 +1,4 @@
+pub mod clock;
 pub mod confetti;
 mod confetti_layer;
 pub mod ease;

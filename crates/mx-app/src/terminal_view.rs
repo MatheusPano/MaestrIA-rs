@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui::{
     ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
@@ -12,6 +13,7 @@ use mx_term::{
 use mx_theme::TerminalPalette;
 
 use crate::app::theme::Mx;
+use crate::chrome::anim::clock;
 use crate::chrome::menu::ContextMenu;
 use crate::find_bar::{FindBar, FindState};
 use crate::keymap::{self, TerminalKey};
@@ -27,6 +29,9 @@ pub enum TerminalViewEvent {
     Title(String),
 }
 
+const OUTPUT_FRAME_MS: u64 = 50;
+const STREAMING_GAP: Duration = Duration::from_millis(100);
+
 pub struct TerminalView {
     pub(crate) session: TerminalSession,
     pub(crate) dirty: DirtyFlag,
@@ -41,6 +46,7 @@ pub struct TerminalView {
     pub(crate) find: Option<FindState>,
     pub(crate) find_bar: Option<Entity<FindBar>>,
     quit_on_exit: bool,
+    redraw: Option<Task<()>>,
     _theme: Option<Subscription>,
     _events: Task<()>,
 }
@@ -101,6 +107,7 @@ impl TerminalView {
             find: None,
             find_bar: None,
             quit_on_exit: false,
+            redraw: None,
             _theme: theme,
             _events: task,
         }
@@ -161,13 +168,28 @@ impl TerminalView {
         }
         if redraw {
             self.schedule_find_refresh(cx);
-            let mut st = self.render.borrow_mut();
-            if st.painted {
-                st.painted = false;
-                drop(st);
-                cx.notify();
-            }
+            self.request_redraw(cx);
         }
+    }
+
+    fn request_redraw(&mut self, cx: &mut Context<Self>) {
+        let mut st = self.render.borrow_mut();
+        if !st.painted {
+            return;
+        }
+        st.painted = false;
+        let now = cx.background_executor().now();
+        let streaming = st.painted_at.is_some_and(|at| now.saturating_duration_since(at) < STREAMING_GAP);
+        drop(st);
+        if !streaming {
+            cx.notify();
+            return;
+        }
+        let wait = Duration::from_millis(clock::until_next(OUTPUT_FRAME_MS, clock::ms_at(now)));
+        self.redraw = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            this.update(cx, |_, cx| cx.notify()).ok();
+        }));
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
