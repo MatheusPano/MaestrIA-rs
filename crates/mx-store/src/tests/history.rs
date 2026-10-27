@@ -162,3 +162,46 @@ fn a_tab_that_moved_to_a_new_session_holds_the_new_one_and_frees_the_old() {
     rig.tm("c").session_id = Some("now".into());
     assert_eq!(rig.s.standing_of(&old), ChatStanding::Fresh);
 }
+
+#[test]
+fn the_most_specific_folder_wins_for_nested_roots() {
+    let mut rig = Rig::new();
+    rig.folder("/home/lucas/marrow", "marrow");
+    rig.folder("/home/lucas/marrow/uplii", "uplii");
+    let wt = |path: &str, main: bool| WorktreeInfo { path: path.into(), branch: "bug-fix".into(), is_main: main, prunable: false };
+    rig.s.worktrees.insert("/home/lucas/marrow".into(), vec![wt("/home/lucas/marrow", true)]);
+    for (cwd, root) in [
+        ("/home/lucas/marrow/uplii", "/home/lucas/marrow/uplii"),
+        ("/home/lucas/marrow/uplii/api", "/home/lucas/marrow/uplii"),
+        ("/home/lucas/marrow", "/home/lucas/marrow"),
+        ("/home/lucas/marrow/outro", "/home/lucas/marrow"),
+        ("/home/lucas/marrow/upliix", "/home/lucas/marrow"),
+    ] {
+        assert_eq!(rig.s.folder_at(cwd).map(|f| f.root.as_str()), Some(root), "{cwd}");
+    }
+}
+
+#[test]
+fn a_worktree_inside_a_parent_folder_belongs_to_its_repo() {
+    let mut rig = Rig::new();
+    rig.folder("/home/lucas/marrow", "marrow");
+    rig.folder("/srv/uplii", "uplii");
+    let wt = |path: &str, main: bool| WorktreeInfo { path: path.into(), branch: "b".into(), is_main: main, prunable: false };
+    rig.s.worktrees.insert("/srv/uplii".into(), vec![wt("/srv/uplii", true), wt("/home/lucas/marrow/wt/TASK-1", false)]);
+    assert_eq!(rig.s.folder_at("/home/lucas/marrow/wt/TASK-1/src").map(|f| f.root.as_str()), Some("/srv/uplii"));
+}
+
+#[tokio::test]
+async fn a_chat_in_a_nested_folder_resumes_there_not_in_the_parent() {
+    let home = tempfile::tempdir().unwrap();
+    let marrow = home.path().join("marrow");
+    let uplii = marrow.join("uplii");
+    std::fs::create_dir_all(&uplii).unwrap();
+    let (marrow, uplii) = (marrow.to_string_lossy().into_owned(), uplii.to_string_lossy().into_owned());
+    let mut rig = Rig::new();
+    rig.folder(&marrow, "marrow");
+    rig.folder(&uplii, "uplii");
+    let id = rig.s.resume_chat(&entry("u1", &uplii), None, None).unwrap();
+    let t = rig.t(&id);
+    assert_eq!((t.folder_root.as_str(), t.cwd.as_str()), (uplii.as_str(), uplii.as_str()));
+}

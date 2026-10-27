@@ -37,11 +37,19 @@ impl Store {
             return None;
         }
         let inside = |root: &str| cwd == root || cwd.starts_with(&format!("{root}/"));
-        self.folders.iter().find(|f| inside(&f.root)).or_else(|| {
-            self.folders
-                .iter()
-                .find(|f| self.worktrees_of(&f.root).iter().any(|w| inside(&w.path)))
-        })
+        self.folders
+            .iter()
+            .filter_map(|f| {
+                let reach = std::iter::once(f.root.as_str())
+                    .chain(self.worktrees_of(&f.root).iter().map(|w| w.path.as_str()))
+                    .filter(|p| inside(p))
+                    .map(str::len)
+                    .max()?;
+                Some((reach, f))
+            })
+            .rev()
+            .max_by_key(|(reach, _)| *reach)
+            .map(|(_, f)| f)
     }
 
     fn tab_holding(&self, sid: &str) -> Option<&Tab> {
