@@ -1,0 +1,13 @@
+{
+  "id": "e2e.zoom",
+  "version": "1.0.0",
+  "name": "Zoom",
+  "description": "Plugin de teste do e2e: uma planta num ZoomView com FittedBox, como a do Escritório.",
+  "author": "e2e",
+  "main": ["python3", "-u", "main.py"],
+  "contributes": {
+    "commands": [
+      {"id": "planta", "title": "Abrir a planta", "key": "ctrl+alt+z"}
+    ]
+  }
+}

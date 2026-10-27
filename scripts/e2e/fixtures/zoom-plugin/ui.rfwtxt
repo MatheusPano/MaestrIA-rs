@@ -1,0 +1,33 @@
+import core.widgets;
+import maestria;
+
+widget root = Container(
+  color: 0xFF101018,
+  child: ZoomView(
+    maxScale: 6.0,
+    onZoom: event "zoom" {},
+    child: FittedBox(fit: "contain", child: Plan()),
+  ),
+);
+
+widget Plan = SizedBox(
+  width: 560.0,
+  height: 288.0,
+  child: Column(
+    crossAxisAlignment: "stretch",
+    children: [
+      Expanded(child: Row(crossAxisAlignment: "stretch", children: [
+        Expanded(child: Container(color: 0xFFE04040)),
+        Expanded(child: Container(color: 0xFF40C040)),
+        Expanded(child: Container(color: 0xFF4060E0)),
+        Expanded(child: Container(color: 0xFFE0C020)),
+      ])),
+      Expanded(child: Row(crossAxisAlignment: "stretch", children: [
+        Expanded(child: Container(color: 0xFFC040C0)),
+        Expanded(child: Container(color: 0xFF20C0C0)),
+        Expanded(child: Container(color: 0xFFF08020)),
+        Expanded(child: Container(color: 0xFFF0F0F0)),
+      ])),
+    ],
+  ),
+);
