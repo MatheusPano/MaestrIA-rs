@@ -78,9 +78,11 @@ impl StoreHost {
             }
         });
         store.load();
+        crate::keymap::hotkey::drop_taken_hotkeys(&mut store);
         store.attach_plugins(plugins);
         store.start();
         store.start_plugins();
+        store.start_updates();
 
         Ok(cx.new(|cx| {
             cx.spawn(async move |this, cx| {

@@ -1,84 +1,96 @@
-use gpui::{App, Entity, FontWeight, IntoElement, ParentElement, Styled, div, px};
+use gpui::{
+    App, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, RenderOnce, StatefulInteractiveElement,
+    Styled, Window, canvas, div, px,
+};
 
+use super::cards_model as model;
+use super::{plugin_tiles, session_cards};
 use crate::app::drag::DraggedTab;
 use crate::app::host::{StoreHost, update_store};
 use crate::app::theme::Mx;
-use gpui::{InteractiveElement, StatefulInteractiveElement};
 
-pub fn headline(live: usize) -> String {
-    match live {
-        0 => "Nenhum painel aberto".into(),
-        1 => "1 sessão rodando na lateral — clique nela pra trazer de volta".into(),
-        n => format!("{n} sessões rodando na lateral — clique numa pra trazer de volta"),
-    }
+const PAD: f32 = 28.;
+
+#[derive(IntoElement)]
+pub struct EmptyPane {
+    host: Entity<StoreHost>,
 }
 
-pub const DRAG_HINT: &str = "Arraste uma sessão da lateral pra cá — pela borda de um painel, ela divide a tela; pelo meio, toma o lugar dele";
+pub fn empty_pane(host: &Entity<StoreHost>) -> EmptyPane {
+    EmptyPane { host: host.clone() }
+}
 
-const CHEATS: [(&str, &str); 8] = [
-    ("Ctrl+Shift+T", "Nova sessão Claude"),
-    ("Ctrl+Shift+Enter", "Novo shell"),
-    ("Ctrl+Shift+N", "Nova task"),
-    ("Ctrl+Tab  Ctrl+PgDn", "Próximo painel"),
-    ("Ctrl+Shift+→", "Próxima sessão"),
-    ("Ctrl+Shift+W", "Fechar o painel em foco"),
-    ("Ctrl+,  Ctrl+Shift+P", "Configurações"),
-    ("Alt+1…9", "Ir pra enésima sessão"),
-];
-
-pub fn empty_pane(mx: &Mx, host: &Entity<StoreHost>, live: usize) -> impl IntoElement {
-    let host = host.clone();
-    let accent = mx.accent;
-    let mut sheet = div().mt(px(28.)).flex().flex_col().gap(px(8.));
-    for (keys, label) in CHEATS {
-        sheet = sheet.child(
+impl RenderOnce for EmptyPane {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let measured = window.use_keyed_state("empty-pane-width", cx, |_, _| 0f32);
+        let width = (*measured.read(cx) - 2. * PAD).max(0.);
+        let mx = Mx::get(cx).clone();
+        let store = &self.host.read(cx).store;
+        let live = model::card_tabs(store).len();
+        let content = if live == 0 {
+            div()
+                .min_h_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .child(div().text_size(px(18.)).font_weight(FontWeight::SEMIBOLD).text_color(mx.fg).child(model::APPS_TITLE))
+                .child(div().h(px(6.)))
+                .child(div().text_size(px(12.5)).text_color(mx.fg_faint).child(model::apps_subtitle(plugin_tiles::count(store))))
+                .child(div().h(px(32.)))
+                .child(plugin_tiles::plugin_tiles(&mx, &self.host, store, width, true))
+        } else {
             div()
                 .flex()
-                .gap(px(14.))
+                .flex_col()
+                .child(plugin_tiles::plugin_tiles(&mx, &self.host, store, width, false))
+                .child(div().h(px(30.)))
+                .child(session_cards::session_cards(&mx, &self.host, store, width))
                 .child(
                     div()
-                        .w(px(170.))
-                        .flex()
-                        .justify_end()
-                        .font_family("Hack")
-                        .text_size(px(11.))
-                        .text_color(mx.fg_dim)
-                        .child(keys),
+                        .w(px(width))
+                        .text_center()
+                        .text_size(px(11.5))
+                        .line_height(px(16.7))
+                        .text_color(mx.fg_faint)
+                        .child(model::DRAG_HINT),
                 )
-                .child(div().text_size(px(12.)).text_color(mx.fg_faint).child(label)),
-        );
+        };
+        let host = self.host.clone();
+        let accent = mx.accent;
+        div()
+            .id("empty-pane")
+            .relative()
+            .size_full()
+            .rounded(px(10.))
+            .bg(mx.bg)
+            .border_1()
+            .border_color(mx.border)
+            .overflow_y_scroll()
+            .p(px(PAD))
+            .drag_over::<DraggedTab>(move |s, _, _, _| s.border_color(accent).bg(accent.opacity(0.08)))
+            .on_drop(move |d: &DraggedTab, _, cx: &mut App| update_store(&host, cx, |s| s.select(&d.id)))
+            .child(
+                canvas(
+                    move |bounds, _, cx| {
+                        let w = f32::from(bounds.size.width);
+                        if (w - *measured.read(cx)).abs() > 0.5 {
+                            measured.update(cx, |m, cx| {
+                                *m = w;
+                                cx.notify();
+                            });
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .w_full()
+                .h(px(1.)),
+            )
+            .child(content)
     }
-    div()
-        .id("empty-pane")
-        .size_full()
-        .rounded(px(10.))
-        .bg(mx.bg)
-        .border_1()
-        .border_color(mx.border)
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .drag_over::<DraggedTab>(move |s, _, _, _| s.border_color(accent).bg(accent.opacity(0.08)))
-        .on_drop(move |d: &DraggedTab, _, cx: &mut App| update_store(&host, cx, |s| s.select(&d.id)))
-        .child(
-            div()
-                .text_size(px(15.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(mx.fg_dim)
-                .child(headline(live)),
-        )
-        .child(
-            div()
-                .mt(px(10.))
-                .w(px(330.))
-                .text_center()
-                .text_size(px(12.5))
-                .line_height(px(19.))
-                .text_color(mx.fg_faint)
-                .child(DRAG_HINT),
-        )
-        .child(sheet)
 }
 
 pub fn empty_screen(mx: &Mx, host: &Entity<StoreHost>, plugin: &str, cx: &App) -> impl IntoElement {
@@ -112,22 +124,4 @@ pub fn empty_screen(mx: &Mx, host: &Entity<StoreHost>, plugin: &str, cx: &App) -
                 .on_click(move |_, _, cx: &mut App| update_store(&host, cx, |s| s.open_screen_home()))
                 .child(cmd.title)
         }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_headline_counts_sessions_left_running() {
-        assert_eq!(headline(0), "Nenhum painel aberto");
-        assert_eq!(
-            headline(1),
-            "1 sessão rodando na lateral — clique nela pra trazer de volta"
-        );
-        assert_eq!(
-            headline(4),
-            "4 sessões rodando na lateral — clique numa pra trazer de volta"
-        );
-    }
 }

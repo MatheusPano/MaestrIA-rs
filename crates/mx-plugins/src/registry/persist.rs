@@ -1,14 +1,28 @@
 use serde_json::{Map, Value};
 
 use super::Plugins;
+use crate::catalog::PluginOrigin;
 
 impl Plugins {
     pub fn load(&self, json: &Value) {
         let mut reg = self.reg();
         reg.disabled.clear();
         reg.settings.clear();
+        reg.origins.clear();
+        reg.manual_update.clear();
+        reg.auto_update_off = json.get("autoUpdate") == Some(&Value::Bool(false));
         if let Some(Value::Array(ids)) = json.get("disabled") {
             reg.disabled.extend(ids.iter().filter_map(Value::as_str).map(str::to_owned));
+        }
+        if let Some(Value::Array(ids)) = json.get("manualUpdate") {
+            reg.manual_update.extend(ids.iter().filter_map(Value::as_str).map(str::to_owned));
+        }
+        if let Some(Value::Object(all)) = json.get("origins") {
+            for (id, o) in all {
+                if let Some(o) = PluginOrigin::from_json(o) {
+                    reg.origins.insert(id.clone(), o);
+                }
+            }
         }
         if let Some(Value::Object(all)) = json.get("settings") {
             for (id, values) in all {
@@ -24,6 +38,16 @@ impl Plugins {
         let mut out = Map::new();
         if !reg.disabled.is_empty() {
             out.insert("disabled".into(), reg.disabled.iter().cloned().map(Value::from).collect());
+        }
+        if reg.auto_update_off {
+            out.insert("autoUpdate".into(), Value::Bool(false));
+        }
+        if !reg.manual_update.is_empty() {
+            out.insert("manualUpdate".into(), reg.manual_update.iter().cloned().map(Value::from).collect());
+        }
+        if !reg.origins.is_empty() {
+            let origins: Map<String, Value> = reg.origins.iter().map(|(id, o)| (id.clone(), o.to_json())).collect();
+            out.insert("origins".into(), Value::Object(origins));
         }
         let settings: Map<String, Value> = reg
             .settings
@@ -70,5 +94,32 @@ impl Plugins {
             conn.notify("settings.changed", Some(Value::Object(params)));
         }
         self.changed();
+    }
+}
+
+impl Plugins {
+    pub fn auto_update(&self) -> bool {
+        !self.reg().auto_update_off
+    }
+
+    pub fn set_auto_update(&self, on: bool) {
+        self.reg().auto_update_off = !on;
+    }
+
+    pub fn manual_update(&self) -> std::collections::BTreeSet<String> {
+        self.reg().manual_update.clone()
+    }
+
+    pub fn set_manual_update(&self, id: &str, manual: bool) {
+        let mut reg = self.reg();
+        if manual {
+            reg.manual_update.insert(id.to_owned());
+        } else {
+            reg.manual_update.remove(id);
+        }
+    }
+
+    pub fn origin_of(&self, id: &str) -> Option<PluginOrigin> {
+        self.reg().origins.get(id).cloned()
     }
 }

@@ -215,6 +215,7 @@ fn session(id: &str, owner: Option<&str>, tag: Option<&str>) -> SessionJson {
         feature_or_hotfix: Some(("login quebrado".into(), FeatureOrHotfixKind::Hotfix)),
         workspaces: vec!["ATRIUM".into()],
         launcher: None,
+        context: None,
         owner: owner.map(str::to_owned),
         owner_tag: tag.map(str::to_owned),
         embedded: false,

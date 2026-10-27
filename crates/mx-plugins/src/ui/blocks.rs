@@ -106,6 +106,7 @@ pub struct ListItem {
     pub actions: Vec<ItemAction>,
     pub menu: Vec<MenuEntry>,
     pub avatar: Option<Avatar>,
+    pub avatar_size: Option<f64>,
     pub status: Option<String>,
     pub dim: bool,
     pub strong: bool,
@@ -115,7 +116,13 @@ pub struct ListItem {
     pub meta: Option<String>,
     pub meta_tone: Option<String>,
     pub subtitle_tone: Option<String>,
+    pub title_tone: Option<String>,
     pub selected: bool,
+}
+
+fn avatar_size(it: &Obj) -> Option<f64> {
+    let size = it.get("avatar")?.as_object()?.get("size")?.as_f64()?;
+    Some(size.clamp(10.0, 40.0))
 }
 
 impl ListItem {
@@ -137,6 +144,7 @@ impl ListItem {
             actions,
             menu: menu_of(&objs(it, "menu")),
             avatar: Avatar::parse(it.get("avatar")),
+            avatar_size: avatar_size(it),
             status: s(it, "status"),
             dim: on(it, "dim"),
             strong: on(it, "strong"),
@@ -146,6 +154,7 @@ impl ListItem {
             meta: s(it, "meta"),
             meta_tone: s(it, "metaTone"),
             subtitle_tone: s(it, "subtitleTone"),
+            title_tone: s(it, "titleTone"),
             selected: on(it, "selected"),
         }
     }

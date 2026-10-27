@@ -1,8 +1,8 @@
 # 06 — Delta 2.4.0 → 2.7.0 (behavioural spec)
 
-Specs 01–05 describe Flutter MaestrIA **v2.4.0**. The version users run is **v2.7.0**. Its source is `origin/main` in `/home/lucas/maestria/repo`, 17 commits ahead and 101 files changed. This document covers only what changed between those two versions.
+Specs 01–05 describe Flutter MaestrIA **v2.4.0**. The version users run is **v2.7.0**. Its source is `origin/main` in `~/maestria/repo`, 17 commits ahead and 101 files changed. This document covers only what changed between those two versions.
 
-How it was read: from `git -C /home/lucas/maestria/repo show <commit>`, `git log -p origin/main -- <path>` and `git show origin/main:<path>`. Read-only; the local checkout was never touched.
+How it was read: from `git -C ~/maestria/repo show <commit>`, `git log -p origin/main -- <path>` and `git show origin/main:<path>`. Read-only; the local checkout was never touched.
 
 Conventions:
 - UI strings are verbatim Portuguese in backticks.

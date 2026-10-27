@@ -38,6 +38,7 @@ pub struct PanelMenu {
     pub plugin_commands: Vec<(String, String)>,
     pub can_hibernate: bool,
     pub close_chord: Option<String>,
+    pub hotkey: Option<String>,
 }
 
 fn item(label: impl Into<gpui::SharedString>, action: A, glyph: icon::Icon, tone: Tone) -> MenuItem<A> {
@@ -64,6 +65,8 @@ pub fn panel_menu(m: &PanelMenu) -> Entries {
         ),
         None => out.push(tint_item(m.tint)),
     }
+    let hotkey_label = if m.hotkey.is_some() { "Trocar atalho…" } else { "Definir atalho…" };
+    out.push(item(hotkey_label, A::Hotkey, icon::KEYBOARD_OUTLINED, Tone::Dim).chord(m.hotkey.clone()).into());
     if m.kind == PanelKind::Claude {
         let plan = if m.plans > 1 { format!("Ver o plano ({})", m.plans) } else { "Ver o plano".into() };
         out.push(item(plan, A::ShowPlan, icon::CHECKLIST_RTL, Tone::Dim).disabled(m.plans == 0).into());

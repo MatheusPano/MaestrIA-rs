@@ -3735,7 +3735,9 @@ dependencies = [
  "mx-theme",
  "nix 0.29.0",
  "regex",
+ "reqwest",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
 ]
@@ -3772,7 +3774,9 @@ dependencies = [
  "mx-core",
  "nix 0.29.0",
  "regex",
+ "reqwest",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
 ]

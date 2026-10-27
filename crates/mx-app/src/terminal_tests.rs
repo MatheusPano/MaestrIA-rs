@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AppContext, Context, Entity, EntityInputHandler, IntoElement, KeyDownEvent, Keystroke, Modifiers, MouseButton,
-    ParentElement, Pixels, Point, Render, Styled, TestAppContext, VisualTestContext, Window, div, point,
+    AppContext, Context, Entity, EntityInputHandler, Focusable, IntoElement, KeyDownEvent, Keystroke, Modifiers,
+    MouseButton, ParentElement, Pixels, Point, Render, Styled, TestAppContext, VisualTestContext, Window, div, point,
 };
-use mx_term::{GridSize, SpawnOptions, TerminalSession};
+use mx_term::{GridSize, SelectionKind, SpawnOptions, TerminalSession};
 use mx_theme::TerminalPalette;
 
 use super::TerminalView;
@@ -151,4 +151,163 @@ fn dragging_inside_one_cell_reports_motion_once_per_cell(cx: &mut TestAppContext
     vcx.simulate_mouse_move(at(1., 0.6), MouseButton::Left, Modifiers::none());
     vcx.simulate_mouse_up(at(1., 0.6), MouseButton::Left, Modifiers::none());
     assert_eq!(settle(&file, 28), b"\x1b[<0;1;1M\x1b[<32;2;1M\x1b[<0;2;1m");
+}
+
+const ERROS: &[u8] = b"primeiro erro\r\nnada aqui\r\nsegundo erro\r\n";
+
+fn counter(view: &Entity<TerminalView>, cx: &mut VisualTestContext) -> Option<String> {
+    view.read_with(cx, |v, _| v.find.as_ref().and_then(|f| f.session.counter()))
+}
+
+fn highlights(view: &Entity<TerminalView>, cx: &mut VisualTestContext) -> usize {
+    view.read_with(cx, |v, _| v.render.borrow().hits.len())
+}
+
+fn bar_focused(view: &Entity<TerminalView>, cx: &mut VisualTestContext) -> bool {
+    view.update_in(cx, |v, window, cx| {
+        v.find_bar.as_ref().is_some_and(|b| b.read(cx).focus_handle(cx).is_focused(window))
+    })
+}
+
+fn open_find(view: &Entity<TerminalView>, cx: &mut VisualTestContext) {
+    view.update_in(cx, |v, window, cx| v.open_find(window, cx));
+    cx.run_until_parked();
+}
+
+fn search(view: &Entity<TerminalView>, cx: &mut VisualTestContext, query: &str) {
+    open_find(view, cx);
+    cx.simulate_input(query);
+    cx.executor().advance_clock(Duration::from_millis(150));
+    cx.run_until_parked();
+}
+
+fn with_erros(cx: &mut TestAppContext) -> (TerminalSession, Entity<TerminalView>, &mut VisualTestContext) {
+    let session = TerminalSession::new(SIZE, TerminalPalette::default(), 100);
+    session.feed(ERROS);
+    let (_host, view, vcx) = mount(cx, &session);
+    (session, view, vcx)
+}
+
+#[gpui::test]
+fn find_opens_one_bar_with_its_field_focused(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    view.update_in(vcx, |v, window, _| window.focus(&v.focus));
+    open_find(&view, vcx);
+    assert!(view.read_with(vcx, |v, _| v.find.is_some()));
+    assert!(bar_focused(&view, vcx));
+    assert_eq!(counter(&view, vcx), None);
+}
+
+#[gpui::test]
+fn typing_highlights_every_hit_and_enter_walks_up_and_shift_enter_down(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    search(&view, vcx, "erro");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("2 de 2"));
+    assert_eq!(highlights(&view, vcx), 2);
+    vcx.simulate_keystrokes("enter");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("1 de 2"));
+    vcx.simulate_keystrokes("shift-enter");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("2 de 2"));
+}
+
+#[gpui::test]
+fn enter_while_the_query_is_pending_searches_first(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    open_find(&view, vcx);
+    vcx.simulate_input("erro");
+    vcx.simulate_keystrokes("enter");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("2 de 2"));
+}
+
+#[gpui::test]
+fn a_query_with_no_hits_reads_nenhum_and_paints_nothing(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    search(&view, vcx, "inexistente");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("Nenhum"));
+    assert_eq!(highlights(&view, vcx), 0);
+}
+
+#[gpui::test]
+fn new_output_while_open_adds_hits_without_moving_the_current_one(cx: &mut TestAppContext) {
+    let (session, view, vcx) = with_erros(cx);
+    search(&view, vcx, "erro");
+    session.feed(b"terceiro erro\r\n");
+    vcx.run_until_parked();
+    vcx.executor().advance_clock(Duration::from_millis(300));
+    vcx.run_until_parked();
+    assert_eq!(highlights(&view, vcx), 3);
+    assert_eq!(counter(&view, vcx).as_deref(), Some("2 de 3"));
+}
+
+#[gpui::test]
+fn escape_closes_the_bar_and_enter_goes_back_to_the_pty(cx: &mut TestAppContext) {
+    let dir = Scratch::new("find-esc");
+    let (session, file) = capture(&dir.0, 1);
+    let (_host, view, vcx) = mount(cx, &session);
+    search(&view, vcx, "erro");
+    vcx.simulate_keystrokes("escape");
+    assert!(!view.read_with(vcx, |v, _| v.find.is_some()));
+    assert_eq!(highlights(&view, vcx), 0);
+    vcx.simulate_keystrokes("enter");
+    assert_eq!(settle(&file, 1), b"\r");
+}
+
+#[gpui::test]
+fn opening_from_another_focused_field_moves_the_keyboard_to_the_bar(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    let other = vcx.update(|_, cx| cx.focus_handle());
+    vcx.update(|window, _| window.focus(&other));
+    open_find(&view, vcx);
+    assert!(bar_focused(&view, vcx));
+}
+
+#[gpui::test]
+fn reopening_keeps_the_last_query_selected_for_typing_over(cx: &mut TestAppContext) {
+    let (_s, view, vcx) = with_erros(cx);
+    search(&view, vcx, "nada");
+    vcx.simulate_keystrokes("escape");
+    open_find(&view, vcx);
+    vcx.simulate_input("erro");
+    vcx.executor().advance_clock(Duration::from_millis(150));
+    vcx.run_until_parked();
+    let text = view.read_with(vcx, |v, cx| v.find_bar.as_ref().unwrap().read(cx).text().to_owned());
+    assert_eq!(text, "erro");
+    assert_eq!(counter(&view, vcx).as_deref(), Some("2 de 2"));
+}
+
+#[gpui::test]
+fn copy_in_a_claude_tab_joins_the_rows_claude_wrapped(cx: &mut TestAppContext) {
+    let session = TerminalSession::new(SIZE, TerminalPalette::default(), 100);
+    let (_host, view, vcx) = mount(cx, &session);
+    let cols = session.size().cols as usize;
+    let words = "Rivers shape landscapes and sustain".repeat(cols / 35 + 1);
+    let first: String = words.chars().take(cols - 6).collect::<String>().trim_end().to_owned();
+    session.feed(format!("\x1b[H\x1b[2J● {first}\r\n\x1b[2Cecosystems across the globe.").as_bytes());
+    session.start_selection(0, 0, false, SelectionKind::Cells);
+    session.update_selection(cols - 1, 1, true);
+    for (claude, want) in [
+        (true, format!("{first} ecosystems across the globe.")),
+        (false, format!("● {first}\n  ecosystems across the globe.")),
+    ] {
+        view.update_in(vcx, |v, _, cx| {
+            v.set_claude(claude);
+            v.copy_selection(cx);
+        });
+        assert_eq!(vcx.read_from_clipboard().and_then(|c| c.text()), Some(want));
+    }
+}
+
+#[test]
+fn a_hit_split_by_the_wrap_paints_on_both_rows_and_off_screen_hits_paint_nothing() {
+    use crate::terminal_element::{HitQuad, hit_quads};
+    use mx_term::{Hit, Viewport};
+    let view = Viewport { history: 5, display_offset: 0, rows: 4 };
+    let marks = [(Hit::new((8, 5), (2, 6)), true), (Hit::new((0, 1), (3, 1)), false)];
+    assert_eq!(
+        hit_quads(&marks, view, 10),
+        [
+            HitQuad { row: 0, col: 8, len: 2, current: true },
+            HitQuad { row: 1, col: 0, len: 2, current: true }
+        ]
+    );
 }

@@ -1,12 +1,17 @@
 use std::ops::Range;
 
-use gpui::{Context, px};
+use gpui::{ClipboardItem, Context, px};
 
 use super::{EditorEvent, TextEditor};
 
 impl TextEditor {
     pub fn set_read_only(&mut self, read_only: bool) {
         self.read_only = read_only;
+    }
+
+    #[cfg(test)]
+    pub fn style(&self) -> &super::EditorStyle {
+        &self.style
     }
 
     #[cfg(test)]
@@ -19,8 +24,8 @@ impl TextEditor {
         let head = self.buffer.head();
         let start = self.buffer.line_start(head);
         let line = text[..start].matches('\n').count() + 1;
-        let column = text[start..head].chars().count() + 1;
-        let selected = self.buffer.selected_text().chars().count();
+        let column = text[start..head].encode_utf16().count() + 1;
+        let selected = self.buffer.selected_text().encode_utf16().count();
         (line, column, selected)
     }
 
@@ -32,15 +37,64 @@ impl TextEditor {
             text.match_indices('\n').nth(line - 2).map_or(text.len(), |(i, _)| i + 1)
         };
         let end = self.buffer.line_end(start);
-        text[start..end].char_indices().nth(column.saturating_sub(1)).map_or(end, |(i, _)| start + i)
+        let want = column.saturating_sub(1);
+        let mut units = 0;
+        for (i, c) in text[start..end].char_indices() {
+            if units >= want {
+                return start + i;
+            }
+            units += c.len_utf16();
+        }
+        end
+    }
+
+    pub fn cut_selection(&mut self, cx: &mut Context<Self>) {
+        if self.read_only {
+            return;
+        }
+        if let Some(text) = self.buffer.cut() {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            self.edited(cx);
+        }
+    }
+
+    pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
+        self.copy(cx);
+    }
+
+    pub fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
+        self.paste(cx);
+    }
+
+    pub fn select_everything(&mut self, cx: &mut Context<Self>) {
+        self.buffer.select_all();
+        self.moved(cx);
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.buffer.has_selection()
     }
 
     pub fn go_to(&mut self, line: usize, column: usize, cx: &mut Context<Self>) {
-        let at = self.offset_of(line, column);
+        self.place(line.saturating_sub(1), column.saturating_sub(1), true, cx);
+    }
+
+    pub fn place(&mut self, line: usize, column: usize, center: bool, cx: &mut Context<Self>) {
+        let lines = self.buffer.text().matches('\n').count();
+        let at = self.offset_of(line.min(lines) + 1, column + 1);
         self.buffer.set_cursor(at, false);
         self.goal_x = None;
-        self.center_next = true;
+        self.center_next = center;
         self.moved(cx);
+    }
+
+    pub fn cursor_line(&self) -> usize {
+        let text = self.buffer.text();
+        text[..self.buffer.head()].matches('\n').count()
+    }
+
+    pub fn version(&self) -> u64 {
+        self.buffer.version()
     }
 
     pub fn reload(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
@@ -50,6 +104,8 @@ impl TextEditor {
         self.goal_x = None;
         self.found.clear();
         self.found_current = None;
+        self.folded.clear();
+        self.layout = None;
         cx.notify();
     }
 
@@ -68,7 +124,7 @@ impl TextEditor {
 
     fn visible(&self, at: usize) -> bool {
         let Some(layout) = &self.layout else { return false };
-        let y = layout.position(at).y + px(super::PAD_TOP);
+        let y = layout.position(at).y + px(self.style.pad.top);
         y >= self.scroll_y && y + layout.line_height <= self.scroll_y + self.bounds.size.height
     }
 

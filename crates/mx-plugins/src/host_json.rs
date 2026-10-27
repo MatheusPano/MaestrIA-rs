@@ -1,4 +1,4 @@
-use mx_core::model::{ClaudeStatus, FeatureOrHotfixKind, TabKind, WorktreeInfo};
+use mx_core::model::{ClaudeStatus, ContextUsage, FeatureOrHotfixKind, TabKind, WorktreeInfo};
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,10 +29,21 @@ pub struct SessionJson {
     pub feature_or_hotfix: Option<(String, FeatureOrHotfixKind)>,
     pub workspaces: Vec<String>,
     pub launcher: Option<String>,
+    pub context: Option<ContextUsage>,
     pub owner: Option<String>,
     pub owner_tag: Option<String>,
     pub embedded: bool,
     pub activity: SessionActivity,
+}
+
+pub fn context_json(c: Option<&ContextUsage>) -> Value {
+    c.map_or(Value::Null, |c| {
+        let mut m = Map::new();
+        m.insert("percent".into(), Value::from(c.percent));
+        m.insert("tokens".into(), Value::from(c.tokens));
+        m.insert("window".into(), Value::from(c.window));
+        Value::Object(m)
+    })
 }
 
 fn opt(v: &Option<String>) -> Value {
@@ -77,6 +88,7 @@ impl SessionJson {
         );
         m.insert("workspaces".into(), strings(&self.workspaces));
         m.insert("launcher".into(), opt(&self.launcher));
+        m.insert("context".into(), context_json(self.context.as_ref()));
         m.insert("owner".into(), opt(&self.owner));
         m.insert("embedded".into(), Value::from(self.embedded));
         if self.owner.as_deref() == Some(caller_id) {

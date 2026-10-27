@@ -79,7 +79,7 @@ pub struct Tab {
     pub follow_ups: Vec<FollowUp>,
     pub session_id: Option<String>,
     pub agent_name: Option<String>,
-    pub dirty: usize,
+    pub hotkey: Option<String>,
     pub started_at: Time,
     pub zoom: i32,
     pub group_id: Option<String>,
@@ -125,7 +125,7 @@ impl Tab {
             follow_ups: Vec::new(),
             session_id: None,
             agent_name: None,
-            dirty: 0,
+            hotkey: None,
             started_at: now,
             zoom: 0,
             group_id: None,
@@ -331,6 +331,9 @@ impl Tab {
         }
         if self.pinned {
             m.insert("pinned".into(), json!(true));
+        }
+        if let Some(k) = &self.hotkey {
+            m.insert("hotkey".into(), json!(k));
         }
         Value::Object(m)
     }

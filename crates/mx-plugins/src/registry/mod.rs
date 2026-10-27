@@ -4,7 +4,7 @@ mod lifecycle;
 mod persist;
 mod scan;
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
@@ -13,7 +13,9 @@ use serde_json::Value;
 use tokio::runtime::Handle;
 
 pub use install::{InstallError, StagedPlugin, installed_banner, trust_facts, trust_headline};
+pub use lifecycle::{CAPABILITIES, MAESTRIA_COMPAT};
 
+use crate::catalog::PluginOrigin;
 use crate::chord::KeyPress;
 use crate::manifest::{PluginCommand, PluginManifest};
 use crate::process::Connection;
@@ -94,6 +96,9 @@ pub(crate) struct Registry {
     pub busy: BTreeSet<String>,
     pub themes: Themes,
     pub scanned: bool,
+    pub origins: BTreeMap<String, PluginOrigin>,
+    pub manual_update: BTreeSet<String>,
+    pub auto_update_off: bool,
 }
 
 impl Registry {

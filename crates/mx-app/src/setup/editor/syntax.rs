@@ -5,12 +5,20 @@ pub enum Tone {
     Comment,
     String,
     Number,
+    Literal,
     Keyword,
     Type,
+    Function,
     Key,
+    Variable,
     Meta,
     Added,
     Removed,
+    Section,
+    Bullet,
+    Link,
+    Emphasis,
+    Strong,
 }
 
 pub type Spans = Vec<(Range<usize>, Tone)>;
@@ -33,6 +41,7 @@ struct Grammar {
     keys: bool,
     keywords: &'static [&'static str],
     fold_case: bool,
+    dollar_vars: bool,
 }
 
 const SLASH: &[&str] = &["//"];
@@ -105,6 +114,7 @@ const DOCKER: &[&str] = &[
     "shell", "stopsignal", "user", "volume", "workdir",
 ];
 const LITERALS: &[&str] = &["false", "no", "null", "off", "on", "true", "yes"];
+const LITERAL_WORDS: &[&str] = &["False", "None", "True", "false", "nil", "null", "true", "undefined"];
 const NONE: &[&str] = &[];
 
 const fn code(line: &'static [&'static str], block: Option<(&'static str, &'static str)>, keywords: &'static [&'static str]) -> Grammar {
@@ -118,6 +128,7 @@ const fn code(line: &'static [&'static str], block: Option<(&'static str, &'stat
         keys: false,
         keywords,
         fold_case: false,
+        dollar_vars: false,
     }
 }
 
@@ -133,11 +144,12 @@ fn grammar(lang: &str) -> Option<Grammar> {
         "rust" => Grammar { quotes: "\"", ..code(SLASH, C_BLOCK, RUST) },
         "java" | "kotlin" | "swift" | "c" | "cpp" | "csharp" | "objectivec" | "scala" | "groovy" | "gradle"
         | "protobuf" => Grammar { triple: true, ..code(SLASH, C_BLOCK, C_LIKE) },
-        "php" => code(&["//", "#"], C_BLOCK, C_LIKE),
+        "php" => Grammar { dollar_vars: true, ..code(&["//", "#"], C_BLOCK, C_LIKE) },
         "css" | "scss" | "less" => code(SLASH, C_BLOCK, NONE),
         "python" => Grammar { triple: true, ..code(HASH, None, PYTHON) },
         "ruby" => code(HASH, None, RUBY),
-        "bash" | "makefile" | "powershell" | "perl" | "r" | "elixir" | "nginx" => code(HASH, None, SHELL),
+        "bash" | "makefile" | "powershell" | "perl" | "nginx" => Grammar { dollar_vars: true, ..code(HASH, None, SHELL) },
+        "r" | "elixir" => code(HASH, None, SHELL),
         "dockerfile" => Grammar { fold_case: true, ..code(HASH, None, DOCKER) },
         "yaml" => Grammar { keys: true, ..code(HASH, None, LITERALS) },
         "json" => Grammar { keys: true, ..code(SLASH, C_BLOCK, LITERALS) },
@@ -159,8 +171,8 @@ pub fn highlight(text: &str, lang: &str) -> Spans {
     match g.mode {
         Mode::Code => Lexer { text, at: 0, out: Vec::new() }.code(&g),
         Mode::Markup => Lexer { text, at: 0, out: Vec::new() }.markup(),
-        Mode::Markdown => markdown(text),
-        Mode::Diff => diff(text),
+        Mode::Markdown => super::markdown::markdown(text),
+        Mode::Diff => super::markdown::diff(text),
     }
 }
 
@@ -265,10 +277,17 @@ impl Lexer<'_> {
                 } else {
                     g.keywords.contains(&word)
                 };
+                let literal = if std::ptr::eq(g.keywords, LITERALS) { keyword } else { LITERAL_WORDS.contains(&word) };
                 if g.keys && self.followed_by_colon() && !keyword {
                     self.push(from, Tone::Key);
+                } else if literal {
+                    self.push(from, Tone::Literal);
                 } else if keyword {
                     self.push(from, Tone::Keyword);
+                } else if g.dollar_vars && word.starts_with('$') {
+                    self.push(from, Tone::Variable);
+                } else if self.peek() == Some('(') && !g.keys {
+                    self.push(from, Tone::Function);
                 } else if word.starts_with(|c: char| c.is_uppercase()) && word.chars().any(char::is_lowercase) {
                     self.push(from, Tone::Type);
                 }
@@ -291,9 +310,16 @@ impl Lexer<'_> {
             } else if c == '<' {
                 self.at += 1;
                 self.take_while(|c| c == '/' || c == '!' || c == '?');
+                self.push(from, Tone::Meta);
+                let name = self.at;
                 self.take_while(|c| ident_char(c) || c == '-' || c == ':' || c == '.');
-                self.push(from, Tone::Keyword);
+                self.push(name, Tone::Variable);
                 self.tag_body();
+                let close = self.at;
+                if self.peek() == Some('>') {
+                    self.at += 1;
+                    self.push(close, Tone::Meta);
+                }
             } else {
                 self.at += c.len_utf8();
             }
@@ -318,64 +344,6 @@ impl Lexer<'_> {
             }
         }
     }
-}
-
-fn lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut start = 0;
-    text.split('\n').map(move |l| {
-        let at = start;
-        start += l.len() + 1;
-        (at, l)
-    })
-}
-
-fn markdown(text: &str) -> Spans {
-    let mut out = Vec::new();
-    let mut fenced = false;
-    for (at, line) in lines(text) {
-        let whole = at..at + line.len();
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            fenced = !fenced;
-            out.push((whole, Tone::Meta));
-        } else if fenced {
-            out.push((whole, Tone::String));
-        } else if trimmed.starts_with('#') {
-            out.push((whole, Tone::Keyword));
-        } else if trimmed.starts_with('>') {
-            out.push((whole, Tone::Comment));
-        } else {
-            let mut open = None;
-            for (i, c) in line.char_indices() {
-                if c == '`' {
-                    match open.take() {
-                        Some(s) => out.push((at + s..at + i + 1, Tone::String)),
-                        None => open = Some(i),
-                    }
-                }
-            }
-        }
-    }
-    out
-}
-
-fn diff(text: &str) -> Spans {
-    lines(text)
-        .filter_map(|(at, line)| {
-            let tone = if line.starts_with("+++") || line.starts_with("---") || line.starts_with("diff ") {
-                Tone::Keyword
-            } else if line.starts_with("@@") {
-                Tone::Meta
-            } else if line.starts_with('+') {
-                Tone::Added
-            } else if line.starts_with('-') {
-                Tone::Removed
-            } else {
-                return None;
-            };
-            Some((at..at + line.len(), tone))
-        })
-        .collect()
 }
 
 #[cfg(test)]

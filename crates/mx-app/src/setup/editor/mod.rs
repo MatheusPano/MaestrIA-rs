@@ -1,101 +1,38 @@
 mod buffer;
 mod code;
+mod comment;
 mod element;
+mod fold;
+mod gutter;
 mod input;
 mod keys;
 mod layout;
+mod markdown;
+mod style;
 pub mod syntax;
 
+use std::collections::BTreeSet;
 use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, EventEmitter, FocusHandle, Focusable, Hsla,
+    App, Bounds, ClipboardItem, Context, CursorStyle, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, Point,
     Render, ScrollWheelEvent, Styled, Window, div, point, px,
 };
 
 pub use buffer::Buffer;
+#[cfg(test)]
+pub use comment::comment_style;
+pub use style::{EditorStyle, Gutter, Pad, SyntaxColors};
 use element::EditorElement;
 use layout::EditorLayout;
-
-pub const PAD_LEFT: f32 = 18.;
-pub const PAD_TOP: f32 = 14.;
-pub const PAD_RIGHT: f32 = 18.;
-pub const PAD_BOTTOM: f32 = 24.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditorEvent {
     Changed,
     Save,
     Cursor,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct SyntaxColors {
-    pub comment: Hsla,
-    pub string: Hsla,
-    pub number: Hsla,
-    pub keyword: Hsla,
-    pub kind: Hsla,
-    pub key: Hsla,
-    pub meta: Hsla,
-    pub added: Hsla,
-    pub removed: Hsla,
-}
-
-impl SyntaxColors {
-    pub fn of(&self, tone: syntax::Tone) -> Hsla {
-        use syntax::Tone;
-        match tone {
-            Tone::Comment => self.comment,
-            Tone::String => self.string,
-            Tone::Number => self.number,
-            Tone::Keyword => self.keyword,
-            Tone::Type => self.kind,
-            Tone::Key => self.key,
-            Tone::Meta => self.meta,
-            Tone::Added => self.added,
-            Tone::Removed => self.removed,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct EditorStyle {
-    pub font_size: f32,
-    pub line_height: f32,
-    pub fg: Hsla,
-    pub caret: Hsla,
-    pub selection: Hsla,
-    pub thumb: Hsla,
-    pub wrap: bool,
-    pub code: bool,
-    pub language: String,
-    pub syntax: Option<SyntaxColors>,
-    pub gutter: Option<(Hsla, Hsla)>,
-    pub found: Hsla,
-    pub found_current: Hsla,
-}
-
-impl Default for EditorStyle {
-    fn default() -> Self {
-        Self {
-            font_size: 12.5,
-            line_height: 1.55,
-            fg: gpui::white(),
-            caret: gpui::white(),
-            selection: gpui::blue().opacity(0.3),
-            thumb: gpui::white().opacity(0.2),
-            wrap: true,
-            code: false,
-            language: String::new(),
-            syntax: None,
-            gutter: None,
-            found: gpui::yellow().opacity(0.25),
-            found_current: gpui::yellow().opacity(0.5),
-        }
-    }
 }
 
 pub struct TextEditor {
@@ -114,6 +51,8 @@ pub struct TextEditor {
     read_only: bool,
     found: Vec<Range<usize>>,
     found_current: Option<usize>,
+    folded: BTreeSet<usize>,
+    fold_lines: usize,
 }
 
 impl EventEmitter<EditorEvent> for TextEditor {}
@@ -142,6 +81,8 @@ impl TextEditor {
             read_only: false,
             found: Vec::new(),
             found_current: None,
+            folded: BTreeSet::new(),
+            fold_lines: 0,
         }
     }
 
@@ -161,6 +102,7 @@ impl TextEditor {
         self.goal_x = None;
         self.found.clear();
         self.found_current = None;
+        self.folded.clear();
         cx.notify();
     }
 
@@ -181,6 +123,7 @@ impl TextEditor {
     }
 
     fn edited(&mut self, cx: &mut Context<Self>) {
+        self.refold();
         self.goal_x = None;
         self.autoscroll = true;
         cx.emit(EditorEvent::Changed);
@@ -189,6 +132,7 @@ impl TextEditor {
     }
 
     fn moved(&mut self, cx: &mut Context<Self>) {
+        self.reveal_cursor();
         self.autoscroll = true;
         cx.emit(EditorEvent::Cursor);
         cx.notify();
@@ -203,20 +147,20 @@ impl TextEditor {
     }
 
     fn left(&self) -> Pixels {
-        px(PAD_LEFT) + self.layout.as_ref().map_or(px(0.), |l| l.gutter)
+        px(self.style.pad.left) + self.layout.as_ref().map_or(px(0.), |l| l.gutter)
     }
 
     fn to_content(&self, at: Point<Pixels>) -> Point<Pixels> {
         point(
             at.x - self.bounds.origin.x - self.left() + self.scroll_x,
-            at.y - self.bounds.origin.y - px(PAD_TOP) + self.scroll_y,
+            at.y - self.bounds.origin.y - px(self.style.pad.top) + self.scroll_y,
         )
     }
 
     fn to_window(&self, at: Point<Pixels>) -> Point<Pixels> {
         point(
             at.x + self.bounds.origin.x + self.left() - self.scroll_x,
-            at.y + self.bounds.origin.y + px(PAD_TOP) - self.scroll_y,
+            at.y + self.bounds.origin.y + px(self.style.pad.top) - self.scroll_y,
         )
     }
 
@@ -286,6 +230,9 @@ impl TextEditor {
 
     fn mouse_down(&mut self, at: Point<Pixels>, clicks: usize, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
+        if self.fold_click(at, cx) {
+            return;
+        }
         let Some(offset) = self.offset_at_window(at) else {
             return;
         };
@@ -326,12 +273,12 @@ impl TextEditor {
     }
 
     fn max_scroll(&self) -> Pixels {
-        let content = self.layout.as_ref().map_or(px(0.), |l| l.height) + px(PAD_TOP + PAD_BOTTOM);
+        let content = self.layout.as_ref().map_or(px(0.), |l| l.height) + px(self.style.pad.top + self.style.pad.bottom);
         (content - self.bounds.size.height).max(px(0.))
     }
 
     fn view_width(&self) -> Pixels {
-        (self.bounds.size.width - self.left() - px(PAD_RIGHT)).max(px(0.))
+        (self.bounds.size.width - self.left() - px(self.style.pad.right)).max(px(0.))
     }
 
     fn max_scroll_x(&self) -> Pixels {
@@ -339,7 +286,7 @@ impl TextEditor {
             return px(0.);
         }
         let widest = self.layout.as_ref().map_or(px(0.), |l| l.width);
-        (widest + px(PAD_RIGHT) - self.view_width()).max(px(0.))
+        (widest + px(self.style.pad.right) - self.view_width()).max(px(0.))
     }
 
     fn adopt_layout(&mut self, layout: Rc<EditorLayout>, bounds: Bounds<Pixels>) {
@@ -348,10 +295,11 @@ impl TextEditor {
         if self.autoscroll {
             self.autoscroll = false;
             let p = layout.position(self.buffer.head());
-            let caret = p.y + px(PAD_TOP);
+            let caret = p.y + px(self.style.pad.top);
             let lh = layout.line_height;
             let view = bounds.size.height;
-            if std::mem::take(&mut self.center_next) {
+            let hidden = caret < self.scroll_y || caret + lh > self.scroll_y + view;
+            if std::mem::take(&mut self.center_next) && hidden {
                 self.scroll_y = caret - view / 2.;
             } else if caret < self.scroll_y + lh {
                 self.scroll_y = caret - lh;
@@ -405,5 +353,7 @@ impl Render for TextEditor {
     }
 }
 
+#[cfg(test)]
+mod code_tests;
 #[cfg(test)]
 mod tests;

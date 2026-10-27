@@ -22,6 +22,8 @@ The AppStore (spec 01 §3, spec 03 §1.7/§2.5, spec 04 §2.4/§4). One owner, `
 ## Ports the app must honour (gaps in mx-core's `Term`)
 - The term layer reports process exit with `StoreMsg::TermExited` (ignored if `term.exited()` is false again).
 - `start_command` on an exited term must restart it (used by `wake`).
+- `Effect::PasteClipboard{tab_id, images_via_ctrl_v}` = a plugin's ⌘V: read the clipboard, then
+  `TerminalSession::paste_clipboard`. Terms implement `mx_core::ports::TermInput` (trust prompt, keys, Enter).
 - Bracketed paste without Enter is emitted as `Effect::Paste{tab_id, text}`; clipboard as `Effect::Clipboard`.
   Drain with `take_effects()`.
 
@@ -44,10 +46,15 @@ Group(idx of 4)} chosen_tint_of reading() last_import() matches(t) hits() has_hi
   move_root_row move_in_workspace move_folder can_drop/drop_row(RowPlace, RowPlace, into)`.
 - Features: `add_feature edit_feature_text set_feature_tint set_feature_kind toggle_feature_collapsed
   complete_feature remove_feature assign tabs_in`.
-- Tabs: `open_shell open_shell_with open_launcher open_claude(ClaudeSpec) relaunch select place dismiss
+- Tabs: `open_shell open_shell_with open_launcher open_claude(ClaudeSpec) open_claude_placed(spec, place) relaunch select place dismiss
   close_tab -> Option<Tab> close_focused close_settled settled_in rename_tab set_tab_tint set_done move_tab
-  toggle_pin drop_tab(id, target, DropSide) focus_pane cycle_pane cycle select_index resize_split(path, gutter,
+  toggle_pin drop_tab(id, target, DropSide) focus_pane cycle_pane cycle resize_split(path, gutter,
   delta, total) reveal_tab look set_panes`.
+- Panel hotkeys (chord ids): `set_hotkey(id, Option<&str>)` steals from other panels with a banner,
+  `release_hotkey(chord)` (an action took it), `retain_hotkeys(keep)` (load-time drop of action-owned keys),
+  `panel_for(accepts) -> Option<id>`; free fn `hotkey_label(id)`.
+- History: `standing_of` (on screen / background / live / gone / fresh) and `resume_chat`, which attaches a
+  background session in a shell running `claude attach '<job id>'`.
 - Readers/setup: `show_doc(Doc, DocPlace) show_plan show_message show_file follow_link open_markdown
   show_setup set_setup_selected`.
 - Groups: `save_group group_panes ungroup remove_group clear_groups rename_group open_group`.
@@ -73,6 +80,9 @@ Group(idx of 4)} chosen_tint_of reading() last_import() matches(t) hits() has_hi
   `answer_dialog(DialogAnswer::{Text, Form})`.
 - Rail: `rail_plugins() move_rail_plugin footer_commands rail_badge open_windows show_sidebar_view`.
 - `run_plugin_command(full_id, on) set_plugin_enabled uninstall_plugin set_plugin_setting`.
+- Sessions API (spec 06 F): `portrait_of(tab)`; `session.status` on hibernate/wake/settle, `session.renamed`
+  (plugin renames only — the sidebar's `rename_tab` must call `emit_renamed`), `session.context`; the launch
+  settle waits out the folder-trust prompt (2 s × 300); alerts of a tab with a portrait carry it.
 - Not yet: plugin-owned screens (`contributes.screen`) — every view lives in the sessions grid.
 
 ## Test fakes (`testing`)

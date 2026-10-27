@@ -8,7 +8,7 @@ use mx_sys::{BoxFuture, CommandRunner, FakeRunner, ShResult, output};
 const LIST: &str = r#"warning: something
 [{"pid": 4242, "cwd": "/tmp", "sessionId": "s1", "name": "api", "status": "busy",
   "waitingFor": "input", "state": "x", "startedAt": 1700000000000.0},
- {"cwd": "/b", "kind": "background"}, 7, "x"]"#;
+ {"cwd": "/b", "kind": "background", "id": "40e816ba"}, 7, "x"]"#;
 
 #[test]
 fn parse_starts_at_the_first_bracket_and_keeps_only_objects() {
@@ -17,6 +17,7 @@ fn parse_starts_at_the_first_bracket_and_keeps_only_objects() {
     assert_eq!(
         list[0],
         AgentInfo {
+            id: None,
             pid: Some(4242),
             cwd: "/tmp".into(),
             kind: "interactive".into(),
@@ -30,6 +31,7 @@ fn parse_starts_at_the_first_bracket_and_keeps_only_objects() {
     );
     assert_eq!(list[1].pid, None);
     assert_eq!(list[1].kind, "background");
+    assert_eq!(list[1].id.as_deref(), Some("40e816ba"));
 }
 
 #[test]

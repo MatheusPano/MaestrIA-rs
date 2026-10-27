@@ -6,15 +6,15 @@ use gpui::{
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
 use mx_store::{Store, TabTint};
 
-use crate::app::avatar::{claude_avatar, dot};
+use crate::app::avatar::dot;
 use crate::app::drag::{DraggedTab, TabGhost};
 use crate::app::host::{StoreHost, update_store};
-use crate::app::icons::{Icon, icon, terminal_mark};
-use crate::app::keys;
+use crate::app::icons::{Icon, icon};
 use crate::app::theme::{Mx, blend};
 use crate::app::tooltip::tip;
 use crate::app::panel_actions::open_panel_menu;
 use crate::chrome::anim::reveal::{reveal_offset, reveal_overlay};
+use crate::sidebar::glyph::tab_glyph;
 use crate::sidebar::widgets::{badge, mini_button};
 
 pub struct TabRow {
@@ -30,9 +30,8 @@ pub struct TabRow {
     dim: bool,
     done: bool,
     hibernated: bool,
-    dirty: bool,
     needs: Option<Hsla>,
-    slot: Option<String>,
+    hotkey: Option<String>,
     shell_dot: Option<Hsla>,
     tint: Option<TabTint>,
     group: Option<String>,
@@ -44,7 +43,6 @@ impl TabRow {
         let now = chrono::Local::now();
         let status = t.status();
         let dim = t.done || (t.rested() && !t.unseen) || t.hibernated;
-        let index = store.tabs().iter().position(|x| x.id == t.id);
         let shell_dot = (t.kind == TabKind::Shell).then(|| {
             if !t.exited {
                 mx.green
@@ -70,9 +68,8 @@ impl TabRow {
             dim,
             done: t.done,
             hibernated: t.hibernated,
-            dirty: t.dirty > 0,
             needs: (!t.done && status.needs_human()).then(|| mx.status(status)),
-            slot: index.and_then(keys::slot),
+            hotkey: t.hotkey.as_deref().map(mx_store::hotkey_label),
             shell_dot,
             tint: store.tint_of(&t.id),
             group: store.group_of(&t.id).map(|g| g.id.clone()),
@@ -97,16 +94,7 @@ impl TabRow {
     }
 
     fn leading(&self, mx: &Mx) -> AnyElement {
-        let slot = div().flex_none().w(px(34.)).flex().items_center();
-        match self.kind {
-            TabKind::Claude => slot
-                .child(claude_avatar(mx, self.status, 26., self.done))
-                .into_any_element(),
-            TabKind::Reader => slot.child(icon(Icon::Article, 18., mx.fg_dim)).into_any_element(),
-            TabKind::Setup => slot.child(icon(Icon::Tune, 18., mx.fg_dim)).into_any_element(),
-            TabKind::Plugin => slot.child(icon(Icon::Terminal, 18., mx.fg_dim)).into_any_element(),
-            TabKind::Shell => slot.child(terminal_mark(22., mx.fg_dim)).into_any_element(),
-        }
+        tab_glyph(mx, self.kind, self.status, self.done, 34.)
     }
 
     fn trailing(&self, mx: &Mx) -> impl IntoElement {
@@ -129,19 +117,17 @@ impl TabRow {
                     .child(icon(Icon::Bedtime, 13., mx.fg_faint)),
             );
         }
-        if self.dirty {
-            row = row.child(dot(mx.yellow, 6.));
-        }
         if let Some(color) = self.needs {
             row = row.child(badge(mx, 1, Some(color)));
         }
-        if let Some(slot) = &self.slot {
+        if let Some(key) = &self.hotkey {
             row = row.child(
                 div()
+                    .pr(px(6.))
                     .font_family("Hack")
                     .text_size(px(10.5))
                     .text_color(mx.fg_faint)
-                    .child(slot.clone()),
+                    .child(key.clone()),
             );
         }
         if let Some(color) = self.shell_dot {

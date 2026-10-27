@@ -10,11 +10,12 @@ pub enum SettingType {
     Boolean,
     Color,
     Select,
+    Folders,
 }
 
 impl SettingType {
-    pub const ALL: [SettingType; 5] =
-        [Self::String, Self::Number, Self::Boolean, Self::Color, Self::Select];
+    pub const ALL: [SettingType; 6] =
+        [Self::String, Self::Number, Self::Boolean, Self::Color, Self::Select, Self::Folders];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -23,6 +24,7 @@ impl SettingType {
             Self::Boolean => "boolean",
             Self::Color => "color",
             Self::Select => "select",
+            Self::Folders => "folders",
         }
     }
 }
@@ -103,6 +105,7 @@ impl PluginSetting {
             SettingType::Number => v.is_number(),
             SettingType::Boolean => v.is_boolean(),
             SettingType::Select => v.as_str().is_some_and(|s| self.options.iter().any(|o| o.value == s)),
+            SettingType::Folders => v.as_array().is_some_and(|items| items.iter().all(Value::is_string)),
         }
     }
 
@@ -117,6 +120,7 @@ impl PluginSetting {
             SettingType::Boolean => Value::Bool(false),
             SettingType::Number => Value::from(0),
             SettingType::Select => Value::String(self.options[0].value.clone()),
+            SettingType::Folders => Value::Array(Vec::new()),
             _ => Value::String(String::new()),
         }
     }

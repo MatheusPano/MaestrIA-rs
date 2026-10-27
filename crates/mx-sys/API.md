@@ -56,7 +56,7 @@ Funções `*_on(…, Platform, …)` existem para testar Linux/macOS em qualquer
   (`ReadOptions::default()` = todas as pastas, limite 40).
 - `ChatEntry { session_id, cwd, title, at: SystemTime, bytes, missing }` + `where_()`, `label()`,
   `ago(now)`, `size()`.
-- `ChatStanding { Fresh, OnScreen, Live, Gone }` + `note()`, `opens()` (o cálculo é do store).
+- `ChatStanding { Fresh, OnScreen, Live, Background, Gone }` + `note()`, `opens()` (fresh and background) (o cálculo é do store).
 - `clean(text)` — regra de título.
 
 ## code_workspace (spec 01 §2.10)

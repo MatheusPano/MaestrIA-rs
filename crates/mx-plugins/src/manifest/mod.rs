@@ -77,6 +77,24 @@ impl PluginManifest {
         self.main.as_ref().is_some_and(|m| !m.is_empty())
     }
 
+    pub fn kinds(&self) -> std::collections::BTreeSet<crate::catalog::PluginKind> {
+        use crate::catalog::PluginKind;
+        let mut out = std::collections::BTreeSet::new();
+        if !self.themes.is_empty() {
+            out.insert(PluginKind::Theme);
+        }
+        if self.has_process()
+            || !self.commands.is_empty()
+            || !self.settings.is_empty()
+            || self.sidebar
+            || self.screen
+            || self.suggestions.is_some()
+        {
+            out.insert(PluginKind::Feature);
+        }
+        out
+    }
+
     pub fn activates_on(&self, event: &str) -> bool {
         if !self.has_process() {
             return false;

@@ -1,7 +1,7 @@
 # Regras para agentes implementadores
 
 1. Leia `docs/BLUEPRINT.md` e a(s) spec(s) do seu crate em `docs/spec/`. A spec é a
-   fonte da verdade do comportamento; o Dart em `/home/lucas/maestria/repo` é só
+   fonte da verdade do comportamento; o Dart em `~/maestria/repo` é só
    referência de leitura (nunca modifique).
 2. Você é dono **apenas** do(s) crate(s) atribuído(s). Não edite outros crates nem o
    `Cargo.toml` raiz; use `foo.workspace = true` para deps já declaradas lá. Se

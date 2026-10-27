@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, AppContext, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    AnyElement, App, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use mx_store::Store;
 
-use crate::app::drag::{DraggedTab, TabGhost};
+use crate::app::drag::{DraggedTab, pane_grab};
 use crate::app::host::{StoreHost, update_store};
 use crate::app::icons::{Icon, icon};
 use crate::app::theme::Mx;
@@ -30,11 +30,13 @@ pub struct ViewHeader {
     plugin_name: String,
     icon: Option<String>,
     dir: Option<PathBuf>,
-    slot: Option<String>,
+    hotkey: Option<String>,
     settings: bool,
     screen: Option<bool>,
     pinned: Option<bool>,
     dim: bool,
+    grab: bool,
+    lifted: bool,
 }
 
 impl ViewHeader {
@@ -51,12 +53,19 @@ impl ViewHeader {
             plugin_name: v.plugin_name.clone(),
             icon: manifest.as_ref().and_then(|m| m.icon.clone()),
             dir: info.map(|p| p.dir),
-            slot: store.tabs().iter().position(|x| x.id == id).and_then(crate::app::keys::slot),
+            hotkey: t.hotkey.as_deref().map(mx_store::hotkey_label),
             settings: manifest.is_some_and(|m| !m.settings.is_empty()),
             screen,
             pinned: (t.pinned || store.pane_count() > 1).then_some(t.pinned),
             dim: show_focus && !focused,
+            grab: store.pane_count() >= 2,
+            lifted: false,
         })
+    }
+
+    pub fn lifted(mut self, lifted: bool) -> Self {
+        self.lifted = lifted;
+        self
     }
 
     fn button(&self, mx: &Mx, name: &str, glyph: AnyElement, tooltip: SharedString, act: impl Fn(&mut Window, &mut App) + 'static) -> AnyElement {
@@ -111,7 +120,7 @@ impl ViewHeader {
         let fade = if self.dim { 0.55 } else { 1. };
         let drag = DraggedTab { id: self.id.clone(), title: self.title.clone(), folder_root: String::new() };
         let subtitle = (width >= 190.).then(|| format!("Plugin · {}", self.plugin_name));
-        div()
+        let el = div()
             .id(SharedString::from(format!("view-header:{}", self.id)))
             .h(px(HEIGHT))
             .flex_none()
@@ -121,14 +130,12 @@ impl ViewHeader {
             .items_center()
             .bg(mx.bg_sidebar)
             .border_b_1()
-            .border_color(mx.border)
-            .on_drag(drag, |d: &DraggedTab, at, _, cx| cx.new(|_| TabGhost { title: d.title.clone(), at }))
-            .child(lead)
+            .border_color(mx.border);
+        let el = if self.grab { pane_grab(el, drag, None, host.clone(), self.lifted) } else { el };
+        el.child(lead)
             .child(div().w(px(9.)))
             .child(title_line(mx, &self.title))
-            .when_some(self.slot, |d, slot| {
-                d.child(div().flex_none().ml(px(6.)).font_family("Hack").text_size(px(10.5)).text_color(mx.fg_faint).child(slot))
-            })
+            .children(crate::panes::header::key_hint(mx, self.hotkey.clone()))
             .child(
                 div()
                     .ml(px(10.))

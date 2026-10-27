@@ -13,6 +13,7 @@ pub enum Action {
     PrevPane,
     NextSession,
     PrevSession,
+    FindInPane,
     Search,
     Markdown,
     Plan,
@@ -40,7 +41,7 @@ const N: &str = "Navegação";
 const E: &str = "Exibição";
 const J: &str = "Janela";
 
-const INFO: [Info; 20] = [
+const INFO: [Info; 21] = [
     info("claude", "Nova sessão Claude", Some("Na pasta e na feature/hotfix do painel em foco"), S),
     info("shell", "Novo shell", Some("Um terminal comum, no mesmo lugar"), S),
     info("task", "Nova task", Some("Abre a worktree e sobe uma sessão nela"), S),
@@ -57,6 +58,12 @@ const INFO: [Info; 20] = [
     info("prev-pane", "Painel anterior", None, N),
     info("next-session", "Próxima sessão", Some("Percorre a lateral inteira, painel aberto ou não"), N),
     info("prev-session", "Sessão anterior", None, N),
+    info(
+        "find",
+        "Buscar no painel",
+        Some("No que o terminal em foco já escreveu; Enter sobe, Shift+Enter desce, Esc fecha"),
+        N,
+    ),
     info("search", "Buscar na lateral", Some("Foca o campo de busca; Esc limpa e devolve o teclado"), N),
     info("markdown", "Abrir um markdown…", Some("Escolhe um arquivo e o desenha num painel de leitura"), S),
     info("plan", "Ver o plano da sessão em foco", Some("Abre o último plano num painel de leitura, ao lado dela"), S),
@@ -79,7 +86,7 @@ const INFO: [Info; 20] = [
 ];
 
 impl Action {
-    pub const ALL: [Action; 20] = [
+    pub const ALL: [Action; 21] = [
         Action::Claude,
         Action::Shell,
         Action::Task,
@@ -91,6 +98,7 @@ impl Action {
         Action::PrevPane,
         Action::NextSession,
         Action::PrevSession,
+        Action::FindInPane,
         Action::Search,
         Action::Markdown,
         Action::Plan,
@@ -176,7 +184,8 @@ fn mac_defaults(a: Action) -> Vec<Chord> {
         Action::PrevPane => vec![ctrl_shift(Key::Tab), alt_cmd(Key::Up)],
         Action::NextSession => vec![alt_cmd(Key::Right)],
         Action::PrevSession => vec![alt_cmd(Key::Left)],
-        Action::Search => vec![cmd(c('f'))],
+        Action::FindInPane => vec![cmd(c('f'))],
+        Action::Search => vec![shift_cmd(c('f'))],
         Action::Markdown => vec![cmd(c('o'))],
         Action::Plan => vec![shift_cmd(c('l'))],
         Action::Refresh => vec![cmd(c('r'))],
@@ -201,7 +210,8 @@ fn linux_defaults(a: Action) -> Vec<Chord> {
         Action::PrevPane => vec![ctrl_shift(Key::Tab), ctrl(Key::PageUp)],
         Action::NextSession => vec![ctrl_shift(Key::Right)],
         Action::PrevSession => vec![ctrl_shift(Key::Left)],
-        Action::Search => vec![ctrl_shift(c('f'))],
+        Action::FindInPane => vec![ctrl_shift(c('f'))],
+        Action::Search => vec![ch(c('f'), true, false, true, false)],
         Action::Markdown => vec![ctrl_shift(c('o'))],
         Action::Plan => vec![ctrl_shift(c('l'))],
         Action::Refresh => vec![ctrl_shift(c('r'))],

@@ -17,6 +17,7 @@ use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use crate::events::Fanout;
 use crate::scrubber::VtScrubber;
 use crate::session::{GridSize, TermEvent};
+use crate::sticky::StickyClock;
 
 const READ_CHUNK: usize = 0x10000;
 const MAX_LOCKED_READ: usize = 0x40000;
@@ -67,6 +68,7 @@ pub(crate) struct Port {
     pub writer: Mutex<Option<Writer>>,
     pub size: Mutex<GridSize>,
     pub palette: Mutex<Arc<TerminalPalette>>,
+    pub sticky: Arc<StickyClock>,
 }
 
 impl Port {
@@ -178,6 +180,7 @@ impl Feeder {
         if self.parser.sync_bytes_count() < self.buf.len() {
             port.wake();
         }
+        port.sticky.written();
     }
 
     fn sync_deadline(&self) -> Option<Instant> {

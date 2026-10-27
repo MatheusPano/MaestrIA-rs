@@ -11,7 +11,9 @@ use super::widgets::{Close, barrier, card, chip, text_button, title};
 use crate::app::host::{StoreHost, update_store};
 use crate::chrome::dialog::frame::BARRIER;
 use crate::chrome::style::{hsla, theme};
-use crate::chrome::widgets::{Switch, TextField, TextFieldEvent};
+use super::folder_picker::{FolderPicker, Pick, button_text};
+use crate::chrome::icon::{self, icon};
+use crate::chrome::widgets::{MxSwitch, TextField, TextFieldEvent, wide_tip};
 
 pub const PRESETS: [&str; 6] = ["#4FC1FF", "#89D185", "#F48771", "#CCA700", "#C586C0", "#9DA5B4"];
 const NAMED: [&str; 7] = ["red", "green", "yellow", "accent", "purple", "faint", "dim"];
@@ -50,6 +52,7 @@ pub struct SettingsDialog {
     close: Close,
     fields: HashMap<String, Entity<TextField>>,
     invalid: HashSet<String>,
+    picker: Option<Entity<FolderPicker>>,
     _subs: Vec<Subscription>,
 }
 
@@ -70,7 +73,7 @@ impl SettingsDialog {
             }));
             fields.insert(s.id.clone(), e);
         }
-        SettingsDialog { host, plugin, close, fields, invalid: HashSet::new(), _subs: subs }
+        SettingsDialog { host, plugin, close, fields, invalid: HashSet::new(), picker: None, _subs: subs }
     }
 
     fn read(host: &Entity<StoreHost>, plugin: &str, cx: &gpui::App) -> (Vec<PluginSetting>, serde_json::Map<String, Value>) {
@@ -118,12 +121,13 @@ impl SettingsDialog {
         match s.kind {
             SettingType::Boolean => {
                 let (id, on) = (s.id.clone(), value.as_bool().unwrap_or(false));
-                Switch::new(gpui::SharedString::from(format!("set-{}", s.id)), s.title.clone(), on, move |_, cx| {
-                    let id = id.clone();
-                    me.update(cx, |d, cx| d.save(&id, Some(Value::Bool(!on)), cx)).ok();
-                })
-                .into_any_element()
+                MxSwitch::new(gpui::SharedString::from(format!("set-{}", s.id)), on)
+                    .on_change(move |v, _, cx| {
+                        me.update(cx, |d, cx| d.save(&id, Some(Value::Bool(v)), cx)).ok();
+                    })
+                    .into_any_element()
             }
+            SettingType::Folders => self.folders_button(s, value, cx),
             SettingType::Select => {
                 let current = value.as_str().unwrap_or_default().to_owned();
                 let mut chips = div().flex().flex_wrap().gap(px(6.));
@@ -173,18 +177,103 @@ impl SettingsDialog {
         Some(div().when(bad, |d| d.border_1().border_color(hsla(t.red)).rounded(px(8.))).child(e).into_any_element())
     }
 
+    fn label(&self, s: &PluginSetting, cx: &mut Context<Self>) -> gpui::Div {
+        let t = theme(cx);
+        let mut row = div().flex().items_center().min_w_0().child(
+            div().min_w_0().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(hsla(t.fg)).child(s.title.clone()),
+        );
+        if !s.description.is_empty() {
+            row = row.child(
+                div()
+                    .id(gpui::SharedString::from(format!("help-{}", s.id)))
+                    .ml(px(6.))
+                    .flex_none()
+                    .tooltip(wide_tip(s.description.clone(), 360.))
+                    .child(icon(icon::HELP_OUTLINE, 14., hsla(t.fg_faint))),
+            );
+        }
+        row
+    }
+
+    fn folders_button(&self, s: &PluginSetting, value: &Value, cx: &mut Context<Self>) -> AnyElement {
+        let t = theme(cx);
+        let folders = self.sidebar_folders(cx);
+        let picked = picked_roots(value);
+        let (text, faint) = button_text(&folders, &picked);
+        let enabled = !folders.is_empty();
+        let setting = s.clone();
+        let mut b = div()
+            .id(gpui::SharedString::from(format!("folders-{}", s.id)))
+            .debug_selector({
+                let text = text.clone();
+                move || format!("folders-button:{text}")
+            })
+            .w(px(200.))
+            .min_h(px(32.))
+            .px(px(10.))
+            .py(px(8.))
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(hsla(t.border))
+            .child(icon(icon::FOLDER_OUTLINED, 14., hsla(t.fg_dim)))
+            .child(div().flex_1().min_w_0().truncate().text_size(px(12.5)).text_color(hsla(if faint { t.fg_faint } else { t.fg })).child(text))
+            .child(icon(icon::UNFOLD_MORE, 14., hsla(t.fg_faint)));
+        if enabled {
+            b = b.cursor_pointer().hover(|st| st.bg(hsla(t.bg_hover))).on_click(cx.listener(move |d, _, window, cx| {
+                d.pick_folders(&setting, window, cx);
+            }));
+        } else {
+            b = b.opacity(0.6);
+        }
+        b.into_any_element()
+    }
+
+    fn sidebar_folders(&self, cx: &gpui::App) -> Vec<Pick> {
+        self.host.read(cx).store.folders().iter().map(|f| Pick { root: f.root.clone(), name: f.name.clone() }).collect()
+    }
+
+    pub fn pick_folders(&mut self, s: &PluginSetting, window: &mut Window, cx: &mut Context<Self>) {
+        let (_, saved) = Self::read(&self.host, &self.plugin, cx);
+        let value = saved.get(&s.id).cloned().unwrap_or_else(|| s.resolve(None));
+        let folders = self.sidebar_folders(cx);
+        let me = cx.weak_entity();
+        let setting = s.clone();
+        let done: super::folder_picker::Done = std::rc::Rc::new(move |result: Option<Vec<String>>, _, cx: &mut gpui::App| {
+            let setting = setting.clone();
+            me.update(cx, |d, cx| {
+                d.picker = None;
+                if let Some(roots) = result {
+                    let next = Value::Array(roots.into_iter().map(Value::String).collect());
+                    let stored = (next != setting.resolve(None)).then_some(next);
+                    d.save(&setting.id, stored, cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        });
+        let title = s.title.clone();
+        self.picker = Some(cx.new(|cx| FolderPicker::new(title, folders, picked_roots(&value), done, window, cx)));
+        cx.notify();
+    }
+
     fn row(&self, s: &PluginSetting, value: &Value, cx: &mut Context<Self>) -> AnyElement {
         let t = theme(cx);
         let mut col = div().flex().flex_col().gap(px(4.)).py(px(8.));
-        if s.kind != SettingType::Boolean {
-            col = col.child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(hsla(t.fg)).child(s.title.clone()));
-        }
-        let description = (!s.description.is_empty())
-            .then(|| div().text_size(px(11.5)).text_color(hsla(t.fg_dim)).child(s.description.clone()));
-        col = if s.kind == SettingType::Boolean {
-            col.child(self.control(s, value, cx)).children(description)
+        let inline = matches!(s.kind, SettingType::Boolean | SettingType::Folders);
+        col = if inline {
+            col.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .child(self.label(s, cx).flex_1())
+                    .child(div().w(px(12.)))
+                    .child(self.control(s, value, cx)),
+            )
         } else {
-            col.children(description).child(self.control(s, value, cx))
+            col.child(self.label(s, cx)).child(self.control(s, value, cx))
         };
         if *value != s.resolve(None) {
             let me = cx.weak_entity();
@@ -238,6 +327,7 @@ impl Render for SettingsDialog {
             body = body.child(self.row(s, &value, cx));
         }
         body = body.children(self.shortcuts(cx));
+        let picker = self.picker.clone();
         let (close, dismiss) = (self.close.clone(), self.close.clone());
         barrier(BARRIER, move |w, cx| dismiss(w, cx)).flex().items_center().justify_center().child(
             card(&t, 520.)
@@ -254,7 +344,12 @@ impl Render for SettingsDialog {
                         .child(text_button("settings-done", "Pronto", hsla(t.on_accent()), Some(hsla(t.accent)), move |w, cx| close(w, cx))),
                 ),
         )
+        .children(picker)
     }
+}
+
+fn picked_roots(value: &Value) -> Vec<String> {
+    value.as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default()
 }
 
 #[cfg(test)]

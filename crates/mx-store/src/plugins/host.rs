@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use mx_plugins::host_json::{ChatJson, FeatureJson, FolderJson, SessionJson, WorkspaceJson};
 use mx_plugins::rpc::{
-    CreatedSession, FloatContent, HostResult, OpenClaude, OpenShell, PluginHostApi, RpcError, SendText,
+    CreatedSession, FloatContent, HostResult, OpenClaude, OpenShell, PluginHostApi, RpcError, SendKeys, SendText,
     SidebarUpdate, SuggestionCreated, TabOwner, ViewOpen, ViewUpdate,
 };
 use mx_plugins::ui::dialogs::{FormAnswer, InputRequest, PickRequest};
@@ -143,7 +143,40 @@ impl PluginHostApi for PluginHost {
         self.run(move |s| Ok(s.plugin_open_shell(&p, request)))
     }
 
-    fn tab_owner(&self, _: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, TabOwner> {
+    fn send_keys(&self, _: &PluginInfo, request: SendKeys) -> HostResult<'_, ()> {
+        let (reply, answer) = oneshot::channel();
+        self.sender.send(StoreMsg::Run(Box::new(move |s: &mut Store| {
+            let _ = reply.send(s.plugin_send_keys(request));
+        })));
+        Box::pin(async move {
+            let typing = answer.await.map_err(|_| RpcError::window_not_ready())??;
+            typing.await;
+            Ok(())
+        })
+    }
+
+    fn paste_clipboard(&self, _: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, ()> {
+        self.run(move |s| s.plugin_paste_clipboard(tab_id))
+    }
+
+    fn rename_session(&self, _: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String> {
+        self.run(move |s| s.plugin_rename(tab_id, &title))
+    }
+
+    fn wake_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {
+        self.run(move |s| s.plugin_wake(tab_id))
+    }
+
+    fn hibernate_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {
+        self.run(move |s| s.plugin_hibernate(tab_id))
+    }
+
+    fn set_portrait(&self, plugin: &PluginInfo, tab_id: String, image: Option<Value>) -> HostResult<'_, ()> {
+        let p = plugin.clone();
+        self.run(move |s| s.plugin_portrait(&p, tab_id, image))
+    }
+
+    fn tab_owner(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, TabOwner> {
         self.run(move |s| s.plugin_tab_owner(tab_id))
     }
 

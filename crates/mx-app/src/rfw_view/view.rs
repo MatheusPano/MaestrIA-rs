@@ -7,6 +7,7 @@ use mx_theme::{Palette, Theme, Typography};
 
 use super::ActionSink;
 use super::code_editor::CodeEditors;
+use super::states::{FollowLink, WidgetStates};
 use super::layout::{Ctx, DragNow, Fit, grow};
 use super::menu::{self, HasMenu, OpenMenu};
 use super::style::{UI_FONT, UI_LINE, hsla, rfw_theme};
@@ -34,6 +35,7 @@ pub struct RfwView {
     hoisted_menu: bool,
     pub(super) dragging: Option<DragNow>,
     editors: CodeEditors,
+    widgets: WidgetStates,
 }
 
 impl HasMenu for RfwView {
@@ -60,12 +62,13 @@ impl RfwView {
             hoisted_menu: false,
             dragging: None,
             editors: CodeEditors::default(),
+            widgets: WidgetStates::default(),
         }
     }
 
-    pub fn set_library(&mut self, text: &str) {
+    pub fn set_library(&mut self, text: &str) -> bool {
         if self.source.as_deref() == Some(text) {
-            return;
+            return false;
         }
         self.source = Some(text.to_owned());
         match parse_library_file(text) {
@@ -75,6 +78,7 @@ impl RfwView {
             }
             Err(e) => self.error = Some(parse_error_text(&e)),
         }
+        true
     }
 
     pub fn hoist_menu(&mut self) {
@@ -86,8 +90,12 @@ impl RfwView {
         self.menu.as_ref().map(|m| menu::floating(&theme, cx, m).into_any_element())
     }
 
-    pub fn set_root(&mut self, root: &str) {
+    pub fn set_root(&mut self, root: &str) -> bool {
+        if self.root == root {
+            return false;
+        }
         root.clone_into(&mut self.root);
+        true
     }
 
     pub fn merge_data(&mut self, data: &serde_json::Map<String, serde_json::Value>) {
@@ -105,6 +113,16 @@ impl RfwView {
 
     pub(super) fn code_pane(&self, doc: &str) -> Option<gpui::Entity<super::code_pane::CodePane>> {
         self.editors.pane(doc).cloned()
+    }
+
+    pub fn set_plugin(&mut self, plugin_id: &str, follow: Option<FollowLink>) {
+        plugin_id.clone_into(&mut self.widgets.plugin_id);
+        self.widgets.follow = follow;
+    }
+
+    #[cfg(test)]
+    pub(super) fn text_field(&self, id: &str) -> Option<gpui::Entity<super::text_input_widget::FieldView>> {
+        self.widgets.inputs.field(id)
     }
 
     pub fn set_background(&mut self, background: Option<gpui::Hsla>) {
@@ -135,6 +153,8 @@ impl Render for RfwView {
         let Some(lib) = &self.library else { return root.into_any_element() };
         let tree = evaluate(lib, &self.root, &self.content);
         self.editors.sync(&tree, &self.theme, &self.sink, window, cx);
+        self.widgets.inputs.sync(&tree, &self.theme, &self.sink, window, cx);
+        self.widgets.begin(window);
         let mut ctx = Ctx {
             palette: &self.theme,
             dir: self.dir.as_deref(),
@@ -147,8 +167,10 @@ impl Render for RfwView {
             interactive: true,
             bounded_w: true,
             editors: Some(&self.editors),
+            widgets: Some(&self.widgets),
         };
         let body = grow(render(&mut ctx, &tree, Fit::BOTH), 1.0);
+        self.widgets.finish();
         let overlay = self.menu.as_ref().filter(|_| !self.hoisted_menu).map(|m| menu::render(&p, cx, m));
         root.child(body).children(overlay).into_any_element()
     }

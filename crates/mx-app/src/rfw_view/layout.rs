@@ -58,6 +58,7 @@ pub struct Ctx<'a> {
     pub interactive: bool,
     pub bounded_w: bool,
     pub editors: Option<&'a super::code_editor::CodeEditors>,
+    pub widgets: Option<&'a super::states::WidgetStates>,
 }
 
 impl Ctx<'_> {

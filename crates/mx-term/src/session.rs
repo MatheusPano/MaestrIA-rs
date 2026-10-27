@@ -108,13 +108,13 @@ struct State {
 }
 
 pub(crate) struct Shared {
-    port: Arc<Port>,
-    term: SharedTerm,
+    pub(crate) port: Arc<Port>,
+    pub(crate) term: SharedTerm,
     feeder: Arc<Mutex<Feeder>>,
     state: Mutex<State>,
     exit_cv: Condvar,
     guard: Mutex<TextInputGuard>,
-    scrolled: AtomicBool,
+    pub(crate) scrolled: AtomicBool,
     on_exit: Mutex<Option<ExitHook>>,
     tab_id: Mutex<Option<String>>,
     events: async_channel::Receiver<TermEvent>,
@@ -122,10 +122,10 @@ pub(crate) struct Shared {
 
 #[derive(Clone)]
 pub struct TerminalSession {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -137,9 +137,11 @@ impl TerminalSession {
             writer: Mutex::new(None),
             size: Mutex::new(size),
             palette: Mutex::new(Arc::new(palette)),
+            sticky: Arc::default(),
         });
         let config = Config { scrolling_history: scrollback, ..Config::default() };
         let term = Arc::new(FairMutex::new(Term::new(config, &size, Proxy(port.clone()))));
+        port.sticky.attach(&term, &port);
         let shared = Arc::new(Shared {
             port,
             term,
@@ -507,6 +509,7 @@ impl TerminalSession {
             SelectionKind::Line => SelectionType::Lines,
         };
         term.selection = Some(Selection::new(ty, point, side(right_half)));
+        self.shared.port.sticky.selected(&term);
         drop(term);
         self.shared.port.wake();
     }
@@ -517,6 +520,7 @@ impl TerminalSession {
         if let Some(sel) = term.selection.as_mut() {
             sel.update(point, side(right_half));
         }
+        self.shared.port.sticky.selected(&term);
         drop(term);
         self.shared.port.wake();
     }
@@ -528,12 +532,16 @@ impl TerminalSession {
         let mut sel = Selection::new(SelectionType::Simple, top, Side::Left);
         sel.update(bottom, Side::Right);
         term.selection = Some(sel);
+        self.shared.port.sticky.selected(&term);
         drop(term);
         self.shared.port.wake();
     }
 
     pub fn clear_selection(&self) {
-        let had = self.shared.term.lock().selection.take().is_some();
+        let mut term = self.shared.term.lock();
+        let had = term.selection.take().is_some();
+        self.shared.port.sticky.selected(&term);
+        drop(term);
         if had {
             self.shared.port.wake();
         }
@@ -544,7 +552,7 @@ impl TerminalSession {
     }
 
     pub fn selected_text(&self) -> Option<String> {
-        self.shared.term.lock().selection_to_string().filter(|s| !s.is_empty())
+        self.selection_text(false)
     }
 
     pub fn link_at(&self, col: usize, row: usize, base: Option<&str>) -> Option<String> {

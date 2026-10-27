@@ -40,7 +40,14 @@ leftovers (full PTY buffer) are flushed by the I/O thread.
 - Mouse: `wheel(up, col, row)` (SGR/normal 64/65, 1-based, or arrow keys w/o mouse mode),
   `mouse_report(MouseButton, MouseAction, col, row, Mods) -> bool`.
 - Selection: `start_selection(col, row, right_half, SelectionKind::{Cells, Word, Line})`, `update_selection`,
-  `select_all`, `clear_selection`, `has_selection`, `selected_text()` (blank cells → spaces, trailing trimmed).
+  `select_all`, `clear_selection`, `has_selection`, `selection_text(reflow)` (Dart `selectedText`: skipped cells →
+  spaces, soft wraps joined; `reflow` also joins rows Claude wrapped itself and drops its indent/`●` — copy in
+  claude tabs), `selected_text()` = `selection_text(false)`. Sticky: on the alt screen a selection follows its rows'
+  text when the program repaints (30 ms / 120 ms grace); on the main screen one alacritty dropped is put back.
+- Find: `find(query, limit) -> Vec<Hit{from, to: CellPos{x, y}}>` (smart-case literal, by logical line, `to` exclusive,
+  `y` from the top of the scrollback), `viewport() -> Viewport{history, display_offset, rows}`, `scroll_to_top(y)`.
+  `FindSession` (per open bar): `search(term, query, near_line)`, `refresh(term)` (current hit stays put),
+  `step(term, ±1)` (wraps), `clear`, `hits`, `index`, `current`, `counter()` (`2 de 3`, `Nenhum`, `+` at `FIND_LIMIT`).
 - Links: `link_at(col, row, base_cwd) -> Option<String>` — OSC 8 of the cell (`file://` → path) else the
   heuristic link of the logical (wrapped) line.
 

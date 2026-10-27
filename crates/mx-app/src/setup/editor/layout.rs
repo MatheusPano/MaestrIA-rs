@@ -1,6 +1,7 @@
 use gpui::{Pixels, Point, WrappedLine, point, px};
 
 pub struct Row {
+    pub index: usize,
     pub start: usize,
     pub y: Pixels,
     pub height: Pixels,
@@ -14,11 +15,19 @@ pub struct EditorLayout {
     pub width: Pixels,
     pub wrap_width: Pixels,
     pub gutter: Pixels,
+    pub numbers: Pixels,
+    pub chunks: Vec<(usize, usize)>,
+    pub folded: Vec<(usize, usize)>,
     pub font_size: Pixels,
     pub version: u64,
 }
 
 impl EditorLayout {
+    pub fn row_at_y(&self, y: Pixels) -> Option<&Row> {
+        let i = self.rows.partition_point(|r| r.y <= y).checked_sub(1)?;
+        self.rows.get(i).filter(|r| y < r.y + r.height)
+    }
+
     pub fn row_of(&self, at: usize) -> usize {
         self.rows.partition_point(|r| r.start <= at).saturating_sub(1)
     }

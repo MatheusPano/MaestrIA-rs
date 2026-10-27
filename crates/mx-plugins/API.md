@@ -5,15 +5,18 @@ ficam opacos em `PluginView` e a UI os entrega ao `mx-rfw`.
 
 ## Constantes (raiz)
 `PLUGIN_API=1`, `BLOCKS_VERSION=2`, `MANIFEST_NAME`, `SIDEBAR_VIEW_ID="sidebar"`, `LOG_CAP=400`,
-`MAX_SIDEBAR_COMMANDS=3`.
+`MAX_SIDEBAR_COMMANDS=3`. `MAESTRIA_COMPAT="2.7.0"` (versão da MaestrIA que este host diz ser nas comparações
+de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, landed)]` = as flags do
+`initialize` na ordem do 2.7; só as `landed` vão no fio — quem entrega um widget liga a dele aqui.
 
 ## Manifesto (`manifest`)
 - `PluginManifest::parse(&Obj)` / `parse_for(&Obj, linux)` / `read(dir)` → `Result<_, ManifestError(String)>`
   com as mensagens verbatim e a ordem de erro do Dart. `has_process()`, `activates_on(ev)`, `allows(perm)`.
 - `PluginCommand { plugin_id, id, title, target, run, send, key: Option<Chord>, icon, sidebar }`,
   `full_id()`, `short_title(plugin_name)`. `CommandTarget { Plugin, Terminal, Background, Session }`.
-- `PluginSetting { id, title, kind: SettingType, description, default, options, group }`, `resolve(saved)`.
-- `Permission { Hooks, TerminalWrite, SessionsCreate, Notifications }`: `id()`, `label()`, `by_id()`.
+- `PluginSetting { id, title, kind: SettingType, description, default, options, group }`, `resolve(saved)`;
+  `SettingType::Folders` = lista de `root`s (`[]` quando o salvo não é lista de textos).
+- `Permission { Hooks, TerminalWrite, SessionsCreate, SessionsClose, Notifications }`: `id()`, `label()`, `by_id()`.
 
 ## Teclas (`chord`)
 `Key`, `Chord { key, meta, control, alt, shift }`: `parse("meta+alt+g")`, `for_host(linux)` (meta→Ctrl+Shift),
@@ -36,6 +39,8 @@ ficam opacos em `PluginView` e a UI os entrega ao `mx-rfw`.
   `invoke(&cmd, context) -> Result<Value, RpcError>`, `offer_suggestion(id, params)`.
   Regras: só `onStartup`/enable/install/link sobem sozinhos; eventos nunca revivem um crash; comandos,
   `suggestion.start`, `wake` e `restart` revivem. Timeouts 10 s/30 s; shutdown 0,8 s + SIGTERM 0,8 s + SIGKILL.
+  `view_closed(plugin, view)` = evento `view.closed` só pro dono, só se ele está rodando (também em
+  `PluginBus::view_closed`, que é o que a store chama ao fechar o modal).
 - Instalação: `stage(src) -> StagedPlugin`, `commit(&staged)`, `discard(&staged)`, `link(path)`, `uninstall(id)`;
   `InstallError(String)`; textos `registry::{trust_headline, trust_facts, installed_banner}`.
 - `PluginInfo { id, dir, data_dir, manifest, problem, linked, enabled, crash, state, palettes }`,
@@ -44,15 +49,21 @@ ficam opacos em `PluginView` e a UI os entrega ao `mx-rfw`.
 ## RPC (`rpc`)
 - `RpcError { code, message }` com construtores das mensagens verbatim (`no_tab`, `no_focused_tab`,
   `no_session_on_screen`, `no_process(title)`, `no_window`, …). `rpc::wire` = enquadramento compacto.
-- `PluginHostApi` (a store implementa; 31 métodos, todos `HostResult<'_, T>` = BoxFuture): banner, notify,
+- `PluginHostApi` (a store implementa; 37 métodos, todos `HostResult<'_, T>` = BoxFuture): banner, notify,
   open_url, pick, input, form, clipboard_write, sessions, focused_session, focus_session, folders,
-  features_or_hotfixes, workspaces, chats, open_in_editor, send_text, open_claude, open_shell, tab_owner,
+  features_or_hotfixes, workspaces, chats, open_in_editor, send_text, send_keys, paste_clipboard,
+  open_claude, open_shell, rename_session, wake_session, hibernate_session, set_portrait, tab_owner(id),
   close_tab, suggestion_created, open_markdown, view_open/update/append_lines/clear_lines/close,
-  sidebar_update, float_show/update/hide. Params tipados: `SendText`, `OpenClaude`, `OpenShell`, `ViewOpen`,
-  `ViewUpdate`, `SidebarUpdate { badge: BadgeUpdate }`, `FloatContent`, `SuggestionCreated`, `RfwUpdate`.
+  sidebar_update, float_show/update/hide. Params tipados: `SendText`, `SendKeys { keys: None = lista
+  inválida }`, `OpenClaude { background }`, `OpenShell`, `ViewOpen { from, width, height }`, `ViewUpdate`,
+  `SidebarUpdate { badge: BadgeUpdate }`, `FloatContent`, `SuggestionCreated`, `RfwUpdate`,
+  `TabOwner { tab_id, kind, owner }`.
+- `rpc::keys::{parse_keys, bad_keys, MAX_KEYS}` (nomes ↔ `mx_core::ports::TermKey`);
+  `rpc::portrait::{resolve_portrait, not_claude}` (realpath dentro de pluginDir/dataDir, senão -32001).
 - `HostDispatcher::new(api)` (+`with_window_probe`) valida params/permissões e monta os resultados
   (`{tabId}`, `{open}`, `{shown}`…). `log`, `settings.get` e `command.busy` são atendidos pelo registro.
-- `host_json::{SessionJson, FolderJson, FeatureJson, WorkspaceJson, ChatJson}` → `to_json` no formato §2.5.
+- `host_json::{SessionJson, FolderJson, FeatureJson, WorkspaceJson, ChatJson}` → `to_json` no formato §2.5
+  (+ `context` antes de `owner`); `context_json(Option<&ContextUsage>)` é o mesmo formato do evento.
 
 ## Modelos de UI (`ui`, `floats`, `rail`, `commands`, `suggestions`)
 - `ui::view::PluginView` (blocos + RFW opaco, `set_rfw` merge raso, `apply_open` não limpa a lib,

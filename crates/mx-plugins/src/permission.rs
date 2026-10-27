@@ -3,14 +3,16 @@ pub enum Permission {
     Hooks,
     TerminalWrite,
     SessionsCreate,
+    SessionsClose,
     Notifications,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 4] = [
+    pub const ALL: [Permission; 5] = [
         Self::Hooks,
         Self::TerminalWrite,
         Self::SessionsCreate,
+        Self::SessionsClose,
         Self::Notifications,
     ];
 
@@ -19,6 +21,7 @@ impl Permission {
             Self::Hooks => "hooks",
             Self::TerminalWrite => "terminal.write",
             Self::SessionsCreate => "sessions.create",
+            Self::SessionsClose => "sessions.close",
             Self::Notifications => "notifications",
         }
     }
@@ -30,6 +33,7 @@ impl Permission {
             }
             Self::TerminalWrite => "digitar e enviar texto nos seus painéis",
             Self::SessionsCreate => "abrir sessões do Claude e terminais",
+            Self::SessionsClose => "encerrar sessões do Claude quando você pedir",
             Self::Notifications => "mandar notificações do sistema",
         }
     }

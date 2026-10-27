@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use gpui::{
     ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent,
-    KeyUpEvent, MouseButton, ParentElement, Render, Styled, Subscription, Task, Window, div, prelude::*,
+    KeyUpEvent, MouseButton, ParentElement, Render, Styled, Subscription, Task, Window, div, prelude::*, px,
 };
 use mx_term::{
     DirtyFlag, GridSize, Mods, SpawnOptions, TermEvent, TermMode, TerminalSession, TextOrigin, WheelAccumulator,
@@ -13,6 +13,7 @@ use mx_theme::TerminalPalette;
 
 use crate::app::theme::Mx;
 use crate::chrome::menu::ContextMenu;
+use crate::find_bar::{FindBar, FindState};
 use crate::keymap::{self, TerminalKey};
 use crate::terminal_element::{RenderState, SharedRender, TerminalElement, Typography};
 use crate::terminal_glue::TermMenu;
@@ -37,6 +38,8 @@ pub struct TerminalView {
     pub(crate) claude: bool,
     pub(crate) cwd: Option<String>,
     pub(crate) menu: Option<Entity<ContextMenu<TermMenu>>>,
+    pub(crate) find: Option<FindState>,
+    pub(crate) find_bar: Option<Entity<FindBar>>,
     quit_on_exit: bool,
     _theme: Option<Subscription>,
     _events: Task<()>,
@@ -95,6 +98,8 @@ impl TerminalView {
             claude: false,
             cwd: None,
             menu: None,
+            find: None,
+            find_bar: None,
             quit_on_exit: false,
             _theme: theme,
             _events: task,
@@ -155,6 +160,7 @@ impl TerminalView {
             }
         }
         if redraw {
+            self.schedule_find_refresh(cx);
             let mut st = self.render.borrow_mut();
             if st.painted {
                 st.painted = false;
@@ -165,7 +171,7 @@ impl TerminalView {
     }
 
     pub fn copy_selection(&mut self, cx: &mut Context<Self>) {
-        if let Some(text) = self.session.selected_text() {
+        if let Some(text) = self.session.selection_text(self.claude) {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
     }
@@ -228,7 +234,7 @@ impl Focusable for TerminalView {
 
 impl Render for TerminalView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        let terminal = div()
             .id("terminal")
             .key_context("Terminal")
             .track_focus(&self.focus)
@@ -241,7 +247,13 @@ impl Render for TerminalView {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_left_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_left_up))
             .size_full()
-            .child(TerminalElement::new(cx.entity()))
+            .child(TerminalElement::new(cx.entity()));
+        let bar = self.find_bar.clone().filter(|_| self.find.is_some());
+        div()
+            .relative()
+            .size_full()
+            .child(terminal)
+            .children(bar.map(|b| div().absolute().top(px(8.)).right(px(12.)).child(b)))
             .children(self.menu.clone())
     }
 }

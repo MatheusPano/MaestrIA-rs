@@ -1,9 +1,12 @@
 use mx_core::hook;
-use mx_core::model::{AgentInfo, ClaudeStatus, ContextUsage, NoticeKind};
+use mx_core::model::{AgentInfo, ClaudeStatus, ContextUsage, NoticeKind, Tab};
+use mx_plugins::host_json::context_json;
 use serde_json::{Map, Value, json};
 
 use crate::changes::Areas;
 use crate::store::Store;
+
+type PendingAlert = (String, String, Option<(String, String, String)>);
 
 impl Store {
     pub fn apply_status(&mut self, tab: &str, payload: &Value) {
@@ -13,6 +16,8 @@ impl Store {
             return;
         }
         t.context = usage;
+        let context = context_json(t.context.as_ref());
+        self.p.plugins.emit("session.context", json!({"tabId": tab, "context": context}), &["onSession"], None);
         self.mark_tab(tab);
     }
 
@@ -119,6 +124,7 @@ impl Store {
                 changed = true;
             }
             if let Some(sid) = &row.session_id
+                && t.hooks.session_id.is_none()
                 && t.session_id.as_ref() != Some(sid)
             {
                 t.session_id = Some(sid.clone());
@@ -137,27 +143,41 @@ impl Store {
     }
 
     pub(crate) fn check_alerts(&mut self) {
-        let waiting: Vec<(String, String)> = self
+        let waiting: Vec<PendingAlert> = self
             .tabs
             .iter()
             .filter(|t| !t.done && t.status().needs_human())
             .map(|t| {
-                let text = format!("{} · {}", self.title(t), t.status().call_to_action());
-                (format!("tab:{}", t.id), text)
+                let title = self.title(t);
+                let text = format!("{title} · {}", t.status().call_to_action());
+                let portrait = self.portrait_of(&t.id).map(|image| (title, alert_body(t), image.to_owned()));
+                (format!("tab:{}", t.id), text, portrait)
             })
             .collect();
-        for (key, text) in &waiting {
+        for (key, text, portrait) in &waiting {
             if !self.alerted.contains(key) {
                 self.alerted.push(key.clone());
-                self.p.notifier.alert("MaestrIA", text);
+                match portrait {
+                    Some((title, body, image)) => self.p.notifier.alert_with_image(title, body, image),
+                    None => self.p.notifier.alert("MaestrIA", text),
+                }
             }
         }
-        self.alerted.retain(|k| waiting.iter().any(|(w, _)| w == k));
+        self.alerted.retain(|k| waiting.iter().any(|(w, _, _)| w == k));
         let badge = (!waiting.is_empty()).then(|| waiting.len().to_string());
         if self.badge.as_ref() != Some(&badge) {
             self.p.notifier.badge(badge.as_deref());
             self.badge = Some(badge);
             self.mark(Areas::NOTICES);
         }
+    }
+}
+
+fn alert_body(t: &Tab) -> String {
+    let h = &t.hooks;
+    match (t.status(), &h.question, &h.active_tool) {
+        (ClaudeStatus::WaitingAnswer, Some(q), _) => format!("pergunta: {q}"),
+        (ClaudeStatus::WaitingPermission, _, Some(tool)) => format!("quer aprovação pra {tool}"),
+        (status, _, _) => status.call_to_action().to_owned(),
     }
 }

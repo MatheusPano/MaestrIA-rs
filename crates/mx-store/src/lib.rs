@@ -55,3 +55,8 @@ pub use tabs_ops::Reveal;
 pub use timers::TimerKey;
 pub use tint::{GROUP_TINTS, TabTint};
 pub use workspaces::{EmptyName, RowPlace};
+pub use tabs_ops::hotkey_label;
+mod updates;
+mod plugin_updates;
+pub use updates::APP_VERSION;
+pub use plugin_updates::{CATALOG_ENV, catalog_urls};

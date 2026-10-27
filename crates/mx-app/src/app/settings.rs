@@ -4,6 +4,7 @@ use std::sync::Arc;
 use gpui::{App, AppContext, Entity, Global, Window};
 use mx_claude::usage::{UsageReading, read_usage, short_until};
 use mx_plugins::PluginInfo;
+use mx_plugins::catalog::PluginUpdate;
 use mx_theme::Typography;
 
 use crate::app::host::StoreHost;
@@ -11,7 +12,7 @@ use crate::keymap;
 use crate::app::ui::{self, Layer};
 use crate::app::dialogs;
 use crate::chrome::settings::{
-    Account, LauncherRow, PluginMenuAction, PluginRow, PluginState, Section, SettingsAction, SettingsData,
+    Account, LauncherRow, PluginAuto, PluginMenuAction, PluginRow, PluginState, RowUpdate, Section, SettingsAction, SettingsData,
     SettingsDialog, UsageWindow, fixed_rows,
 };
 
@@ -52,12 +53,20 @@ fn plugin_state(s: mx_plugins::PluginState) -> PluginState {
     }
 }
 
-fn plugin_row(p: &PluginInfo, conflicts: usize) -> PluginRow {
+fn row_update(u: &PluginUpdate) -> RowUpdate {
+    RowUpdate { from: u.from.clone(), to: u.to.clone(), asks_more: u.asks_more, newer: u.newer() }
+}
+
+fn plugin_row(p: &PluginInfo, conflicts: usize, store: &mx_store::Store) -> PluginRow {
     let m = p.manifest.as_deref();
+    let registry = store.plugins();
+    let updates = store.plugin_updates();
+    let origin = registry.and_then(|r| r.origin_of(&p.id));
     let details = [p.problem.clone(), p.crash.clone()]
         .into_iter()
         .flatten()
         .chain(m.map(|m| m.warnings.clone()).unwrap_or_default())
+        .chain(origin.as_ref().map(|o| o.describe()))
         .collect();
     PluginRow {
         id: p.id.clone(),
@@ -71,6 +80,24 @@ fn plugin_row(p: &PluginInfo, conflicts: usize) -> PluginRow {
         themes: p.palettes.clone(),
         enabled: p.enabled,
         conflicts,
+        kinds: m.map(|m| m.kinds().into_iter().collect()).unwrap_or_default(),
+        busy: updates.is_some_and(|u| u.is_busy(&p.id)),
+        update: updates.and_then(|u| u.available().get(&p.id).map(row_update)),
+        offer: updates.and_then(|u| u.offers().get(&p.id).map(row_update)),
+        has_origin: origin.is_some(),
+        manual: registry.is_some_and(|r| r.manual_update().contains(&p.id)),
+    }
+}
+
+fn plugin_auto(store: &mx_store::Store) -> PluginAuto {
+    let Some(u) = store.plugin_updates() else {
+        return PluginAuto { on: store.plugins().is_none_or(|r| r.auto_update()), ..PluginAuto::default() };
+    };
+    PluginAuto {
+        on: u.plugins().auto_update(),
+        checking: u.checking(),
+        checked_at: u.checked_at().map(|at| at.format("%H:%M").to_string()),
+        error: u.error(),
     }
 }
 
@@ -96,7 +123,8 @@ pub fn data(host: &Entity<StoreHost>, cx: &App) -> SettingsData {
             .iter()
             .map(|l| LauncherRow { id: l.id.clone(), name: l.name.clone(), command: l.command.clone(), icon: l.icon, open: open_with(&l.id) })
             .collect(),
-        plugins: store.plugins().map(|p| p.all().iter().map(|i| plugin_row(i, crate::plugin_ui::conflicts(store, &i.id))).collect()).unwrap_or_default(),
+        plugins: store.plugins().map(|p| p.all().iter().map(|i| plugin_row(i, crate::plugin_ui::conflicts(store, &i.id), store)).collect()).unwrap_or_default(),
+        plugin_auto: plugin_auto(store),
         hibernate_minutes: prefs.hibernate_minutes.max(0) as u32,
         account: cx.try_global::<Usage>().map_or(Account::Loading, |u| u.0.clone()),
     }
@@ -250,6 +278,23 @@ fn act(action: SettingsAction, window: &mut Window, cx: &mut App) {
         S::Plugin(id, PluginMenuAction::Configure) => crate::plugin_ui::open_settings(&id, window, cx),
         S::Plugin(id, PluginMenuAction::Log) => crate::plugin_ui::open_log(&id, window, cx),
         S::InstallPlugin => crate::plugin_ui::open_install(window, cx),
+        S::OpenCatalog => crate::plugin_ui::open_catalog(window, cx),
+        S::SetPluginAutoUpdate(on) => ui::act(cx, |s| s.set_plugin_auto_update(on)),
+        S::CheckPluginUpdates => ui::act(cx, |s| s.check_plugin_updates()),
+        S::Plugin(id, PluginMenuAction::Update) => {
+            if let Some(u) = ui::store(cx).plugin_updates().and_then(|u| u.available().remove(&id)) {
+                crate::plugin_ui::update_plugin(u, cx);
+            }
+        }
+        S::Plugin(id, PluginMenuAction::Adopt) => {
+            if let Some(u) = ui::store(cx).plugin_updates().and_then(|u| u.offers().remove(&id)) {
+                crate::plugin_ui::update_plugin(u, cx);
+            }
+        }
+        S::Plugin(id, PluginMenuAction::ToggleAutoUpdate) => {
+            let manual = ui::store(cx).plugins().is_some_and(|r| r.manual_update().contains(&id));
+            ui::act(cx, |s| s.set_plugin_manual_update(&id, !manual));
+        }
     }
 }
 

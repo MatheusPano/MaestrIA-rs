@@ -9,6 +9,7 @@ use crate::app::host::{StoreHost, update_store};
 use crate::app::icons::{Icon, icon};
 use crate::app::theme::Mx;
 use crate::app::tooltip::tip;
+use crate::chrome::widgets::{HOVER_MARGIN, HOVER_RADIUS, MxHover};
 use crate::sidebar::tab_row::TabRow;
 use crate::app::menus::Target;
 use crate::sidebar::widgets::{badge, chevron, count_text, menu_on, nest, right_click, row_button};
@@ -55,15 +56,14 @@ impl Ctx<'_> {
         let header = div()
             .id(SharedString::from(format!("ws:{}", w.id)))
             .mt(px(6.))
-            .pl(px(10.))
-            .pr(px(8.))
+            .pl(px(10. - HOVER_MARGIN))
+            .pr(px(3.))
             .py(px(8.))
             .flex()
             .items_center()
             .gap(px(6.))
             .cursor_pointer()
-            .rounded(px(8.))
-            .hover(|s| s.bg(mx.bg_hover))
+            .inset_hover(HOVER_MARGIN, 0., HOVER_RADIUS, Some(mx.bg_hover))
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host, cx, |s| s.toggle_workspace_collapsed(&ws_id))
             })
@@ -192,15 +192,14 @@ impl Ctx<'_> {
             .id(SharedString::from(format!("folder:{key}")))
             .group("folder-row")
             .mt(px(6.))
-            .pl(px(10.))
-            .pr(px(8.))
+            .pl(px(10. - HOVER_MARGIN))
+            .pr(px(3.))
             .py(px(8.))
             .flex()
             .items_center()
             .gap(px(6.))
             .cursor_pointer()
-            .rounded(px(8.))
-            .hover(|s| s.bg(mx.bg_hover))
+            .inset_hover(HOVER_MARGIN, 0., HOVER_RADIUS, Some(mx.bg_hover))
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host, cx, |s| {
                     s.toggle_folder_collapsed(&root, within_owned.as_deref())
@@ -289,12 +288,11 @@ impl Ctx<'_> {
         let hover = mx.bg_hover;
         let header = div()
             .id(SharedString::from(format!("feature:{}:{}", f.id, within.unwrap_or(""))))
-            .mx(px(7.))
-            .pl(px(7.))
-            .pr(px(8.))
+            .pl(px(10.))
+            .pr(px(11.))
             .pt(px(8.))
             .pb(px(4.))
-            .rounded(px(8.))
+            .inset_hover(4., 0., HOVER_RADIUS, None)
             .border_1()
             .border_color(gpui::transparent_black())
             .flex()

@@ -31,7 +31,7 @@ fn info(contributes: serde_json::Value) -> PluginInfo {
 
 fn open(view: &str, blocks: serde_json::Value, modal: bool) -> ViewOpen {
     let blocks = blocks.as_array().unwrap().iter().filter_map(|b| b.as_object().cloned()).collect();
-    ViewOpen { view_id: view.into(), title: "Painel".into(), blocks, rfw: None, modal }
+    ViewOpen { view_id: view.into(), title: "Painel".into(), blocks, modal, ..ViewOpen::default() }
 }
 
 fn rig() -> Rig {
@@ -169,10 +169,11 @@ fn session_json_reports_the_panel() {
 }
 
 #[test]
-fn tab_owner_resolves_focus_and_unknown_ids() {
+fn tab_owner_reports_the_kind_and_refuses_unknown_ids() {
     let rig = rig();
-    assert_eq!(rig.s.plugin_tab_owner(None).unwrap().tab_id, "s");
-    assert_eq!(rig.s.plugin_tab_owner(Some("g".into())).unwrap_err().message, "não há painel \"g\"");
+    let owner = rig.s.plugin_tab_owner("s".into()).unwrap();
+    assert_eq!((owner.tab_id.as_str(), owner.kind, owner.owner), ("s", TabKind::Claude, None));
+    assert_eq!(rig.s.plugin_tab_owner("g".into()).unwrap_err().message, "não há painel \"g\"");
 }
 
 #[tokio::test]

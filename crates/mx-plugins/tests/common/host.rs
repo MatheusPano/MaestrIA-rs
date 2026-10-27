@@ -2,9 +2,10 @@ use std::sync::Mutex;
 
 use chrono::NaiveDate;
 use mx_plugins::host_json::{ChatJson, FeatureJson, FolderJson, SessionJson, WorkspaceJson};
+use mx_core::model::TabKind;
 use mx_plugins::rpc::{
-    CreatedSession, FloatContent, HostResult, OpenClaude, OpenShell, SendText, SidebarUpdate, SuggestionCreated,
-    TabOwner, ViewOpen, ViewUpdate,
+    CreatedSession, FloatContent, HostResult, OpenClaude, OpenShell, SendKeys, SendText, SidebarUpdate,
+    SuggestionCreated, TabOwner, ViewOpen, ViewUpdate,
 };
 use mx_plugins::ui::dialogs::{FormAnswer, InputRequest, PickRequest};
 use mx_plugins::ui::form::PluginForm;
@@ -19,6 +20,7 @@ pub struct FakeHost {
     pub features: Vec<FeatureJson>,
     pub folders: Vec<FolderJson>,
     pub owners: Vec<(String, Option<String>)>,
+    pub claude: Vec<String>,
     pub pick_last: bool,
     pub input_answer: Option<String>,
     pub float_shown: bool,
@@ -112,10 +114,34 @@ impl PluginHostApi for FakeHost {
         self.rec(format!("shell {:?}", r));
         done(Ok("tab8".into()))
     }
-    fn tab_owner(&self, _: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, TabOwner> {
-        let id = tab_id.unwrap_or_default();
+    fn send_keys(&self, _: &PluginInfo, r: SendKeys) -> HostResult<'_, ()> {
+        self.rec(format!("keys {:?}", r));
+        done(Ok(()))
+    }
+    fn paste_clipboard(&self, _: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, ()> {
+        self.rec(format!("paste {tab_id:?}"));
+        done(Ok(()))
+    }
+    fn rename_session(&self, _: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String> {
+        self.rec(format!("rename {tab_id} {title}"));
+        done(Ok(title.trim().to_owned()))
+    }
+    fn wake_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {
+        self.rec(format!("wake {tab_id}"));
+        done(Ok(true))
+    }
+    fn hibernate_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {
+        self.rec(format!("hibernate {tab_id}"));
+        done(Ok(true))
+    }
+    fn set_portrait(&self, _: &PluginInfo, tab_id: String, image: Option<Value>) -> HostResult<'_, ()> {
+        self.rec(format!("portrait {tab_id} {image:?}"));
+        done(Ok(()))
+    }
+    fn tab_owner(&self, _: &PluginInfo, id: String) -> HostResult<'_, TabOwner> {
+        let kind = if self.claude.contains(&id) { TabKind::Claude } else { TabKind::Shell };
         done(match self.owners.iter().find(|(t, _)| *t == id) {
-            Some((t, o)) => Ok(TabOwner { tab_id: t.clone(), owner: o.clone() }),
+            Some((t, o)) => Ok(TabOwner { tab_id: t.clone(), kind, owner: o.clone() }),
             None => Err(RpcError::no_tab(&id)),
         })
     }
@@ -133,6 +159,9 @@ impl PluginHostApi for FakeHost {
     }
     fn view_open(&self, _: &PluginInfo, r: ViewOpen) -> HostResult<'_, String> {
         self.rec(format!("view.open {} {} {} {}", r.view_id, r.title, r.blocks.len(), r.modal));
+        if r.from.is_some() || r.width.is_some() || r.height.is_some() {
+            self.rec(format!("view.open from {:?} {:?}x{:?}", r.from, r.width, r.height));
+        }
         done(Ok("tab3".into()))
     }
     fn view_update(&self, _: &PluginInfo, r: ViewUpdate) -> HostResult<'_, bool> {

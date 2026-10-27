@@ -150,7 +150,7 @@ impl Painter<'_> {
             _ => cell,
         };
         match content {
-            Some(inline) => cell.child(inline.into_element(self.id("td"), self.follow.as_ref())),
+            Some(inline) => cell.child(inline.into_element(self.id("td"), self.follow.as_ref(), self.selection.as_ref())),
             None => cell,
         }
     }

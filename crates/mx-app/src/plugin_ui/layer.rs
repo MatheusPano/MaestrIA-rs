@@ -100,6 +100,26 @@ impl PluginLayer {
         cx.notify();
     }
 
+    pub fn open_catalog(&mut self, cx: &mut Context<Self>) {
+        let host = self.host.clone();
+        let close = self.closer(cx);
+        let me = cx.weak_entity();
+        let from_url: super::widgets::Close = std::rc::Rc::new(move |window, cx| {
+            me.update(cx, |l, cx| l.open_install(window, cx)).ok();
+        });
+        self.local = Some(cx.new(|cx| super::catalog::CatalogDialog::new(host, close, from_url, cx)).into());
+        self.escape_closes_local = false;
+        cx.notify();
+    }
+
+    pub fn open_trust(&mut self, staged: mx_plugins::StagedPlugin, cx: &mut Context<Self>) {
+        let host = self.host.clone();
+        let close = self.closer(cx);
+        self.local = Some(cx.new(|cx| super::trust::TrustDialog::new(host, staged, close, cx)).into());
+        self.escape_closes_local = false;
+        cx.notify();
+    }
+
     fn closer(&self, cx: &mut Context<Self>) -> super::widgets::Close {
         let me = cx.weak_entity();
         std::rc::Rc::new(move |_, cx| {

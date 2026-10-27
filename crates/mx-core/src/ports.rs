@@ -44,7 +44,60 @@ impl Clock for SystemClock {
     }
 }
 
-pub trait Term: Send {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TermKey {
+    Up,
+    Down,
+    Left,
+    Right,
+    Enter,
+    Escape,
+    Tab,
+    Space,
+    Backspace,
+    Text(String),
+}
+
+impl TermKey {
+    pub const NAMED: [TermKey; 9] = [
+        TermKey::Up,
+        TermKey::Down,
+        TermKey::Left,
+        TermKey::Right,
+        TermKey::Enter,
+        TermKey::Escape,
+        TermKey::Tab,
+        TermKey::Space,
+        TermKey::Backspace,
+    ];
+
+    pub fn name(&self) -> Option<&'static str> {
+        Some(match self {
+            TermKey::Up => "up",
+            TermKey::Down => "down",
+            TermKey::Left => "left",
+            TermKey::Right => "right",
+            TermKey::Enter => "enter",
+            TermKey::Escape => "escape",
+            TermKey::Tab => "tab",
+            TermKey::Space => "space",
+            TermKey::Backspace => "backspace",
+            TermKey::Text(_) => return None,
+        })
+    }
+
+    pub fn by_name(name: &str) -> Option<TermKey> {
+        TermKey::NAMED.into_iter().find(|k| k.name() == Some(name))
+    }
+}
+
+pub trait TermInput {
+    fn asks_trust(&self) -> bool;
+    fn enter(&mut self);
+    fn send_keys(&mut self, keys: Vec<TermKey>) -> BoxFuture<'static, ()>;
+}
+
+pub trait Term: TermInput + Send {
     fn start_shell(&mut self, cwd: &str);
     fn start_command(&mut self, command: &str, cwd: &str, display: Option<&str>);
     fn park(&mut self);
@@ -64,6 +117,10 @@ pub trait TermFactory: Send + Sync {
 
 pub trait Notifier: Send + Sync {
     fn alert(&self, title: &str, body: &str);
+    fn alert_with_image(&self, title: &str, body: &str, image: &str) {
+        let _ = image;
+        self.alert(title, body);
+    }
     fn badge(&self, label: Option<&str>);
     fn open_link(&self, url: &str);
     fn quick_look(&self, path: &str);
@@ -73,6 +130,7 @@ pub trait Notifier: Send + Sync {
 
 pub trait PluginBus: Send + Sync {
     fn emit(&self, event: &str, data: Value, activations: &[&str], permission: Option<&str>);
+    fn view_closed(&self, plugin_id: &str, view_id: &str);
 }
 
 pub trait HookServer: Send + Sync {

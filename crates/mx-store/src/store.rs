@@ -60,6 +60,7 @@ pub struct Store {
     pub(crate) changes: Changes,
     pub(crate) bg: Background,
     pub(crate) plugin: PluginUi,
+    pub(crate) updates: crate::updates::Updates,
 }
 
 impl Store {
@@ -69,6 +70,7 @@ impl Store {
         Store {
             git: Git::new(ports.runner.clone()),
             loose: Folder::loose(opts.home.as_deref()),
+            updates: crate::updates::Updates::new(&opts.state_dir),
             p: ports,
             opts,
             folders: Vec::new(),

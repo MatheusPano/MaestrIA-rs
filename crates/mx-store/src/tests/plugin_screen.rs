@@ -43,7 +43,7 @@ fn desk(screen: Value) -> Rig {
 
 fn open(rig: &mut Rig, view: &str) -> String {
     let p = rig.s.plugins().unwrap().get("wiboor").unwrap();
-    let req = ViewOpen { view_id: view.into(), title: view.into(), blocks: Vec::new(), rfw: None, modal: false };
+    let req = ViewOpen { view_id: view.into(), title: view.into(), ..ViewOpen::default() };
     rig.s.view_open(&p, req)
 }
 

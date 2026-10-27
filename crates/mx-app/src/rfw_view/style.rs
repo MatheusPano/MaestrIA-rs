@@ -6,6 +6,8 @@ use mx_rfw::decoders::{Alignment, BorderRadius, BoxDecoration, BoxShape, Color a
 use mx_rfw::{Map, Value};
 use mx_theme::{Color, Palette, Typography};
 
+use super::zoom_view::scaled;
+
 pub const UI_FONT: &str = "Roboto";
 pub const UI_LINE: f32 = 1.17;
 
@@ -80,10 +82,10 @@ pub fn rfw_theme(p: &Palette, typography: &Typography) -> Value {
 
 pub fn edges(e: &EdgeInsets) -> Edges<DefiniteLength> {
     Edges {
-        top: px(e.top as f32).into(),
-        right: px(e.end as f32).into(),
-        bottom: px(e.bottom as f32).into(),
-        left: px(e.start as f32).into(),
+        top: pxf(e.top).into(),
+        right: pxf(e.end).into(),
+        bottom: pxf(e.bottom).into(),
+        left: pxf(e.start).into(),
     }
 }
 
@@ -96,7 +98,7 @@ pub fn set_padding(s: &mut StyleRefinement, e: &EdgeInsets) {
 }
 
 pub fn set_margin(s: &mut StyleRefinement, e: &EdgeInsets) {
-    let l = |v: f64| Length::Definite(px(v as f32).into());
+    let l = |v: f64| Length::Definite(pxf(v).into());
     s.margin.top = Some(l(e.top));
     s.margin.right = Some(l(e.end));
     s.margin.bottom = Some(l(e.bottom));
@@ -104,7 +106,7 @@ pub fn set_margin(s: &mut StyleRefinement, e: &EdgeInsets) {
 }
 
 pub fn radii(r: &BorderRadius) -> Corners<AbsoluteLength> {
-    let a = |v: f64| AbsoluteLength::Pixels(px(v as f32));
+    let a = |v: f64| AbsoluteLength::Pixels(pxf(v));
     Corners {
         top_left: a(r.top_start.x),
         top_right: a(r.top_end.x),
@@ -114,7 +116,7 @@ pub fn radii(r: &BorderRadius) -> Corners<AbsoluteLength> {
 }
 
 pub fn set_radius(s: &mut StyleRefinement, r: f32) {
-    let a = Some(AbsoluteLength::Pixels(px(r)));
+    let a = Some(AbsoluteLength::Pixels(px(scaled(r))));
     s.corner_radii.top_left = a;
     s.corner_radii.top_right = a;
     s.corner_radii.bottom_left = a;
@@ -122,7 +124,7 @@ pub fn set_radius(s: &mut StyleRefinement, r: f32) {
 }
 
 pub fn set_border(s: &mut StyleRefinement, color: Hsla, width: [f32; 4]) {
-    let w = |v: f32| Some(AbsoluteLength::Pixels(px(v)));
+    let w = |v: f32| Some(AbsoluteLength::Pixels(px(scaled(v))));
     s.border_widths.top = w(width[0]);
     s.border_widths.right = w(width[1]);
     s.border_widths.bottom = w(width[2]);
@@ -172,5 +174,5 @@ pub fn axis_align(v: f64) -> AlignItems {
 }
 
 pub fn pxf(v: f64) -> Pixels {
-    px(v as f32)
+    px(scaled(v as f32))
 }

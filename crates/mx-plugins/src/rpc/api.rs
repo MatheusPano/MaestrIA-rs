@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 use mx_core::json::Obj;
-use mx_core::ports::BoxFuture;
+use mx_core::model::TabKind;
+use mx_core::ports::{BoxFuture, TermKey};
 use serde_json::Value;
 
 use super::{BadgeUpdate, RfwUpdate, RpcError};
@@ -20,10 +21,17 @@ pub struct SendText {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SendKeys {
+    pub tab_id: Option<String>,
+    pub keys: Option<Vec<TermKey>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct OpenClaude {
     pub cwd: Option<String>,
     pub prompt: Option<String>,
     pub label: Option<String>,
+    pub background: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,13 +59,16 @@ pub struct CreatedSession {
     pub cwd: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ViewOpen {
     pub view_id: String,
     pub title: String,
     pub blocks: Vec<Obj>,
     pub rfw: Option<RfwUpdate>,
     pub modal: bool,
+    pub from: Option<String>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +99,7 @@ pub struct FloatContent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TabOwner {
     pub tab_id: String,
+    pub kind: TabKind,
     pub owner: Option<String>,
 }
 
@@ -110,7 +122,13 @@ pub trait PluginHostApi: Send + Sync {
     fn send_text(&self, plugin: &PluginInfo, request: SendText) -> HostResult<'_, ()>;
     fn open_claude(&self, plugin: &PluginInfo, request: OpenClaude) -> HostResult<'_, String>;
     fn open_shell(&self, plugin: &PluginInfo, request: OpenShell) -> HostResult<'_, String>;
-    fn tab_owner(&self, plugin: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, TabOwner>;
+    fn send_keys(&self, plugin: &PluginInfo, request: SendKeys) -> HostResult<'_, ()>;
+    fn paste_clipboard(&self, plugin: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, ()>;
+    fn rename_session(&self, plugin: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String>;
+    fn wake_session(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, bool>;
+    fn hibernate_session(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, bool>;
+    fn set_portrait(&self, plugin: &PluginInfo, tab_id: String, image: Option<Value>) -> HostResult<'_, ()>;
+    fn tab_owner(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, TabOwner>;
     fn close_tab(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, ()>;
     fn suggestion_created(
         &self,

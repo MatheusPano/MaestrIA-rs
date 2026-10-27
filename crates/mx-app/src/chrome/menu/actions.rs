@@ -18,6 +18,7 @@ pub enum MenuAction {
     Setup,
     Worktrees,
     Rename,
+    Hotkey,
     Tint(Option<Tint>),
     ToggleWorkspace(String),
     LeaveWorkspace,

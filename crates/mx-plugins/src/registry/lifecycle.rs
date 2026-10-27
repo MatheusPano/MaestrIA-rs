@@ -8,6 +8,32 @@ use crate::process::{ConnHandlers, Connection, SHUTDOWN_GRACE, resolve_executabl
 use crate::rpc::RpcError;
 use crate::{BLOCKS_VERSION, PLUGIN_API};
 
+pub const MAESTRIA_COMPAT: &str = "2.7.0";
+
+pub const CAPABILITIES: [(&str, i64, bool); 21] = [
+    ("rfw", 2, true),
+    ("floats", 1, true),
+    ("input", 1, true),
+    ("form", 1, true),
+    ("modal", 1, true),
+    ("editor", 1, true),
+    ("sprites", 1, true),
+    ("zoom", 1, true),
+    ("textInput", 1, true),
+    ("openInBackground", 1, true),
+    ("markdown", 1, true),
+    ("pasteImage", 1, true),
+    ("keys", 1, true),
+    ("arrows", 1, true),
+    ("wake", 1, true),
+    ("hibernate", 1, true),
+    ("portrait", 1, true),
+    ("closeSessions", 1, true),
+    ("modalFrom", 1, true),
+    ("selectable", 1, true),
+    ("rename", 1, true),
+];
+
 pub const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -163,8 +189,8 @@ impl Plugins {
         let mut p = Map::new();
         p.insert("apiVersion".into(), Value::from(PLUGIN_API));
         p.insert("blocks".into(), Value::from(BLOCKS_VERSION));
-        for (k, v) in [("rfw", 2), ("floats", 1), ("input", 1), ("form", 1), ("modal", 1), ("editor", 1)] {
-            p.insert(k.into(), Value::from(v));
+        for (key, value, _) in CAPABILITIES.iter().filter(|(_, _, landed)| *landed) {
+            p.insert((*key).into(), Value::from(*value));
         }
         p.insert("pluginId".into(), Value::from(id));
         p.insert("pluginDir".into(), Value::from(dir.to_string_lossy().into_owned()));

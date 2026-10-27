@@ -230,7 +230,10 @@ fn text(cx: &mut Ctx, t: &Text, turns: f64) -> El {
     };
     #[cfg(test)]
     let el = el.debug_selector(|| format!("text:{}", t.text));
-    el.child(t.text.clone())
+    match super::selectable::text(cx, t.text.clone().into()) {
+        Some(piece) => el.child(piece),
+        None => el.child(t.text.clone()),
+    }
 }
 
 fn container(cx: &mut Ctx, c: &Container, fit: Fit) -> El {

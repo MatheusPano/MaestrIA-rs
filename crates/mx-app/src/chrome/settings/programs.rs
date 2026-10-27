@@ -7,7 +7,7 @@ use super::model::{SettingsAction, hibernate_label, hibernate_less, hibernate_mo
 use crate::chrome::icon::{self, icon};
 use crate::chrome::menu::actions::{group_index, launcher_icon};
 use crate::chrome::style::{MONO, hsla, theme};
-use crate::chrome::widgets::{Button, ButtonKind, IconButton, Stepper, Switch};
+use crate::chrome::widgets::{Button, ButtonKind, IconButton, Stepper, Toggle};
 
 pub const PROGRAMS_EMPTY: &str = "Nenhum ainda. Um `btop` aqui é um painel de monitor a um clique de distância; um `npm run dev` é o servidor do projeto sempre no mesmo lugar.";
 
@@ -53,7 +53,7 @@ pub fn sessions(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) -> Any
         cx,
     ))
     .child(
-        Switch::new("hibernate", "Hibernar sozinho o que está parado fora da tela", on, d.send(SettingsAction::SetHibernateMinutes(if on { 0 } else { 30 })))
+        Toggle::new("hibernate", "Hibernar sozinho o que está parado fora da tela", on, d.send(SettingsAction::SetHibernateMinutes(if on { 0 } else { 30 })))
             .subtitle("Só as que não estão na tela, sem pendência com você, sem fila pra andar e sem agentes rodando. O que estava rodando dentro dela — um servidor MCP, um dev server que uma ferramenta subiu — vai junto com o processo."),
     );
     if on {

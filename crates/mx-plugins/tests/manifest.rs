@@ -2,7 +2,7 @@ mod common;
 
 use common::{base, fixtures, obj};
 use mx_plugins::chord::{Chord, Key, KeyPress};
-use mx_plugins::{CommandTarget, PluginManifest, SettingType};
+use mx_plugins::{CommandTarget, Permission, PluginManifest, SettingType};
 use serde_json::{Value, json};
 
 fn parse(v: Value) -> Result<PluginManifest, String> {
@@ -33,7 +33,7 @@ fn bad_manifests_are_refused_with_the_verbatim_message() {
     );
     assert_eq!(
         error_of(base(json!({"permissions": ["root"]}))),
-        "permissão desconhecida: \"root\" — as que existem são hooks, terminal.write, sessions.create, notifications"
+        "permissão desconhecida: \"root\" — as que existem são hooks, terminal.write, sessions.create, sessions.close, notifications"
     );
     assert_eq!(
         error_of(base(json!({"maestria": 99}))),
@@ -130,8 +130,8 @@ fn a_manifest_meta_becomes_ctrl_shift_on_linux() {
 #[test]
 fn chord_rejections_explain_why() {
     let why = |s: &str, linux| Chord::parse(s).unwrap().for_host(linux).rejection(linux);
-    assert_eq!(why("alt+1", true).unwrap(), "é a tecla da 1ª sessão da lateral");
-    assert_eq!(why("meta+3", false).unwrap(), "é a tecla da 3ª sessão da lateral");
+    assert_eq!(why("alt+1", true), None);
+    assert_eq!(why("meta+3", false), None);
     assert_eq!(
         why("g", true).unwrap(),
         "precisa de Ctrl ou Alt — sem modificador a tecla sumiria do terminal"
@@ -307,6 +307,27 @@ fn settings_resolve_to_saved_then_default_then_type_empty() {
 }
 
 #[test]
+fn a_folders_setting_resolves_to_a_list_of_roots_or_empty() {
+    let m = parse(base(json!({"contributes": {"settings": [{"id": "salas", "type": "folders", "title": "as salas"}]}})))
+        .unwrap();
+    let salas = &m.settings[0];
+    assert_eq!(salas.kind, SettingType::Folders);
+    assert_eq!(salas.resolve(None), json!([]));
+    assert_eq!(salas.resolve(Some(&json!(["/a", "/b"]))), json!(["/a", "/b"]));
+    assert_eq!(salas.resolve(Some(&json!(["/a", 3]))), json!([]));
+    assert_eq!(salas.resolve(Some(&json!("/a"))), json!([]));
+}
+
+#[test]
+fn the_sessions_close_permission_is_known_and_labelled() {
+    let m = parse(base(json!({"permissions": ["sessions.close"]}))).unwrap();
+    assert!(m.allows(Permission::SessionsClose));
+    assert_eq!(Permission::SessionsClose.label(), "encerrar sessões do Claude quando você pedir");
+    let ids: Vec<&str> = Permission::ALL.iter().map(|p| p.id()).collect();
+    assert_eq!(ids, ["hooks", "terminal.write", "sessions.create", "sessions.close", "notifications"]);
+}
+
+#[test]
 fn bad_settings_are_refused() {
     let one = |s: Value| base(json!({"contributes": {"settings": [s]}}));
     assert_eq!(
@@ -315,7 +336,7 @@ fn bad_settings_are_refused() {
     );
     assert_eq!(
         error_of(one(json!({"id": "s", "type": "cor"}))),
-        "a configuração \"s\" tem \"type\": \"cor\" — vale string, number, boolean, color, select"
+        "a configuração \"s\" tem \"type\": \"cor\" — vale string, number, boolean, color, select, folders"
     );
     assert_eq!(error_of(one(json!({"type": "string"}))), "cada configuração precisa de \"id\"");
     assert_eq!(error_of(one(json!(1))), "cada configuração é um objeto");

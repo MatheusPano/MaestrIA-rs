@@ -5,7 +5,8 @@ use gpui::{Entity, TestAppContext, VisualTestContext, px, size};
 use mx_theme::{Typography, default_theme};
 use serde_json::{Value, json};
 
-use super::code_pane::{CHANGE_DELAY, CodePane, find_all};
+use super::code_editor::find_all;
+use super::code_pane::{CHANGE_DELAY, CURSOR_DELAY, CodePane};
 use super::view::RfwView;
 use super::{ActionSink, ViewAction};
 use crate::setup::editor::TextEditor;
@@ -110,6 +111,8 @@ fn ctrl_s_sends_save_with_the_typed_text(cx: &mut TestAppContext) {
 fn moving_the_cursor_sends_line_column_and_selection(cx: &mut TestAppContext) {
     let (_, log, cx) = open(cx, "ab\ncdef");
     cx.simulate_keystrokes("down right shift-right");
+    cx.executor().advance_clock(CURSOR_DELAY);
+    cx.run_until_parked();
     let last = actions(&log, "cursor").pop().unwrap();
     assert_eq!(last.get("line"), Some(&json!(2)));
     assert_eq!(last.get("column"), Some(&json!(3)));
@@ -183,8 +186,11 @@ fn ctrl_h_replaces_every_match(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn find_is_case_insensitive_until_the_query_has_a_capital() {
-    assert_eq!(find_all("Foo foo", "foo"), [0..3, 4..7]);
-    assert_eq!(find_all("Foo foo", "Foo"), vec![(0..3)]);
-    assert!(find_all("abc", "").is_empty());
+fn find_ignores_case_until_aa_is_on_and_takes_a_regex_with_dot_star() {
+    assert_eq!(find_all("Foo foo", "foo", false, false), [0..3, 4..7]);
+    assert_eq!(find_all("Foo foo", "foo", true, false), vec![(4..7)]);
+    assert_eq!(find_all("a1 b22", r"\d+", false, true), [1..2, 4..6]);
+    assert_eq!(find_all("a.b", ".", false, false), vec![(1..2)]);
+    assert!(find_all("abc", "(", false, true).is_empty());
+    assert!(find_all("abc", "", false, false).is_empty());
 }

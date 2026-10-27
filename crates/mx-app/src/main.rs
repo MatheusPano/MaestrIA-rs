@@ -16,6 +16,7 @@ mod terminal_glue;
 mod terminal_input;
 mod terminal_mouse;
 mod terminal_view;
+mod find_bar;
 
 use std::borrow::Cow;
 

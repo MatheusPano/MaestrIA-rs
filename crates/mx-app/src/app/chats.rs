@@ -59,6 +59,7 @@ fn sections(store: &Store, window: &[ChatEntry], deep: &HashMap<String, Vec<Chat
 fn note(standing: ChatStanding) -> Option<(String, Tone)> {
     let tone = match standing {
         ChatStanding::OnScreen => Tone::Green,
+        ChatStanding::Background => Tone::Accent,
         ChatStanding::Live | ChatStanding::Gone => Tone::Yellow,
         ChatStanding::Fresh => return None,
     };

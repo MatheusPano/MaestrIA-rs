@@ -12,6 +12,8 @@ use crate::timers::{SETTLE, TimerKey};
 
 pub const HIBERNATED_AT_BIRTH: &str = "Hibernada — a conversa volta com um clique";
 const EARLY_EXIT: TimeDelta = TimeDelta::seconds(5);
+const TRUST_RETRY: TimeDelta = TimeDelta::seconds(2);
+const TRUST_TRIES: u32 = 300;
 
 #[derive(Debug, Clone)]
 pub struct ClaudeSpec {
@@ -98,6 +100,10 @@ impl Store {
     }
 
     pub fn open_claude(&mut self, spec: ClaudeSpec) -> String {
+        self.open_claude_placed(spec, true)
+    }
+
+    pub fn open_claude_placed(&mut self, spec: ClaudeSpec, place: bool) -> String {
         let id = self.next_tab_id();
         let mut tab = Tab::new(&id, &spec.folder, TabKind::Claude, &spec.cwd, self.now());
         tab.custom_label = spec.label.clone();
@@ -108,7 +114,7 @@ impl Store {
             None => last_segment(&spec.cwd).to_owned(),
         });
         let term = self.p.terms.create(&id);
-        self.register(tab, term, true);
+        self.register(tab, term, place);
         if spec.start {
             self.launch_claude(&id, spec.resume_id, spec.prompt);
         } else {
@@ -159,13 +165,29 @@ impl Store {
         self.sync_term(id);
         let at = self.now() + SETTLE;
         self.timers.set(TimerKey::Settle(id.to_owned()), at);
+        self.plugin.extras.settle_tries.insert(id.to_owned(), TRUST_TRIES);
     }
 
     pub(crate) fn settle_launch(&mut self, id: &str) {
-        let settled = self
-            .tab_mut(id)
-            .is_some_and(|t| !t.exited && t.hooks.settle());
-        if settled {
+        let tries = self.plugin.extras.settle_tries.remove(id).unwrap_or(0);
+        if self.tab(id).is_none_or(|t| t.exited) {
+            return;
+        }
+        if self.terms.get(id).is_some_and(|term| term.asks_trust()) {
+            if tries > 0 {
+                self.plugin.extras.settle_tries.insert(id.to_owned(), tries - 1);
+                let at = self.now() + TRUST_RETRY;
+                self.timers.set(TimerKey::Settle(id.to_owned()), at);
+            }
+            return;
+        }
+        if self.tab_mut(id).is_some_and(|t| t.hooks.settle()) {
+            self.p.plugins.emit(
+                "session.status",
+                json!({"tabId": id, "status": ClaudeStatus::Ready.name(), "previous": ClaudeStatus::Starting.name()}),
+                &["onSession"],
+                None,
+            );
             self.mark_tab(id);
         }
     }

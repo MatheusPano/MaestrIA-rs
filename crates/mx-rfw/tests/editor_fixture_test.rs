@@ -42,8 +42,10 @@ fn editor_mode_renders_one_code_editor_with_the_file_args() {
     assert_eq!(e.text.as_deref(), Some("const a = 1;\nfunction soma(x) {\n  return x + a;\n}\n"));
     assert_eq!((e.revision, e.jump), (2, 1));
     assert_eq!((e.line, e.column), (Some(3), Some(7)));
-    assert_eq!(e.language, "javascript");
+    assert_eq!(e.language.as_deref(), Some("javascript"));
     assert!(!e.read_only && !e.word_wrap);
+    assert!(e.line_numbers && e.autofocus);
+    assert_eq!(e.hint, None);
     assert_eq!(e.font_size, 13.0);
     let names = |v: &[&mx_rfw::Event]| v.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
     assert_eq!(names(&e.on_change), ["change"]);
@@ -62,7 +64,7 @@ fn a_file_without_a_jump_has_no_line_and_the_editor_defaults_apply() {
     let e = CodeEditor::from_node(node);
     assert_eq!((e.line, e.column), (None, None));
     assert_eq!(e.font_size, DEFAULT_FONT_SIZE);
-    assert_eq!(e.language, "plaintext");
+    assert_eq!(e.language, None);
 }
 
 #[test]
@@ -81,4 +83,15 @@ fn empty_and_error_modes_show_their_texts() {
     assert!(empty.iter().any(|s| s == "PASTAS RECENTES"), "{empty:?}");
     let error = texts(&evaluate(&lib, "root", &with_mode("error")));
     assert!(error.iter().any(|s| s == "imagem.png"), "{error:?}");
+}
+
+#[test]
+fn line_numbers_and_autofocus_can_be_turned_off_and_a_hint_given() {
+    let src = "import maestria;\nwidget root = CodeEditor(doc: \"/a\", language: \"klingon\", lineNumbers: false, autofocus: false, hint: \"vazio\");";
+    let lib = parse_library_file(src).unwrap();
+    let tree = evaluate(&lib, "root", &DynamicContent::new());
+    let e = CodeEditor::from_node(find(&tree, |n| n.name == "CodeEditor")[0]);
+    assert!(!e.line_numbers && !e.autofocus);
+    assert_eq!(e.hint.as_deref(), Some("vazio"));
+    assert_eq!(e.language.as_deref(), Some("klingon"));
 }

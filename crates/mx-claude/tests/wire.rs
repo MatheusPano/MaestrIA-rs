@@ -47,7 +47,8 @@ fn settings_and_mcp_config_are_byte_exact() {
         concat!(
             r#"{{"permissions":{{"allow":["mcp__maestria__suggest_task","mcp__maestria__dismiss_task"]}},"#,
             r#""hooks":{{"SessionStart":{h},"SessionEnd":{h},"UserPromptSubmit":{h},"PreToolUse":{t},"#,
-            r#""PostToolUse":{t},"PostToolUseFailure":{t},"Notification":{h},"Stop":{h},"StopFailure":{h},"SubagentStop":{h}}},"#,
+            r#""PostToolUse":{t},"PostToolUseFailure":{t},"Notification":{h},"Stop":{h},"StopFailure":{h},"SubagentStop":{h},"#,
+            r#""PreCompact":{h},"PostCompact":{h}}},"#,
             r#""statusLine":{{"type":"command","command":"sh '/state/statusline.sh' 'http://127.0.0.1:4321/status/tab1' ''"}}}}"#
         ),
         h = hook,

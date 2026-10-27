@@ -102,6 +102,12 @@ impl Root {
                         session.paste(text);
                     }
                 }
+                Effect::PasteClipboard { tab_id, images_via_ctrl_v } => {
+                    let text = cx.read_from_clipboard().and_then(|item| item.text());
+                    if let Some(session) = self.host.read(cx).terms.get(tab_id) {
+                        session.paste_clipboard(text.as_deref(), *images_via_ctrl_v);
+                    }
+                }
             }
         }
         let theme = self.host.read(cx).store.prefs().theme.clone();
@@ -158,6 +164,10 @@ impl Root {
                 update_store(&self.host, cx, |s| s.set_sidebar_hidden(false));
                 let sidebar = self.sidebar.clone();
                 window.defer(cx, move |window, cx| sidebar.read(cx).focus_search(window));
+            }
+            UiRequest::FindInPane { tab_id } => {
+                let views = self.panes.read(cx).terminal_views();
+                crate::keymap::find::open(&self.host, &views, tab_id.as_deref(), window, cx);
             }
             UiRequest::NewTask { folder } => dialogs::new_task(&folder, None, window, cx),
             UiRequest::Rename { tab_id, title } => dialogs::prompt(

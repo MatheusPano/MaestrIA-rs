@@ -133,10 +133,6 @@ pub fn terminal_key(p: &KeyPress, linux: bool) -> Option<TerminalKey> {
     select_all_chord(linux).accepts(p).then_some(TerminalKey::SelectAll)
 }
 
-pub fn slot_of(p: &KeyPress, linux: bool) -> Option<usize> {
-    (0..9u8).find(|i| Chord::slot(*i, linux).accepts(p)).map(usize::from)
-}
-
 pub fn may_be_shortcut(p: &KeyPress) -> bool {
     p.control || p.alt || p.meta || matches!(p.key, Key::F(_))
 }

@@ -27,9 +27,9 @@ Pure crate (std + serde_json/chrono/regex). No tokio, processes or UI. Times are
 - `HookState` (all reducer fields; `settle`, `subtitle(now)`, `plan`, `busy_forks`, `push_suggestion`), `PlanNote` (`headline`, json), `SuggestedTask` (json), caps `MAX_TOUCHED/MAX_PLANS/MAX_SUGGESTIONS`.
 - `FollowUp`/`FollowUpKind` (PT strings, `hands_back`), `FlowHold::label`.
 - `Notice`, `NoticeKind::verb`, `NOTICE_CAP`, `TOAST_CAP`, `SuggestionChoice`, `SuggestionEnd`.
-- `AgentInfo::from_json` / `list_from_stdout` (parses from first `[`), `ContextUsage::from_statusline`.
+- `AgentInfo::from_json` (`id` = background job id) / `list_from_stdout` (parses from first `[`), `ContextUsage::from_statusline`.
 - `Doc`/`DocSource` (json, 128 KiB UTF-16 text clip), `Setup`, `PluginViewRef`, `is_markdown_path`.
-- `Tab` + `TabKind`: pure panel record. Folder/launcher are referenced by `folder_root`+`loose` and `launcher_id`; the PTY state is mirrored in `exited`/`exit_code` by the store. `title(&TabCtx)`, `subtitle(&TabCtx)` (`TabCtx{folder, launcher, doc_missing, now}`), `status`, `resume_id`, `resumable`, `can_hibernate`, `rested`, `rested_ago(now)`, `recipe()` (group recipe) and `to_json()` (layout entry), exact key order.
+- `Tab` + `TabKind`: pure panel record. Folder/launcher are referenced by `folder_root`+`loose` and `launcher_id`; the PTY state is mirrored in `exited`/`exit_code` by the store. `title(&TabCtx)`, `subtitle(&TabCtx)` (`TabCtx{folder, launcher, doc_missing, now}`), `status`, `resume_id`, `resumable`, `can_hibernate`, `rested`, `rested_ago(now)`, `recipe()` (group recipe) and `to_json()` (layout entry, which alone carries the panel `hotkey` chord id), exact key order.
 - `Filter`/`FilterGroup` (`matches(&Tab)`).
 - `sidebar::{RowKey, sidebar_rows, root_order_keys, folders_of, workspaces_of, stands_alone}`.
 - `ids::{micros_now, run_stamp, tab_id, sidebar_tab_id, feature_id, group_id, launcher_id, suggestion_id(bytes)}`.

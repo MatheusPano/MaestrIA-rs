@@ -12,7 +12,7 @@ use crate::tabs_open::ClaudeSpec;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GitSnapshot {
     pub roots: Vec<(String, Option<Vec<WorktreeInfo>>)>,
-    pub tabs: Vec<(String, Option<usize>, Option<String>)>,
+    pub tabs: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -37,11 +37,11 @@ impl Store {
         }
         self.bg.git_busy = true;
         let roots: Vec<String> = self.folders.iter().map(|f| f.root.clone()).collect();
-        let tabs: Vec<(String, String, bool)> = self
+        let tabs: Vec<(String, String)> = self
             .tabs
             .iter()
-            .filter(|t| !t.is_passive())
-            .map(|t| (t.id.clone(), t.cwd.clone(), t.branch.is_empty()))
+            .filter(|t| !t.is_passive() && t.branch.is_empty())
+            .map(|t| (t.id.clone(), t.cwd.clone()))
             .collect();
         let git = self.git.clone();
         self.spawn(async move {
@@ -50,10 +50,9 @@ impl Store {
                 let list = git.worktrees(&root).await;
                 snap.roots.push((root, list));
             }
-            for (id, cwd, needs_branch) in tabs {
-                let dirty = git.dirty_count(&cwd).await;
-                let branch = if needs_branch { Some(git.branch_of(&cwd).await) } else { None };
-                snap.tabs.push((id, dirty, branch));
+            for (id, cwd) in tabs {
+                let branch = git.branch_of(&cwd).await;
+                snap.tabs.push((id, branch));
             }
             Done::Git(snap)
         });
@@ -83,23 +82,10 @@ impl Store {
                 self.mark(Areas::SIDEBAR);
             }
         }
-        for (id, dirty, branch) in snap.tabs {
+        for (id, branch) in snap.tabs {
             let Some(t) = self.tab_mut(&id) else { continue };
-            let mut changed = false;
-            if let Some(d) = dirty
-                && t.dirty != d
-            {
-                t.dirty = d;
-                changed = true;
-            }
-            if let Some(b) = branch
-                && t.branch.is_empty()
-                && !b.is_empty()
-            {
-                t.branch = b;
-                changed = true;
-            }
-            if changed {
+            if t.branch.is_empty() && !branch.is_empty() {
+                t.branch = branch;
                 self.mark_tab(&id);
             }
         }

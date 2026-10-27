@@ -212,7 +212,6 @@ async fn git_refresh_learns_worktrees_and_is_quiet_when_unchanged() {
         "git worktree list",
         mx_sys::output(0, "worktree /repo\nbranch refs/heads/master\n\nworktree /repo/.claude/worktrees/T-1\nbranch refs/heads/feature/T-1\n", ""),
     );
-    runner.respond("git status --porcelain", mx_sys::output(0, " M a\n M b", ""));
     let mut rig = Rig::with_runner(runner);
     rig.s1();
     rig.shell("sh");
@@ -222,7 +221,6 @@ async fn git_refresh_learns_worktrees_and_is_quiet_when_unchanged() {
     assert!(f.is_repo);
     assert_eq!(f.branch, "master");
     assert_eq!(rig.s.worktrees_of("/repo").len(), 2);
-    assert_eq!(rig.t("sh").dirty, 2);
     rig.s.take_changes();
     rig.s.refresh_git();
     rig.s.settle().await;

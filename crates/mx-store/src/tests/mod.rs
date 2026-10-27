@@ -14,9 +14,11 @@ mod readers;
 mod reorder;
 mod rested;
 mod search;
+mod session_api;
 mod suggestions;
 mod timing;
 mod workspace;
+mod plugin_modal;
 
 use std::sync::Arc;
 
@@ -166,3 +168,4 @@ impl Rig {
 pub(crate) fn names(list: &[&Folder]) -> Vec<String> {
     list.iter().map(|f| f.name.clone()).collect()
 }
+mod updates;

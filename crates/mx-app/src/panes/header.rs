@@ -1,13 +1,13 @@
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, ClipboardItem, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    Modifiers, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder,
+    AnyElement, App, ClickEvent, ClipboardItem, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
+    Modifiers, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div,
     px,
 };
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
 use mx_store::Store;
 
 use crate::app::avatar::{claude_avatar, dot};
-use crate::app::drag::{DraggedTab, TabGhost};
+use crate::app::drag::{DraggedTab, pane_grab};
 use crate::app::host::{StoreHost, update_store};
 use crate::app::icons::{Icon, icon};
 use crate::app::keys;
@@ -19,13 +19,11 @@ pub const HEIGHT: f32 = 42.;
 pub struct Header {
     id: String,
     title: String,
-    subtitle: String,
     branch: Option<String>,
     kind: TabKind,
     status: ClaudeStatus,
     running: bool,
-    slot: Option<String>,
-    dirty: usize,
+    hotkey: Option<String>,
     relaunch: Option<String>,
     hibernated: bool,
     agent: bool,
@@ -37,6 +35,8 @@ pub struct Header {
     dim: bool,
     tint: Option<Hsla>,
     folder_root: String,
+    grab: bool,
+    lifted: bool,
 }
 
 pub fn close_tooltip() -> String {
@@ -52,14 +52,12 @@ impl Header {
         let launcher = t.launcher_id.as_deref().and_then(|l| store.launcher_by_id(l));
         Header {
             id: t.id.clone(),
-            subtitle: store.subtitle(t),
             branch: (!t.branch.is_empty() && t.branch != title).then(|| t.branch.clone()),
             title,
             kind: t.kind,
             status: t.status(),
             running: !t.exited,
-            slot: store.tabs().iter().position(|x| x.id == t.id).and_then(keys::slot),
-            dirty: t.dirty,
+            hotkey: t.hotkey.as_deref().map(mx_store::hotkey_label),
             relaunch: launcher.filter(|_| t.exited).map(|l| l.command.clone()),
             hibernated: t.hibernated,
             agent: t.kind == TabKind::Claude,
@@ -75,7 +73,14 @@ impl Header {
             dim: show_focus && !focused,
             tint: store.tint_of(&t.id).map(|tt| mx.tab_tint(tt)),
             folder_root: t.folder_root.clone(),
+            grab: store.pane_count() >= 2,
+            lifted: false,
         }
+    }
+
+    pub fn lifted(mut self, lifted: bool) -> Self {
+        self.lifted = lifted;
+        self
     }
 
     fn button(
@@ -177,17 +182,13 @@ impl Header {
                     .child(div().font_family("Hack").text_size(px(11.)).text_color(mx.fg_dim).child(branch.clone())),
             );
         }
-        if self.dirty > 0 {
-            chips = chips.child(div().flex_none().text_size(px(11.)).text_color(mx.yellow).child(format!("±{}", self.dirty)));
-        }
-        chips = chips.child(div().min_w_0().truncate().text_size(px(12.)).text_color(mx.fg_dim).child(self.subtitle.clone()));
         let fade = if self.dim { 0.55 } else { 1. };
         let drag = DraggedTab {
             id: self.id.clone(),
             title: self.title.clone(),
             folder_root: self.folder_root.clone(),
         };
-        div()
+        let el = div()
             .id(SharedString::from(format!("pane-header:{}", self.id)))
             .h(px(HEIGHT))
             .flex_none()
@@ -197,14 +198,9 @@ impl Header {
             .items_center()
             .bg(mx.bg_sidebar)
             .border_b(px(if self.tint.is_some() { 3. } else { 1. }))
-            .border_color(self.tint.unwrap_or(mx.border))
-            .on_drag(drag, |d: &DraggedTab, at, _, cx| {
-                cx.new(|_| TabGhost {
-                    title: d.title.clone(),
-                    at,
-                })
-            })
-            .child(lead)
+            .border_color(self.tint.unwrap_or(mx.border));
+        let el = if self.grab { pane_grab(el, drag, self.tint, host.clone(), self.lifted) } else { el };
+        el.child(lead)
             .child(div().w(px(9.)))
             .child(
                 div()
@@ -216,12 +212,15 @@ impl Header {
                     .text_color(mx.fg)
                     .child(self.title.clone()),
             )
-            .when_some(self.slot.clone(), |d, slot| {
-                d.child(div().flex_none().ml(px(6.)).font_family("Hack").text_size(px(10.5)).text_color(mx.fg_faint).child(slot))
-            })
+            .children(key_hint(mx, self.hotkey.clone()))
             .child(div().ml(px(10.)).flex_1().min_w_0().flex().opacity(fade).child(chips))
             .child(div().flex_none().flex().items_center().gap(px(2.)).opacity(fade).children(buttons))
     }
+}
+
+pub fn key_hint(mx: &Mx, label: Option<String>) -> Option<gpui::Div> {
+    let label = label?;
+    Some(div().flex_none().pl(px(8.)).pr(px(2.)).font_family("Hack").text_size(px(10.5)).text_color(mx.fg_faint).child(label))
 }
 
 fn held_for_id(m: Modifiers) -> bool {

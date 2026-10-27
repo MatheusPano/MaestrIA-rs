@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 use crate::mcp::{SERVER_NAME, tool_names};
 use crate::sh::sh_quote;
 
-const HOOK_EVENTS: [(&str, bool); 10] = [
+const HOOK_EVENTS: [(&str, bool); 12] = [
     ("SessionStart", false),
     ("SessionEnd", false),
     ("UserPromptSubmit", false),
@@ -18,6 +18,8 @@ const HOOK_EVENTS: [(&str, bool); 10] = [
     ("Stop", false),
     ("StopFailure", false),
     ("SubagentStop", false),
+    ("PreCompact", false),
+    ("PostCompact", false),
 ];
 
 pub fn settings_for(

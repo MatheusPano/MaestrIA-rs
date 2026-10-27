@@ -2,6 +2,9 @@ pub mod code_editor;
 pub mod core_layout;
 pub mod core_widgets;
 pub mod maestria;
+pub mod sprite;
+pub mod text_input;
+pub mod zoom_view;
 
 use crate::decoders::{Color, color};
 use crate::tree::{LocalLibrary, Node};
@@ -12,7 +15,12 @@ use self::core_widgets::{
     Align, Center, Container, Expanded, Flex, FractionallySizedBox, GestureDetector, Opacity, Padding, Positioned,
     Rotation, ScrollList, SingleChild,
 };
-use self::maestria::{Draggable, DropTarget, Glyph, IconButton, Pressable, Svg, Tooltip};
+use self::maestria::{
+    Anchor, Draggable, DropTarget, Glyph, IconButton, Markdown, Pressable, SelectionArea, Svg, Tooltip,
+};
+use self::sprite::Sprite;
+use self::text_input::TextInput;
+use self::zoom_view::{FittedBox, ZoomView};
 
 pub struct CircularProgressIndicator {
     pub value: Option<f64>,
@@ -69,6 +77,14 @@ pub enum Local<'a> {
     Draggable(Draggable<'a>),
     DropTarget(DropTarget<'a>),
     CodeEditor(Box<CodeEditor<'a>>),
+    FittedBox(FittedBox<'a>),
+    Sprite(Box<Sprite>),
+    ZoomView(ZoomView<'a>),
+    TextInput(Box<TextInput<'a>>),
+    Anchor(Anchor<'a>),
+    Selectable(SelectionArea<'a>),
+    SelectionLines(SelectionArea<'a>),
+    Markdown(Markdown),
     Unsupported(&'a Node),
 }
 
@@ -97,6 +113,7 @@ pub fn decode(n: &Node) -> Local<'_> {
             "Stack" => Local::Stack(Stack::from_node(n)),
             "Text" => Local::Text(Box::new(Text::from_node(n))),
             "Wrap" => Local::Wrap(Wrap::from_node(n)),
+            "FittedBox" => Local::FittedBox(FittedBox::from_node(n)),
             _ => Local::Unsupported(n),
         },
         (LocalLibrary::CoreMaterial, "CircularProgressIndicator") => {
@@ -112,6 +129,13 @@ pub fn decode(n: &Node) -> Local<'_> {
             "Draggable" => Local::Draggable(Draggable::from_node(n)),
             "DropTarget" => Local::DropTarget(DropTarget::from_node(n)),
             "CodeEditor" => Local::CodeEditor(Box::new(CodeEditor::from_node(n))),
+            "Sprite" => Local::Sprite(Box::new(Sprite::from_node(n))),
+            "ZoomView" => Local::ZoomView(ZoomView::from_node(n)),
+            "TextInput" => Local::TextInput(Box::new(TextInput::from_node(n))),
+            "Anchor" => Local::Anchor(Anchor::from_node(n)),
+            "Selectable" => Local::Selectable(SelectionArea::from_node(n, false)),
+            "SelectionLines" => Local::SelectionLines(SelectionArea::from_node(n, true)),
+            "Markdown" => Local::Markdown(Markdown::from_node(n)),
             _ => Local::Unsupported(n),
         },
         _ => Local::Unsupported(n),

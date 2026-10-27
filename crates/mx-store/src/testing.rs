@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::TimeDelta;
-use mx_core::ports::{BoxFuture, Clock, HookServer, Notifier, PluginBus, Term, TermFactory};
+use mx_core::ports::{BoxFuture, Clock, HookServer, Notifier, PluginBus, Term, TermFactory, TermInput, TermKey};
 use mx_core::text::Time;
 use serde_json::Value;
 
@@ -41,6 +41,9 @@ pub struct TermLog {
     pub pid: Option<u32>,
     pub exited: bool,
     pub code: Option<i32>,
+    pub trust: bool,
+    pub keys: Vec<TermKey>,
+    pub enters: usize,
 }
 
 pub struct FakeTerm(Arc<Mutex<TermLog>>);
@@ -48,6 +51,27 @@ pub struct FakeTerm(Arc<Mutex<TermLog>>);
 impl FakeTerm {
     fn log(&self) -> std::sync::MutexGuard<'_, TermLog> {
         self.0.lock().unwrap()
+    }
+}
+
+impl TermInput for FakeTerm {
+    fn asks_trust(&self) -> bool {
+        self.log().trust
+    }
+
+    fn enter(&mut self) {
+        let mut l = self.log();
+        if !l.exited {
+            l.enters += 1;
+        }
+    }
+
+    fn send_keys(&mut self, keys: Vec<TermKey>) -> BoxFuture<'static, ()> {
+        let mut l = self.log();
+        if !l.exited {
+            l.keys.extend(keys);
+        }
+        Box::pin(async {})
     }
 }
 
@@ -159,6 +183,7 @@ impl TermFactory for FakeTerms {
 #[derive(Default)]
 pub struct FakeNotifier {
     pub alerts: Mutex<Vec<(String, String)>>,
+    pub portraits: Mutex<Vec<(String, String, String)>>,
     pub badges: Mutex<Vec<Option<String>>>,
     pub links: Mutex<Vec<String>>,
     pub looks: Mutex<Vec<String>>,
@@ -169,6 +194,10 @@ pub struct FakeNotifier {
 impl Notifier for FakeNotifier {
     fn alert(&self, title: &str, body: &str) {
         self.alerts.lock().unwrap().push((title.to_owned(), body.to_owned()));
+    }
+
+    fn alert_with_image(&self, title: &str, body: &str, image: &str) {
+        self.portraits.lock().unwrap().push((title.to_owned(), body.to_owned(), image.to_owned()));
     }
 
     fn badge(&self, label: Option<&str>) {
@@ -196,6 +225,7 @@ impl Notifier for FakeNotifier {
 #[derive(Default)]
 pub struct FakeBus {
     pub events: Mutex<Vec<(String, Value)>>,
+    pub closed: Mutex<Vec<(String, String)>>,
 }
 
 impl FakeBus {
@@ -207,6 +237,10 @@ impl FakeBus {
 impl PluginBus for FakeBus {
     fn emit(&self, event: &str, data: Value, _activations: &[&str], _permission: Option<&str>) {
         self.events.lock().unwrap().push((event.to_owned(), data));
+    }
+
+    fn view_closed(&self, plugin_id: &str, view_id: &str) {
+        self.closed.lock().unwrap().push((plugin_id.to_owned(), view_id.to_owned()));
     }
 }
 

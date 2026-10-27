@@ -145,6 +145,7 @@ fn panel_spec(store: &Store, t: &Tab) -> PanelMenu {
             .unwrap_or_default(),
         can_hibernate: t.can_hibernate(),
         close_chord: keys.first_label(Action::Close),
+        hotkey: t.hotkey.as_deref().map(mx_store::hotkey_label),
     }
 }
 

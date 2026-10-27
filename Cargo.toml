@@ -31,6 +31,7 @@ chrono = "0.4"
 regex = "1"
 thiserror = "2"
 axum = "0.8"
+sha2 = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 comrak = { version = "0.39", default-features = false, features = ["shortcodes"] }
 base64 = "0.22"

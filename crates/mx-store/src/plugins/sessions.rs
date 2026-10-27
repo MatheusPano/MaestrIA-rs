@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local, NaiveDate};
-use mx_core::model::{Doc, DocSource, Folder, Tab, TabKind};
+use mx_core::model::{Doc, DocSource, Folder, Tab};
 use mx_core::text::iso8601;
 use mx_plugins::host_json::{ChatJson, FeatureJson, FolderJson, SessionActivity, SessionJson, WorkspaceJson};
-use mx_plugins::rpc::{CreatedSession, OpenClaude, OpenShell, RpcError, SendText, SuggestionCreated, TabOwner};
+use mx_plugins::rpc::{CreatedSession, OpenShell, RpcError, SuggestionCreated};
 use mx_sys::history::{self, ReadOptions};
 
-use super::{Effect, Reply};
+use super::Reply;
 use crate::readers::DocPlace;
 use crate::store::Store;
-use crate::tabs_open::ClaudeSpec;
 
 pub struct ChatLister {
     home: PathBuf,
@@ -61,6 +60,7 @@ impl Store {
             feature_or_hotfix: feature,
             workspaces: self.workspaces_of(&t.folder_root).iter().map(|w| w.name.clone()).collect(),
             launcher: t.launcher_id.as_deref().and_then(|l| self.launcher_by_id(l)).map(|l| l.name.clone()),
+            context: t.context,
             owner: t.owner.clone(),
             owner_tag: t.owner_tag.clone(),
             embedded: t.embedded,
@@ -144,36 +144,7 @@ impl Store {
         });
     }
 
-    fn live_target(&self) -> Option<String> {
-        if let Some(t) = self.focused_tab().filter(|t| !t.is_passive()) {
-            return Some(t.id.clone());
-        }
-        let open = self.open_panes();
-        open.iter()
-            .find(|t| !t.is_passive() && t.kind == TabKind::Claude)
-            .or_else(|| open.iter().find(|t| !t.is_passive()))
-            .map(|t| t.id.clone())
-    }
-
-    pub(crate) fn plugin_send_text(&mut self, req: SendText) -> Result<(), RpcError> {
-        let id = match req.tab_id {
-            Some(id) if self.has_tab(&id) => id,
-            Some(id) => return Err(RpcError::no_tab(&id)),
-            None => self.live_target().ok_or_else(RpcError::no_session_on_screen)?,
-        };
-        let t = self.tab(&id).ok_or_else(|| RpcError::no_tab(&id))?;
-        if t.is_passive() || t.exited || t.hibernated {
-            return Err(RpcError::no_process(&self.title(t)));
-        }
-        if req.submit {
-            self.submit(&id, &req.text);
-        } else {
-            self.plugin.effects.push(Effect::Paste { tab_id: id, text: req.text });
-        }
-        Ok(())
-    }
-
-    fn plugin_place(&self, cwd: Option<String>) -> (Folder, String) {
+    pub(crate) fn plugin_place(&self, cwd: Option<String>) -> (Folder, String) {
         match cwd {
             Some(cwd) => {
                 let folder = self.folder_at(&cwd).cloned().unwrap_or_else(|| self.loose.clone());
@@ -190,16 +161,6 @@ impl Store {
         }
     }
 
-    pub(crate) fn plugin_open_claude(&mut self, req: OpenClaude) -> String {
-        let (folder, cwd) = self.plugin_place(req.cwd);
-        let mut spec = ClaudeSpec::new(&folder, &cwd);
-        spec.label = req.label;
-        spec.prompt = req.prompt;
-        let id = self.open_claude(spec);
-        self.select(&id);
-        id
-    }
-
     pub(crate) fn plugin_open_shell(&mut self, plugin: &str, req: OpenShell) -> String {
         let (folder, cwd) = self.plugin_place(req.cwd);
         let id = self.open_shell_with(&folder, Some(&cwd), req.command.as_deref(), None, None, !req.embedded);
@@ -213,15 +174,6 @@ impl Store {
         }
         self.mark_tab(&id);
         id
-    }
-
-    pub(crate) fn plugin_tab_owner(&self, tab: Option<String>) -> Result<TabOwner, RpcError> {
-        let id = match tab {
-            Some(id) => id,
-            None => self.focused_tab_id().ok_or_else(RpcError::no_focused_tab)?,
-        };
-        let t = self.tab(&id).ok_or_else(|| RpcError::no_tab(&id))?;
-        Ok(TabOwner { tab_id: id.clone(), owner: t.owner.clone() })
     }
 
     pub(crate) fn plugin_suggestion_created(&mut self, plugin: &str, req: SuggestionCreated, reply: Reply<Option<CreatedSession>>) {

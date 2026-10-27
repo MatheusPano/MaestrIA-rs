@@ -1,6 +1,7 @@
 mod commands;
 mod host;
 mod screen;
+mod session_api;
 mod sessions;
 mod views;
 
@@ -30,6 +31,7 @@ pub(crate) type Reply<T> = oneshot::Sender<Result<T, RpcError>>;
 pub enum Effect {
     Clipboard(String),
     Paste { tab_id: String, text: String },
+    PasteClipboard { tab_id: String, images_via_ctrl_v: bool },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +68,7 @@ pub struct PluginUi {
     pub(crate) created: HashMap<u64, Reply<Option<mx_plugins::rpc::CreatedSession>>>,
     pub(crate) next_reply: u64,
     pub(crate) screens: screen::Screens,
+    pub(crate) extras: session_api::SessionExtras,
 }
 
 struct Listener(StoreSender);

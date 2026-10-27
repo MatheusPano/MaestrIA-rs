@@ -81,6 +81,7 @@ impl Store {
             floats: p.floats.clone(),
             groups_collapsed: p.groups_collapsed,
             hibernate_minutes: p.hibernate_minutes,
+            auto_update: self.updates.app.active(),
             theme: Some(p.theme.clone()),
             typography: p.typography.clone(),
             shortcuts: p.shortcuts.clone(),

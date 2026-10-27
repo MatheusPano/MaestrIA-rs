@@ -48,6 +48,7 @@ pub struct PaneEntry {
     pub suggestions: Vec<SuggestedTask>,
     pub done: bool,
     pub pinned: bool,
+    pub hotkey: Option<String>,
 }
 
 pub fn feature_or_hotfix_id_in(pane: &Obj) -> Option<String> {
@@ -94,6 +95,7 @@ impl PaneEntry {
                 .collect(),
             done: is_true(pane, "done"),
             pinned: is_true(pane, "pinned"),
+            hotkey: owned("hotkey"),
         }
     }
 

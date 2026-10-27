@@ -194,20 +194,12 @@ impl Chord {
         s + &self.key.mac_glyph()
     }
 
-    pub fn slot(index: u8, linux: bool) -> Chord {
-        let key = Key::Char(char::from(b'1' + index));
-        Chord::mods(key, false, false, linux, !linux)
-    }
-
     pub fn rejection(&self, linux: bool) -> Option<String> {
         if !self.key.known() {
             return Some("essa tecla não dá pra usar num atalho".into());
         }
         if let Some(why) = reserved(linux).into_iter().find(|(c, _)| c == self).map(|(_, w)| w) {
             return Some(why.into());
-        }
-        if let Some(i) = (0..9).find(|i| *self == Chord::slot(*i, linux)) {
-            return Some(format!("é a tecla da {}ª sessão da lateral", i + 1));
         }
         if !self.meta && !self.control && !self.alt && !matches!(self.key, Key::F(_)) {
             return Some(if linux {

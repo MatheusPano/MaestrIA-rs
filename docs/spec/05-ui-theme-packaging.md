@@ -1,6 +1,6 @@
 # 05 — UI shell, theming and packaging
 
-Source of truth: the Flutter app at `/home/lucas/maestria/repo` (version `2.4.0+1`).
+Source of truth: the Flutter app at `~/maestria/repo` (version `2.4.0+1`).
 Paths below are relative to that repo unless stated. All UI strings are Portuguese and
 quoted **verbatim**; keep them byte-identical (including `…`, `—`, `·`, curly quotes `“ ”`).
 

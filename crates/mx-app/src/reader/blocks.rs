@@ -9,6 +9,7 @@ use gpui::{
 use mx_claude::markdown::{MdAlert, MdKind, MdNode};
 
 use super::inline::{FollowHref, Inline};
+use super::select::{self, SelectionSlot};
 use super::style::{Marks, Sheet, run};
 
 pub const BLOCK_SPACING: f32 = 11.;
@@ -19,6 +20,7 @@ pub struct Painter<'a> {
     pub follow: Option<FollowHref>,
     pub text_system: Arc<WindowTextSystem>,
     pub width: Pixels,
+    pub selection: Option<SelectionSlot>,
     next_id: Cell<usize>,
 }
 
@@ -34,7 +36,23 @@ impl<'a> Painter<'a> {
             follow,
             text_system,
             width,
+            selection: None,
             next_id: Cell::new(0),
+        }
+    }
+
+    pub fn with_selection(mut self, slot: Option<SelectionSlot>) -> Self {
+        self.selection = slot;
+        self
+    }
+
+    fn text(&self, text: String, runs: Option<Vec<gpui::TextRun>>) -> AnyElement {
+        match &self.selection {
+            Some(slot) => select::piece(slot, text, runs),
+            None => match runs {
+                Some(runs) => StyledText::new(text).with_runs(runs).into_any_element(),
+                None => text.into_any_element(),
+            },
         }
     }
 
@@ -69,7 +87,7 @@ impl<'a> Painter<'a> {
             .text_size(px(size))
             .line_height(relative(1.62))
             .pb(px(2.))
-            .child(inline.into_element(self.id("p"), self.follow.as_ref()))
+            .child(inline.into_element(self.id("p"), self.follow.as_ref(), self.selection.as_ref()))
             .into_any_element()
     }
 
@@ -127,7 +145,7 @@ impl<'a> Painter<'a> {
             .text_size(px(size))
             .line_height(relative(1.3))
             .font_weight(FontWeight::SEMIBOLD)
-            .child(inline.into_element(self.id("h"), self.follow.as_ref()))
+            .child(inline.into_element(self.id("h"), self.follow.as_ref(), self.selection.as_ref()))
             .into_any_element()
     }
 
@@ -181,7 +199,7 @@ impl<'a> Painter<'a> {
                         .text_size(px(sheet.size))
                         .line_height(relative(1.62))
                         .text_color(base)
-                        .child(text)
+                        .child(self.text(text, None))
                         .into_any_element()
                 }
             };
@@ -233,7 +251,7 @@ impl<'a> Painter<'a> {
                             .text_size(px(sheet.mono_size()))
                             .line_height(relative(1.5))
                             .whitespace_nowrap()
-                            .child(StyledText::new(text).with_runs(runs)),
+                            .child(self.text(text, Some(runs))),
                     ),
             )
             .into_any_element()

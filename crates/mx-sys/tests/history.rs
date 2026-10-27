@@ -126,7 +126,7 @@ async fn the_same_folder_asked_twice_does_not_duplicate_the_chat() {
 
 #[test]
 fn dir_for_replaces_every_utf16_unit_outside_ascii_alphanumerics() {
-    assert_eq!(dir_for("/home/lucas/maestria_v2"), "-home-lucas-maestria-v2");
+    assert_eq!(dir_for("/home/user/maestria_v2"), "-home-user-maestria-v2");
     assert_eq!(dir_for("/tmp/ação"), "-tmp-a--o");
     assert_eq!(dir_for("/x/😀"), "-x---");
 }
@@ -190,4 +190,7 @@ fn only_a_fresh_chat_opens_and_each_standing_has_its_note() {
     assert_eq!(ChatStanding::Live.note(), Some("aberta fora daqui"));
     assert_eq!(ChatStanding::Gone.note(), Some("a pasta não existe mais"));
     assert!(!ChatStanding::Gone.opens());
+    assert!(ChatStanding::Background.opens());
+    assert!(ChatStanding::Background.note().unwrap().contains("segundo plano"));
+    assert!(!ChatStanding::Live.opens());
 }

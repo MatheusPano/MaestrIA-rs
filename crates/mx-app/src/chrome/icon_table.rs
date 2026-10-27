@@ -97,3 +97,5 @@ pub const LOGOUT: Icon = Icon('\u{e3b3}');
 pub const FILE_OPEN_OUTLINED: Icon = Icon('\u{f05f9}');
 pub const RECEIPT_LONG_OUTLINED: Icon = Icon('\u{f2ef}');
 pub const RESTART_ALT: Icon = Icon('\u{e531}');
+pub const STOREFRONT: Icon = Icon('\u{e60c}');
+pub const SYSTEM_UPDATE: Icon = Icon('\u{e636}');

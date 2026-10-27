@@ -8,3 +8,4 @@ pub mod paths;
 pub mod persist;
 pub mod ports;
 pub mod text;
+pub mod version;

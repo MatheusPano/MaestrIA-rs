@@ -106,6 +106,44 @@ pub struct PluginRow {
     pub themes: Vec<String>,
     pub enabled: bool,
     pub conflicts: usize,
+    pub kinds: Vec<mx_plugins::catalog::PluginKind>,
+    pub busy: bool,
+    pub update: Option<RowUpdate>,
+    pub offer: Option<RowUpdate>,
+    pub has_origin: bool,
+    pub manual: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RowUpdate {
+    pub from: String,
+    pub to: String,
+    pub asks_more: bool,
+    pub newer: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PluginAuto {
+    pub on: bool,
+    pub checking: bool,
+    pub checked_at: Option<String>,
+    pub error: Option<String>,
+}
+
+pub fn checked_label(a: &PluginAuto) -> Option<String> {
+    if a.checking {
+        return Some("Procurando…".into());
+    }
+    a.checked_at.as_ref().map(|at| format!("Procurado às {at}"))
+}
+
+pub fn update_status(p: &PluginRow) -> Option<(String, crate::chrome::menu::Tone)> {
+    use crate::chrome::menu::Tone;
+    if p.busy {
+        return Some(("Atualizando…".into(), Tone::Purple));
+    }
+    let u = p.update.as_ref()?;
+    Some(if u.asks_more { (format!("{} pede permissão nova", u.to), Tone::Yellow) } else { (format!("{} disponível", u.to), Tone::Purple) })
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -142,6 +180,7 @@ pub struct SettingsData {
     pub fixed: Vec<(String, String)>,
     pub launchers: Vec<LauncherRow>,
     pub plugins: Vec<PluginRow>,
+    pub plugin_auto: PluginAuto,
     pub hibernate_minutes: u32,
     pub account: Account,
 }
@@ -153,6 +192,9 @@ pub enum PluginMenuAction {
     Log,
     Reveal,
     Remove,
+    Update,
+    Adopt,
+    ToggleAutoUpdate,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,6 +209,9 @@ pub enum SettingsAction {
     EditLauncher(String),
     RemoveLauncher(String),
     InstallPlugin,
+    OpenCatalog,
+    SetPluginAutoUpdate(bool),
+    CheckPluginUpdates,
     OpenPluginsFolder,
     RescanPlugins,
     Plugin(String, PluginMenuAction),

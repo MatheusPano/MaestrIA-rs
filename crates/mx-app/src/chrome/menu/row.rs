@@ -8,6 +8,10 @@ use super::model::{Glyph, MenuItem, Trailing};
 use crate::chrome::assets::CLAUDE_SVG;
 use crate::chrome::icon::{self, icon};
 use crate::chrome::style::{MONO, alpha, hsla};
+use crate::chrome::widgets::MxHover;
+
+const ROW_PAD: f32 = 14.;
+const ROW_INSET: f32 = 5.;
 
 pub fn glyph(g: Glyph, t: &Theme, faded: bool) -> AnyElement {
     let el = match g {
@@ -58,14 +62,15 @@ pub fn item_row<T>(id: usize, item: &MenuItem<T>, t: &Theme, submenu: bool, open
         .flex()
         .items_center()
         .h(px(item.height()))
-        .pl(px(14. + item.indent))
-        .pr(px(14.))
-        .gap(px(9.));
+        .pl(px(ROW_PAD - ROW_INSET + item.indent))
+        .pr(px(ROW_PAD - ROW_INSET))
+        .gap(px(9.))
+        .inset_hover(ROW_INSET, 0., 6., (!item.disabled).then(|| hsla(t.bg_hover)));
     if open {
         row = row.bg(hsla(t.bg_hover));
     }
     if !item.disabled {
-        row = row.cursor_pointer().hover(|s| s.bg(hsla(t.bg_hover)));
+        row = row.cursor_pointer();
     }
     row = row.child(match item.glyph {
         Some(g) => glyph(g, t, item.disabled),

@@ -24,7 +24,7 @@ pub fn scene(component: &str, window: &mut Window, cx: &mut App) -> AnyView {
         "dialog-brief" => form(specs::brief("Permissão do google", "Não mexer no login antigo.\nUsar o client novo."), window, cx),
         "dialog-launcher" => form(specs::launcher_form(Some(("btop", "btop --utf-force", LauncherIcon::Monitor))), window, cx),
         "dialog-worktree" => confirm(
-            confirm::remove_worktree("TASK#47730", "/home/lucas/repos/maestria/TASK-47730", false, &WorktreeSafety { dirty: Some(2), base: Some("origin/main".into()), unmerged: 1 }, Some("feature/TASK#47730")),
+            confirm::remove_worktree("TASK#47730", "/home/user/repos/maestria/TASK-47730", false, &WorktreeSafety { dirty: Some(2), base: Some("origin/main".into()), unmerged: 1 }, Some("feature/TASK#47730")),
             cx,
         ),
         "dialog-close-workspace" => confirm(confirm::close_workspace("ATRIUM", Some("~/repos/atrium.code-workspace"), 3, 2), cx),

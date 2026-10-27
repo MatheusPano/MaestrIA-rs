@@ -23,6 +23,9 @@ pub struct PluginView {
     pub blocks: Vec<Obj>,
     pub revision: u64,
     pub consoles: BTreeMap<String, PluginConsole>,
+    pub modal_from: Option<String>,
+    pub modal_width: Option<f64>,
+    pub modal_height: Option<f64>,
 }
 
 pub(crate) fn children(b: &Obj) -> Vec<&Obj> {
@@ -50,6 +53,9 @@ impl PluginView {
             blocks,
             revision: 0,
             consoles: BTreeMap::new(),
+            modal_from: None,
+            modal_width: None,
+            modal_height: None,
         };
         view.adopt_consoles();
         view
@@ -103,6 +109,16 @@ impl PluginView {
             self.rfw_library = None;
             self.set_blocks(b);
         }
+    }
+
+    pub fn set_modal(&mut self, from: Option<String>, width: Option<f64>, height: Option<f64>) {
+        self.modal_from = from;
+        self.modal_width = width;
+        self.modal_height = height;
+    }
+
+    pub fn switches_to(&self, blocks: bool, rfw: Option<&RfwUpdate>) -> bool {
+        blocks || (rfw.is_some_and(|r| r.library.is_some()) && self.rfw_library.is_none())
     }
 
     pub fn console(&mut self, id: &str) -> &mut PluginConsole {

@@ -1,8 +1,11 @@
 mod bodies;
+mod cards_model;
 mod drop;
 mod empty;
 mod grip;
 mod header;
+mod plugin_tiles;
+mod session_cards;
 mod terminals;
 mod view_header;
 
@@ -29,6 +32,7 @@ pub struct PaneArea {
     host: Entity<StoreHost>,
     terminals: Terminals,
     hint: Option<(String, DropSide)>,
+    lifted: Option<String>,
     resizing: Option<grip::GripDrag>,
     focused: Option<String>,
     focused_handle: Option<FocusHandle>,
@@ -45,6 +49,7 @@ impl PaneArea {
             host,
             terminals: Terminals::default(),
             hint: None,
+            lifted: None,
             resizing: None,
             focused: None,
             focused_handle: None,
@@ -54,6 +59,10 @@ impl PaneArea {
             layer: None,
             watch: None,
         }
+    }
+
+    pub fn terminal_views(&self) -> crate::plugin_ui::surface::TermViews {
+        self.terminals.shared()
     }
 
     pub fn set_palette(&mut self, palette: &mx_theme::TerminalPalette, cx: &mut Context<Self>) {
@@ -112,10 +121,20 @@ impl PaneArea {
     }
 
     fn on_drag_move(&mut self, id: &str, ev: &DragMoveEvent<DraggedTab>, cx: &mut Context<Self>) {
+        let dragged = ev.drag(cx).id.clone();
+        if self.lifted.as_deref() != Some(dragged.as_str()) {
+            let lifted = self.host.read(cx).store.is_open(&dragged).then_some(dragged.clone());
+            if lifted != self.lifted {
+                self.lifted = lifted;
+                cx.notify();
+            }
+        }
         let b = ev.bounds;
         let p = ev.event.position;
         let inside = b.contains(&p);
-        let next = if inside {
+        let next = if inside && dragged == id {
+            None
+        } else if inside {
             let side = drop::side_at(
                 f32::from(p.x - b.origin.x),
                 f32::from(p.y - b.origin.y),
@@ -142,12 +161,13 @@ impl PaneArea {
         let focused = store.focused_tab_id().as_deref() == Some(id);
         let kind = tab.kind;
         let hibernated = tab.hibernated;
+        let lifted = cx.has_active_drag() && self.lifted.as_deref() == Some(id);
         let settings: view_header::Opener = std::rc::Rc::new(|plugin, window, cx| crate::plugin_ui::open_settings(&plugin, window, cx));
         let top: Option<AnyElement> = match kind {
             TabKind::Plugin => view_header::ViewHeader::of(store, id, show_focus, focused)
-                .map(|h| h.render(mx, &self.host, Some(settings), 1000.).into_any_element()),
+                .map(|h| h.lifted(lifted).render(mx, &self.host, Some(settings), 1000.).into_any_element()),
             TabKind::Reader => None,
-            _ => Some(header::Header::of(store, mx, tab, show_focus, focused).render(mx, &self.host).into_any_element()),
+            _ => Some(header::Header::of(store, mx, tab, show_focus, focused).lifted(lifted).render(mx, &self.host).into_any_element()),
         };
         let (body, padded): (AnyElement, bool) = match kind {
             TabKind::Claude | TabKind::Shell => match self.terminals.get(id) {
@@ -198,6 +218,7 @@ impl PaneArea {
                 this.on_drag_move(&move_id, ev, cx)
             }))
             .on_drop(cx.listener(move |this, d: &DraggedTab, _, cx| {
+                this.lifted = None;
                 let side = this
                     .hint
                     .take()
@@ -323,16 +344,15 @@ impl Render for PaneArea {
         let tree = store.panes().cloned();
         let screen = store.screen().map(str::to_owned);
         let show_focus = store.pane_count() > 1;
-        let live = store.tabs().iter().filter(|t| !t.exited && !t.embedded).count();
         let body = match (tree, screen) {
             (Some(tree), _) => self.node(&tree, Vec::new(), show_focus, &mx, cx),
             (None, Some(plugin)) => empty::empty_screen(&mx, &self.host, &plugin, cx).into_any_element(),
-            (None, None) => empty::empty_pane(&mx, &self.host, live).into_any_element(),
+            (None, None) => empty::empty_pane(&self.host).into_any_element(),
         };
         div()
             .size_full()
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                if this.hint.take().is_some() | this.resizing.take().is_some() {
+                if this.hint.take().is_some() | this.resizing.take().is_some() | this.lifted.take().is_some() {
                     cx.notify();
                 }
             }))

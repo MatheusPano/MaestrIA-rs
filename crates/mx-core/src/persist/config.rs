@@ -155,6 +155,7 @@ pub struct Config {
     pub floats: Obj,
     pub groups_collapsed: bool,
     pub hibernate_minutes: i64,
+    pub auto_update: bool,
     pub theme: Option<String>,
     pub typography: Typography,
     pub shortcuts: Obj,
@@ -181,6 +182,7 @@ impl Default for Config {
             floats: Obj::new(),
             groups_collapsed: false,
             hibernate_minutes: DEFAULT_HIBERNATE_MINUTES,
+            auto_update: false,
             theme: None,
             typography: Typography::default(),
             shortcuts: Obj::new(),
@@ -251,6 +253,7 @@ impl Config {
         if self.hibernate_minutes != DEFAULT_HIBERNATE_MINUTES {
             m.insert("hibernateMinutes".into(), json!(self.hibernate_minutes));
         }
+        flag(&mut m, "autoUpdate", self.auto_update);
         m.insert(
             "theme".into(),
             json!(self.theme.as_deref().unwrap_or(DEFAULT_THEME)),

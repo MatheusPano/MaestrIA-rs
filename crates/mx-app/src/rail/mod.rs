@@ -120,7 +120,7 @@ impl Render for Rail {
         let install = rail_button(&mx, "rail-install", false)
             .child(icon(Icon::Add, 16., mx.fg_faint.opacity(0.55)))
             .tooltip(tip("Instalar plugin"))
-            .on_click(|_, window, cx: &mut App| crate::plugin_ui::open_install(window, cx));
+            .on_click(|_, window, cx: &mut App| crate::plugin_ui::open_catalog(window, cx));
 
         div()
             .w(px(WIDTH))

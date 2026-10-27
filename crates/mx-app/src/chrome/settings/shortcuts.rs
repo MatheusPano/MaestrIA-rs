@@ -39,7 +39,7 @@ fn row(d: &SettingsDialog, r: &ShortcutRow, cx: &mut Context<SettingsDialog>) ->
             if many {
                 let unbind = d.send(SettingsAction::Unbind { action: a2, chord: c2 });
                 cap = cap.child(div().absolute().top(px(-7.)).right(px(-7.)).invisible().group_hover(group, |s| s.visible())
-                    .child(IconButton::new(SharedString::from(format!("x-{}-{id}", r.action)), icon::CLOSE_ROUNDED).size(16., 11., 8.).hover_bg(t.bg_active).on_click(unbind)));
+                    .child(IconButton::new(SharedString::from(format!("x-{}-{id}", r.action)), icon::CLOSE_ROUNDED).size(16., 11., 4.).hover_bg(t.bg_active).on_click(unbind)));
             }
             keys = keys.child(cap);
         }
@@ -96,10 +96,7 @@ pub fn page(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElem
 }
 
 pub fn fixed_rows(linux: bool) -> Vec<(String, String)> {
-    let mut out = vec![(
-        if linux { "Alt+1 … Alt+9" } else { "⌘1 … ⌘9" }.to_owned(),
-        "Ir pra enésima sessão da lateral".to_owned(),
-    )];
+    let mut out = Vec::new();
     let paste = if linux { "Ctrl+Shift+V  Ctrl+V  Shift+Insert" } else { "⌘V" };
     out.push((paste.into(), "Colar no painel — imagem inclusa, que o Claude recebe como ^V".into()));
     if linux {

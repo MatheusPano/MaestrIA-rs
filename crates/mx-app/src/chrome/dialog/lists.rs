@@ -13,7 +13,7 @@ use crate::chrome::icon::{self, icon};
 use crate::chrome::menu::Tone;
 use crate::chrome::menu::actions::kind_icon;
 use crate::chrome::style::{Callback, Handler, MONO, hsla, theme};
-use crate::chrome::widgets::{Button, ButtonKind};
+use crate::chrome::widgets::{Button, ButtonKind, MxHover};
 
 #[derive(Clone, Debug)]
 pub struct MoveOption {
@@ -156,8 +156,8 @@ impl RenderOnce for ChatHistoryDialog {
                         meta = meta.child(div().text_size(px(10.5)).text_color(hsla(tone.color(&t))).child(n.clone()));
                     }
                     list = list.child(
-                        div().id(SharedString::from(format!("chat-{si}-{ri}"))).flex().gap(px(9.)).pl(px(10.)).pr(px(12.)).py(px(7.))
-                            .cursor_pointer().hover(|s| s.bg(hsla(t.bg_hover)))
+                        div().id(SharedString::from(format!("chat-{si}-{ri}"))).flex().gap(px(9.)).pl(px(4.)).pr(px(6.)).py(px(7.))
+                            .cursor_pointer().inset_hover(6., 0., 7., Some(hsla(t.bg_hover)))
                             .on_click(move |_, w, cx| pick((si, ri), w, cx))
                             .child(div().pt(px(2.)).child(mark))
                             .child(div().flex_1().min_w_0().flex().flex_col().gap(px(2.))
@@ -171,7 +171,7 @@ impl RenderOnce for ChatHistoryDialog {
                         More::Loading => (icon::MORE_HORIZ, "Buscando…".to_owned(), false),
                     };
                     let f = self.on_more.clone();
-                    let mut row = div().id(("more", si)).flex().items_center().gap(px(9.)).pl(px(10.)).pr(px(12.)).py(px(7.))
+                    let mut row = div().id(("more", si)).flex().items_center().gap(px(9.)).pl(px(4.)).pr(px(6.)).py(px(7.)).inset_hover(6., 0., 7., None)
                         .child(icon(glyph, 13., hsla(t.fg_faint)))
                         .child(div().text_size(px(11.5)).text_color(hsla(t.fg_dim)).child(label));
                     if on {

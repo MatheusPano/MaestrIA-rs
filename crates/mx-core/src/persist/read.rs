@@ -168,6 +168,7 @@ impl Config {
         c.hibernate_minutes = get_num(j, "hibernateMinutes")
             .lenient()
             .map_or(DEFAULT_HIBERNATE_MINUTES, |n| n.trunc() as i64);
+        c.auto_update = get_bool(j, "autoUpdate").lenient() == Some(true);
         c.theme = get_str(j, "theme").lenient().map(str::to_owned);
         c.typography = match j.get("type").and_then(Value::as_object) {
             Some(t) => Typography::new(

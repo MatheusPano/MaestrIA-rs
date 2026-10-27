@@ -6,9 +6,10 @@ use mx_core::ports::BoxFuture;
 use serde_json::{Map, Value};
 
 use super::params::{badge, blocks_from, blocks_if_present, is_true, opt_num, opt_text, text};
+use super::dispatch_sessions::dispatch_sessions;
 use super::{
-    FloatContent, OpenClaude, OpenShell, PluginHostApi, RpcError, SendText, SidebarUpdate, SuggestionCreated,
-    ViewOpen, ViewUpdate, parse_rfw,
+    FloatContent, OpenShell, PluginHostApi, RpcError, SidebarUpdate, SuggestionCreated, ViewOpen, ViewUpdate,
+    parse_rfw,
 };
 use crate::SIDEBAR_VIEW_ID;
 use crate::floats::FloatCorner;
@@ -49,11 +50,11 @@ impl PluginCalls for HostDispatcher {
     }
 }
 
-fn need(p: &PluginInfo, perm: Permission) -> Result<(), RpcError> {
+pub(super) fn need(p: &PluginInfo, perm: Permission) -> Result<(), RpcError> {
     if p.allows(perm) { Ok(()) } else { Err(RpcError::missing_permission(perm)) }
 }
 
-fn obj(pairs: &[(&str, Value)]) -> Value {
+pub(super) fn obj(pairs: &[(&str, Value)]) -> Value {
     Value::Object(pairs.iter().map(|(k, v)| ((*k).to_owned(), v.clone())).collect::<Map<_, _>>())
 }
 
@@ -163,26 +164,6 @@ async fn dispatch(
             api.open_in_editor(p, path, line).await?;
             null
         }
-        "terminal.sendText" => {
-            need(p, Permission::TerminalWrite)?;
-            let request = SendText {
-                text: text(params, "text")?,
-                submit: is_true(params, "submit"),
-                tab_id: opt_text(params, "tabId"),
-            };
-            api.send_text(p, request).await?;
-            null
-        }
-        "session.openClaude" => {
-            need(p, Permission::SessionsCreate)?;
-            let request = OpenClaude {
-                cwd: opt_text(params, "cwd"),
-                prompt: opt_text(params, "prompt"),
-                label: opt_text(params, "label"),
-            };
-            let tab = api.open_claude(p, request).await?;
-            Ok(obj(&[("tabId", Value::from(tab))]))
-        }
         "session.openShell" => {
             need(p, Permission::SessionsCreate)?;
             let embedded = is_true(params, "embedded");
@@ -196,14 +177,6 @@ async fn dispatch(
             };
             let tab = api.open_shell(p, request).await?;
             Ok(obj(&[("tabId", Value::from(tab))]))
-        }
-        "session.close" => {
-            let tab = api.tab_owner(p, opt_text(params, "tabId")).await?;
-            if tab.owner.as_deref() != Some(p.id.as_str()) {
-                return Err(RpcError::not_owner());
-            }
-            api.close_tab(p, tab.tab_id).await?;
-            null
         }
         "suggestion.created" => {
             if p.manifest.as_ref().is_none_or(|m| m.suggestions.is_none()) {
@@ -236,7 +209,10 @@ async fn dispatch(
             let tab = api.open_markdown(p, title, text(params, "markdown")?).await?;
             Ok(obj(&[("tabId", Value::from(tab))]))
         }
-        _ => dispatch_views(api, p, method, params).await,
+        _ => match dispatch_sessions(api, p, method, params).await {
+            Some(out) => out,
+            None => dispatch_views(api, p, method, params).await,
+        },
     }
 }
 
@@ -267,6 +243,9 @@ async fn dispatch_views(
                 blocks: blocks_from(params.get("blocks")),
                 rfw: parse_rfw(params)?,
                 modal: is_true(params, "modal"),
+                from: opt_text(params, "from"),
+                width: opt_num(params, "width"),
+                height: opt_num(params, "height"),
             };
             let tab = api.view_open(p, request).await?;
             Ok(obj(&[("tabId", Value::from(tab))]))

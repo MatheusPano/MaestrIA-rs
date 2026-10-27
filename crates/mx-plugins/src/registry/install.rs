@@ -7,6 +7,7 @@ use tokio::process::Command;
 
 use super::Plugins;
 use crate::MANIFEST_NAME;
+use crate::catalog::PluginOrigin;
 use crate::manifest::PluginManifest;
 use crate::state::PluginInfo;
 
@@ -31,6 +32,7 @@ pub struct StagedPlugin {
     pub dir: PathBuf,
     pub manifest: Arc<PluginManifest>,
     pub source: String,
+    pub origin: Option<PluginOrigin>,
     pub replacing: Option<String>,
 }
 
@@ -85,6 +87,15 @@ impl Plugins {
     }
 
     pub async fn stage(&self, source: &str) -> Result<StagedPlugin, InstallError> {
+        self.stage_with(source, None, None).await
+    }
+
+    pub async fn stage_with(
+        &self,
+        source: &str,
+        origin: Option<PluginOrigin>,
+        git_ref: Option<&str>,
+    ) -> Result<StagedPlugin, InstallError> {
         let src = clean_source(source);
         if src.is_empty() {
             return Err(err("Diga de onde instalar"));
@@ -96,18 +107,31 @@ impl Plugins {
             .tempdir_in(&base)
             .map_err(|e| err(e.to_string()))?
             .keep();
-        let outcome = self.stage_into(source, &src, &staging).await;
+        let outcome = self.stage_into(source, &src, &staging, origin, git_ref).await;
         if outcome.is_err() {
             rm(&staging);
         }
         outcome
     }
 
-    async fn stage_into(&self, source: &str, src: &str, staging: &Path) -> Result<StagedPlugin, InstallError> {
+    async fn stage_into(
+        &self,
+        source: &str,
+        src: &str,
+        staging: &Path,
+        origin: Option<PluginOrigin>,
+        git_ref: Option<&str>,
+    ) -> Result<StagedPlugin, InstallError> {
         let into = staging.join("src");
         let into_s = into.to_string_lossy().into_owned();
-        if is_git(src) {
-            self.run_tool("git", &["clone", "--depth", "1", src, &into_s]).await?;
+        let git = is_git(src);
+        if git {
+            let mut args = vec!["clone", "--depth", "1"];
+            if let Some(r) = git_ref {
+                args.extend(["--branch", r]);
+            }
+            args.extend([src, into_s.as_str()]);
+            self.run_tool("git", &args).await?;
         } else if src.to_lowercase().ends_with(".zip") && Path::new(src).is_file() {
             if cfg!(target_os = "macos") {
                 self.run_tool("ditto", &["-x", "-k", src, &into_s]).await?;
@@ -127,6 +151,7 @@ impl Plugins {
             dir,
             manifest: Arc::new(manifest),
             source: source.trim().to_owned(),
+            origin: origin.or_else(|| git.then(|| PluginOrigin::Git { url: src.to_owned(), git_ref: git_ref.map(str::to_owned) })),
             replacing,
         })
     }
@@ -171,6 +196,10 @@ impl Plugins {
         .await;
         rm(&staged.staging);
         moved?;
+        match &staged.origin {
+            Some(o) => drop(self.reg().origins.insert(id.clone(), o.clone())),
+            None => drop(self.reg().origins.remove(&id)),
+        }
         self.scan();
         let plugin = self.get(&id).ok_or_else(|| err(format!("Não achei um {MANIFEST_NAME} ali")))?;
         self.note(&id, &format!("instalado de {}", staged.source));
@@ -198,6 +227,7 @@ impl Plugins {
         let absolute = std::path::absolute(src_path).map_err(|e| err(e.to_string()))?;
         std::os::unix::fs::symlink(&absolute, self.inner.root.join(&manifest.id))
             .map_err(|e| err(e.to_string()))?;
+        self.reg().origins.remove(&manifest.id);
         self.scan();
         let plugin = self.get(&manifest.id).ok_or_else(|| err(format!("\"{path}\" não é uma pasta")))?;
         self.note(&plugin.id, &format!("carregado de {src} (desenvolvimento)"));
@@ -209,7 +239,12 @@ impl Plugins {
         let Some(p) = self.get(id) else { return };
         self.remove(&p).await;
         rm(&self.data_dir(id));
-        self.reg().disabled.remove(id);
+        {
+            let mut reg = self.reg();
+            reg.disabled.remove(id);
+            reg.origins.remove(id);
+            reg.manual_update.remove(id);
+        }
         self.scan();
     }
 }

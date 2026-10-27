@@ -3,17 +3,18 @@ use std::rc::Rc;
 
 use gpui::{
     App, Bounds, Element, ElementId, ElementInputHandler, Entity, GlobalElementId, Hsla, InspectorElementId,
-    IntoElement, LayoutId, Pixels, SharedString, Style, TextAlign, TextRun, Window, WrappedLine, fill, font, point,
-    px, relative, size,
+    IntoElement, LayoutId, Pixels, SharedString, Style, TextAlign, TextRun, Window, WrappedLine, fill, point, px,
+    relative, size,
 };
 
+use super::fold::{chunks, effective};
+use super::gutter;
 use super::layout::{EditorLayout, Row};
-use super::syntax::{self, Spans};
-use super::{EditorStyle, PAD_LEFT, PAD_RIGHT, PAD_TOP, TextEditor};
-use crate::chrome::style::MONO;
+use super::style::{EditorStyle, tone_font, tone_underline};
+use super::syntax::{self, Spans, Tone};
+use super::TextEditor;
 
 const THUMB: f32 = 6.;
-const GUTTER_GAP: f32 = 14.;
 
 pub struct EditorElement {
     editor: Entity<TextEditor>,
@@ -33,14 +34,21 @@ impl IntoElement for EditorElement {
     }
 }
 
-fn run(len: usize, color: Hsla) -> TextRun {
-    TextRun { len, font: font(MONO), color, background_color: None, underline: None, strikethrough: None }
+fn run(len: usize, color: Hsla, tone: Option<Tone>) -> TextRun {
+    TextRun {
+        len,
+        font: tone_font(tone),
+        color,
+        background_color: None,
+        underline: tone_underline(tone, color),
+        strikethrough: None,
+    }
 }
 
 fn runs(line: Range<usize>, spans: &Spans, next: &mut usize, style: &EditorStyle) -> Vec<TextRun> {
     let mut out = Vec::new();
     let Some(colors) = &style.syntax else {
-        return vec![run(line.len(), style.fg)];
+        return vec![run(line.len(), style.fg, None)];
     };
     let mut at = line.start;
     while *next < spans.len() && spans[*next].0.end <= line.start {
@@ -54,10 +62,10 @@ fn runs(line: Range<usize>, spans: &Spans, next: &mut usize, style: &EditorStyle
         let s = r.start.max(line.start);
         let e = r.end.min(line.end);
         if s > at {
-            out.push(run(s - at, style.fg));
+            out.push(run(s - at, style.fg, None));
         }
         if e > s {
-            out.push(run(e - s, colors.of(*tone)));
+            out.push(run(e - s, colors.of(*tone), Some(*tone)));
         }
         at = at.max(e);
         if r.end > line.end {
@@ -67,15 +75,9 @@ fn runs(line: Range<usize>, spans: &Spans, next: &mut usize, style: &EditorStyle
     }
     *next = i;
     if line.end > at || out.is_empty() {
-        out.push(run(line.end - at, style.fg));
+        out.push(run(line.end - at, style.fg, None));
     }
     out
-}
-
-fn digit_width(font_size: Pixels, window: &Window) -> Pixels {
-    let ts = window.text_system();
-    let id = ts.resolve_font(&font(MONO));
-    ts.advance(id, font_size, '0').map_or(font_size * 0.6, |s| s.width)
 }
 
 fn shape(editor: &TextEditor, width: Pixels, window: &mut Window) -> EditorLayout {
@@ -83,22 +85,30 @@ fn shape(editor: &TextEditor, width: Pixels, window: &mut Window) -> EditorLayou
     let font_size = px(style.font_size);
     let line_height = editor.line_height();
     let text = editor.buffer.text();
-    let gutter = match style.gutter {
-        Some(_) => {
-            let digits = (text.matches('\n').count() + 1).to_string().len().max(2);
-            (digit_width(font_size, window) * digits as f32 + px(GUTTER_GAP)).round()
-        }
-        None => px(0.),
+    let lines = text.matches('\n').count() + 1;
+    let (numbers, gutter) = match &style.gutter {
+        Some(g) => gutter::widths(g, lines, window),
+        None => (px(0.), px(0.)),
     };
-    let wrap_width = (width - px(PAD_LEFT + PAD_RIGHT) - gutter).max(px(40.));
+    let wrap_width = (width - px(style.pad.left + style.pad.right) - gutter).max(px(40.));
     let wrap = style.wrap.then_some(wrap_width);
     let spans = if style.syntax.is_some() { syntax::highlight(text, &style.language) } else { Vec::new() };
+    let chunks = if style.gutter.as_ref().is_some_and(|g| g.fold.is_some()) { chunks(text, &spans) } else { Vec::new() };
+    let folded = effective(&chunks, editor.folded.iter().copied());
     let mut next = 0;
     let mut rows = Vec::new();
     let mut y = px(0.);
     let mut widest = px(0.);
     let mut start = 0;
-    for raw in text.split('\n') {
+    let mut hide = folded.iter().peekable();
+    for (index, raw) in text.split('\n').enumerate() {
+        while hide.peek().is_some_and(|(_, e)| *e <= index) {
+            hide.next();
+        }
+        if hide.peek().is_some_and(|(s, _)| *s < index) {
+            start += raw.len() + 1;
+            continue;
+        }
         let shown: String = raw.chars().map(|c| if c == '\t' { ' ' } else { c }).collect();
         let runs = runs(start..start + raw.len(), &spans, &mut next, style);
         let line = window
@@ -109,7 +119,7 @@ fn shape(editor: &TextEditor, width: Pixels, window: &mut Window) -> EditorLayou
             .unwrap_or_default();
         widest = widest.max(line.unwrapped_layout.width);
         let height = line_height * (line.wrap_boundaries.len() + 1) as f32;
-        rows.push(Row { start, y, height, line });
+        rows.push(Row { index, start, y, height, line });
         y += height;
         start += raw.len() + 1;
     }
@@ -120,6 +130,9 @@ fn shape(editor: &TextEditor, width: Pixels, window: &mut Window) -> EditorLayou
         width: if style.wrap { wrap_width } else { widest },
         wrap_width,
         gutter,
+        numbers,
+        chunks,
+        folded,
         font_size,
         version: editor.buffer.version(),
     }
@@ -185,20 +198,28 @@ fn visible(layout: &EditorLayout, range: &Range<usize>, top: Pixels, bottom: Pix
     b + layout.line_height >= top && a <= bottom
 }
 
-fn paint_gutter(layout: &EditorLayout, bounds: Bounds<Pixels>, origin_y: Pixels, current: usize, colors: (Hsla, Hsla), window: &mut Window, cx: &mut App) {
+fn editor_is_empty(layout: &EditorLayout) -> bool {
+    layout.rows.len() == 1 && layout.rows[0].line.len() == 0
+}
+
+fn current_rows(layout: &EditorLayout, head: usize) -> Option<(Pixels, Pixels)> {
+    let row = layout.rows.get(layout.row_of(head))?;
+    Some((row.y, row.height))
+}
+
+fn paint_fold_marks(layout: &EditorLayout, origin: gpui::Point<Pixels>, color: Hsla, window: &mut Window, cx: &mut App) {
     let lh = layout.line_height;
-    let top = bounds.origin.y - origin_y - lh;
-    let bottom = top + bounds.size.height + lh * 2.;
-    let first = layout.rows.partition_point(|r| r.y + r.height < top);
-    for (i, row) in layout.rows.iter().enumerate().skip(first) {
-        if row.y > bottom {
-            break;
-        }
-        let color = if i == current { colors.1 } else { colors.0 };
-        let label = SharedString::from((i + 1).to_string());
-        let shaped = window.text_system().shape_line(label.clone(), layout.font_size, &[run(label.len(), color)], None);
-        let x = bounds.origin.x + layout.gutter - px(GUTTER_GAP / 2.) - shaped.width;
-        shaped.paint(point(x, origin_y + row.y), lh, window, cx).ok();
+    for (s, _) in &layout.folded {
+        let Some(row) = layout.rows.iter().find(|r| r.index == *s) else { continue };
+        let x = origin.x + row.line.unwrapped_layout.width + layout.font_size * 0.6;
+        let y = origin.y + row.y + lh * row.line.wrap_boundaries.len() as f32;
+        let w = layout.font_size * 2.;
+        let mark = Bounds::new(point(x, y + lh * 0.2), size(w, lh * 0.6));
+        window.paint_quad(fill(mark, color.opacity(0.18)).corner_radii(px(3.)));
+        let dots = SharedString::from("...");
+        let shaped = window.text_system().shape_line(dots, layout.font_size * 0.85, &[run(3, color, None)], None);
+        let dx = (w - shaped.width) / 2.;
+        shaped.paint(point(x + dx, y), lh, window, cx).ok();
     }
 }
 
@@ -238,7 +259,8 @@ impl Element for EditorElement {
     ) -> Self::PrepaintState {
         let editor = self.editor.read(cx);
         let gutter = editor.layout.as_ref().map_or(px(0.), |l| l.gutter);
-        let wrap_width = (bounds.size.width - px(PAD_LEFT + PAD_RIGHT) - gutter).max(px(40.));
+        let pad = editor.style.pad;
+        let wrap_width = (bounds.size.width - px(pad.left + pad.right) - gutter).max(px(40.));
         let fresh = editor.layout.as_ref().filter(|l| {
             l.version == editor.buffer.version()
                 && (l.wrap_width == wrap_width || !editor.style.wrap)
@@ -278,21 +300,35 @@ impl Element for EditorElement {
         let found = editor.found.clone();
         let found_current = editor.found_current;
         window.handle_input(&focus, ElementInputHandler::new(bounds, self.editor.clone()), cx);
-        let origin = point(bounds.origin.x + px(PAD_LEFT) + layout.gutter - scroll_x, bounds.origin.y + px(PAD_TOP) - scroll);
+        let pad = style.pad;
+        let origin = point(bounds.origin.x + px(pad.left) + layout.gutter - scroll_x, bounds.origin.y + px(pad.top) - scroll);
         let lh = layout.line_height;
-        let top = scroll - px(PAD_TOP);
+        let top = scroll - px(pad.top);
         let bottom = top + bounds.size.height;
-        if let Some(colors) = style.gutter {
+        let collapsed = selection.is_empty();
+        if let (Some(color), true) = (style.current_line, collapsed)
+            && let Some((y, h)) = current_rows(&layout, head)
+        {
+            let band = Bounds::new(point(bounds.origin.x, origin.y + y), size(bounds.size.width, h));
+            window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| window.paint_quad(fill(band, color)));
+        }
+        if let Some(g) = &style.gutter {
             window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-                let current = layout.row_of(head);
-                paint_gutter(&layout, bounds, origin.y, current, colors, window, cx);
+                let current = layout.rows.get(layout.row_of(head)).map_or(0, |r| r.index);
+                gutter::paint(&layout, g, bounds, origin.y, current, window, cx);
             });
         }
         let text_area = Bounds::new(
             point(bounds.origin.x + layout.gutter, bounds.origin.y),
             size(bounds.size.width - layout.gutter, bounds.size.height),
         );
+        let empty = editor_is_empty(&layout);
         window.with_content_mask(Some(gpui::ContentMask { bounds: text_area }), |window| {
+            if let (true, Some((hint, color))) = (empty, &style.hint) {
+                let text = SharedString::from(hint.clone());
+                let shaped = window.text_system().shape_line(text, layout.font_size, &[run(hint.len(), *color, None)], None);
+                shaped.paint(origin, lh, window, cx).ok();
+            }
             for (i, r) in found.iter().enumerate() {
                 if visible(&layout, r, top, bottom) {
                     let color = if Some(i) == found_current { style.found_current } else { style.found };
@@ -309,6 +345,9 @@ impl Element for EditorElement {
                 }
                 let at = point(origin.x, origin.y + row.y);
                 row.line.paint(at, lh, TextAlign::Left, None, window, cx).ok();
+            }
+            if let Some(fold) = style.gutter.as_ref().and_then(|g| g.fold) {
+                paint_fold_marks(&layout, origin, fold, window, cx);
             }
             if focus.is_focused(window) {
                 let p = layout.position(head);

@@ -36,6 +36,7 @@ pub fn run(id: &str, action: A, window: &mut Window, cx: &mut App) {
             let title = ui::store(cx).title_of(&id);
             dialogs::prompt("Renomear painel", "Título", &title, move |text, cx| ui::act(cx, |s| s.rename_tab(&id, &text)), window, cx);
         }
+        A::Hotkey => crate::chrome::dialog::hotkey::open(&id, window, cx),
         A::Tint(t) => ui::act(cx, |s| s.set_tab_tint(&id, core_tint(t))),
         A::ShowPlan => drop(ui::act(cx, |s| s.show_plan(&id, None))),
         A::ShowMessage => drop(ui::act(cx, |s| s.show_message(&id))),

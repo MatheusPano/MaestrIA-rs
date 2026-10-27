@@ -23,6 +23,13 @@ mod view;
 mod widgets_core;
 mod widgets_maestria;
 mod widgets_scroll;
+mod anchor;
+mod markdown_widget;
+mod selectable;
+mod sprite;
+mod states;
+mod text_input_widget;
+mod zoom_view;
 
 use std::rc::Rc;
 
@@ -37,6 +44,9 @@ pub use style::rfw_theme;
 #[allow(unused_imports)]
 pub use view::RfwView;
 pub use icons::named as named_icon;
+pub use code_editor::own_code_buffers;
+pub use anchor::anchor_rect;
+pub use states::FollowLink;
 
 pub fn plugin_glyph(icon: Option<&str>, dir: Option<&std::path::Path>, size: f32, color: gpui::Hsla) -> gpui::AnyElement {
     icons::glyph(icon, dir, size, color, 0.0)
@@ -56,3 +66,5 @@ mod code_pane_tests;
 mod layout_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod widgets_tests;

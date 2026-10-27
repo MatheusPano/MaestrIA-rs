@@ -5,7 +5,7 @@ use super::dialog::{SettingsDialog, heading};
 use super::gallery::swatch;
 use super::model::{SettingsAction, line_label, size_label};
 use crate::chrome::style::{hsla, theme};
-use crate::chrome::widgets::{Button, ButtonKind, Stepper, Switch};
+use crate::chrome::widgets::{Button, ButtonKind, Stepper, Toggle};
 
 const ALWAYS: fn(&str) -> bool = |_| true;
 
@@ -79,6 +79,6 @@ pub fn page(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Setti
     let top = data.status_bar_top;
     let bar = div().flex().flex_col()
         .child(heading("Barra de status", Some("A faixa com o resumo das sessões e o sino. O sino, a lista dele e os cartões de aviso ficam do mesmo lado que ela."), false, None, cx))
-        .child(Switch::new("bar-top", "Barra de status em cima", top, d.send(SettingsAction::SetStatusBarTop(!top))).subtitle("No topo da janela, em vez de no pé"));
+        .child(Toggle::new("bar-top", "Barra de status em cima", top, d.send(SettingsAction::SetStatusBarTop(!top))).subtitle("No topo da janela, em vez de no pé"));
     div().flex().flex_col().child(themes).child(typography).child(bar).into_any_element()
 }

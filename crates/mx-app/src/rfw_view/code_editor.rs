@@ -1,4 +1,13 @@
+mod buffers;
+mod find_bar;
+mod glyphs;
+mod menu;
+#[cfg(test)]
+mod spec_tests;
+
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{AppContext, Context, Entity, ParentElement, Styled, Window};
@@ -11,19 +20,32 @@ use super::code_pane::CodePane;
 use super::layout::{Ctx, El, owned};
 use super::style::{alpha, hsla};
 use super::view::RfwView;
-use crate::setup::editor::{EditorStyle, SyntaxColors};
+use crate::setup::editor::{EditorStyle, Gutter, Pad, SyntaxColors};
+
+#[cfg(test)]
+pub use buffers::{own_code_buffers_with, owners};
+pub use buffers::own_code_buffers;
+pub use find_bar::FindBar;
+#[cfg(test)]
+pub use find_bar::find_all;
+pub use menu::{CodeMenu, menu_entries};
+
+pub const PADDING: Pad = Pad { left: 6., top: 6., right: 10., bottom: 40. };
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CodeSpec {
     pub doc: String,
     pub text: Option<String>,
     pub revision: i64,
-    pub language: String,
+    pub language: Option<String>,
     pub line: Option<i64>,
     pub column: Option<i64>,
     pub jump: i64,
     pub read_only: bool,
     pub word_wrap: bool,
+    pub line_numbers: bool,
+    pub autofocus: bool,
+    pub hint: Option<String>,
     pub font_size: f64,
     pub on_change: Vec<Event>,
     pub on_save: Vec<Event>,
@@ -42,6 +64,9 @@ impl CodeSpec {
             jump: e.jump,
             read_only: e.read_only,
             word_wrap: e.word_wrap,
+            line_numbers: e.line_numbers,
+            autofocus: e.autofocus,
+            hint: e.hint.clone(),
             font_size: e.font_size,
             on_change: owned(&e.on_change),
             on_save: owned(&e.on_save),
@@ -50,32 +75,47 @@ impl CodeSpec {
     }
 }
 
-pub fn editor_style(theme: &Theme, spec: &CodeSpec) -> EditorStyle {
+pub fn syntax_colors(theme: &Theme) -> SyntaxColors {
     let a = &theme.ansi;
+    SyntaxColors {
+        plain: hsla(theme.fg),
+        comment: hsla(theme.fg_faint),
+        keyword: hsla(a.magenta),
+        kind: hsla(a.yellow),
+        function: hsla(a.blue),
+        string: hsla(a.green),
+        number: hsla(a.cyan),
+        attr: hsla(a.cyan),
+        variable: hsla(a.red),
+        meta: hsla(theme.fg_dim),
+    }
+}
+
+pub fn editor_style(theme: &Theme, spec: &CodeSpec) -> EditorStyle {
+    let size = spec.font_size as f32;
+    let found = alpha(theme.yellow, 0.30);
     EditorStyle {
-        font_size: spec.font_size as f32,
+        font_size: size,
         line_height: 1.5,
         fg: hsla(theme.fg),
         caret: hsla(theme.accent),
-        selection: alpha(theme.accent, 0.3),
+        selection: alpha(theme.accent, 0.28),
         thumb: alpha(theme.fg_faint, 0.35),
         wrap: spec.word_wrap,
         code: true,
-        language: spec.language.clone(),
-        syntax: Some(SyntaxColors {
-            comment: hsla(theme.fg_faint),
-            string: hsla(theme.green),
-            number: hsla(theme.yellow),
-            keyword: hsla(theme.purple),
-            kind: hsla(a.cyan),
-            key: hsla(a.blue),
-            meta: hsla(theme.accent),
-            added: hsla(theme.green),
-            removed: hsla(theme.red),
+        language: spec.language.clone().unwrap_or_default(),
+        syntax: Some(syntax_colors(theme)),
+        gutter: spec.line_numbers.then(|| Gutter {
+            color: hsla(theme.fg_faint),
+            current: hsla(theme.fg_dim),
+            font_size: size - 1.,
+            fold: Some(hsla(theme.fg_faint)),
         }),
-        gutter: Some((alpha(theme.fg_faint, 0.7), hsla(theme.fg_dim))),
-        found: alpha(theme.yellow, 0.22),
-        found_current: alpha(theme.yellow, 0.5),
+        found,
+        found_current: found,
+        current_line: Some(alpha(theme.fg, 0.045)),
+        hint: spec.hint.clone().map(|h| (h, hsla(theme.fg_faint))),
+        pad: PADDING,
     }
 }
 
@@ -92,34 +132,77 @@ fn specs(tree: &Widget) -> Vec<CodeSpec> {
     out
 }
 
+type Shared = Rc<RefCell<Vec<Entity<CodePane>>>>;
+
 #[derive(Default)]
 pub struct CodeEditors {
-    panes: HashMap<String, Entity<CodePane>>,
-    shown: HashSet<String>,
+    attached: HashMap<String, Entity<CodePane>>,
+    watching: Option<Shared>,
 }
 
 impl CodeEditors {
     pub fn sync(&mut self, tree: &Widget, theme: &Arc<Theme>, sink: &ActionSink, window: &mut Window, cx: &mut Context<RfwView>) {
-        let mut shown = HashSet::new();
+        let owner = buffers::owner_of(cx.entity_id(), cx);
+        let shared = self.watch(window, cx);
+        let mut seen = HashSet::new();
         for spec in specs(tree) {
+            if !seen.insert(spec.doc.clone()) {
+                continue;
+            }
             let style = editor_style(theme, &spec);
-            let reappeared = !self.shown.contains(&spec.doc);
-            shown.insert(spec.doc.clone());
-            match self.panes.get(&spec.doc) {
-                Some(pane) => pane.update(cx, |p, cx| p.apply(spec, style, sink.clone(), reappeared, window, cx)),
+            if let Some(pane) = self.attached.get(&spec.doc) {
+                pane.update(cx, |p, cx| p.apply(spec, style, sink.clone(), window, cx));
+                continue;
+            }
+            let pane = match buffers::pane(&owner, &spec.doc, cx) {
+                Some(p) => p,
                 None => {
-                    let doc = spec.doc.clone();
-                    let sink = sink.clone();
-                    let pane = cx.new(|cx| CodePane::new(spec, style, sink, theme.clone(), window, cx));
-                    self.panes.insert(doc, pane);
+                    let p = cx.new(|cx| CodePane::new(&spec, theme.clone(), window, cx));
+                    buffers::keep(&owner, &spec.doc, p.clone(), cx);
+                    p
                 }
+            };
+            let doc = spec.doc.clone();
+            pane.update(cx, |p, cx| p.attach(spec, style, sink.clone(), window, cx));
+            self.attached.insert(doc, pane);
+        }
+        let gone: Vec<String> = self.attached.keys().filter(|d| !seen.contains(*d)).cloned().collect();
+        for doc in gone {
+            if let Some(pane) = self.attached.remove(&doc) {
+                pane.update(cx, |p, cx| p.detach(window, cx));
             }
         }
-        self.shown = shown;
+        *shared.borrow_mut() = self.attached.values().cloned().collect();
+    }
+
+    fn watch(&mut self, window: &mut Window, cx: &mut Context<RfwView>) -> Shared {
+        if let Some(s) = &self.watching {
+            return s.clone();
+        }
+        let shared: Shared = Rc::default();
+        let panes = shared.clone();
+        let handle = window.window_handle();
+        let view = cx.entity_id();
+        cx.on_release(move |_, cx| {
+            let panes = panes.take();
+            cx.defer(move |cx| {
+                handle
+                    .update(cx, |_, window, cx| {
+                        for p in &panes {
+                            p.update(cx, |p, cx| p.detach(window, cx));
+                        }
+                    })
+                    .ok();
+                buffers::released(view, cx);
+            });
+        })
+        .detach();
+        self.watching = Some(shared.clone());
+        shared
     }
 
     pub fn pane(&self, doc: &str) -> Option<&Entity<CodePane>> {
-        self.panes.get(doc)
+        self.attached.get(doc)
     }
 }
 

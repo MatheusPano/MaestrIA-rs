@@ -42,6 +42,14 @@ pub fn sink_for(host: &Entity<StoreHost>, tab: &str) -> ActionSink {
     })
 }
 
+pub fn follow_for(host: &Entity<StoreHost>, tab: &str) -> crate::rfw_view::FollowLink {
+    let host = host.clone();
+    let tab = tab.to_owned();
+    Rc::new(move |href: String, _, cx: &mut App| {
+        update_store(&host, cx, |s| s.follow_link(&href, Some(&tab), None));
+    })
+}
+
 pub struct Surface {
     tab: String,
     mode: BlocksMode,
@@ -105,13 +113,17 @@ impl Surface {
                 let sink = sink_for(&env.host, &self.tab);
                 let (theme, typo) = (env.theme.clone(), env.typography.clone());
                 let overlaid = self.overlaid;
+                let follow = follow_for(&env.host, &self.tab);
+                let plugin = view.plugin_id.clone();
                 let e = cx.new(|_| {
                     let mut v = RfwView::new(theme, &typo, dir, sink);
+                    v.set_plugin(&plugin, Some(follow));
                     if overlaid {
                         v.hoist_menu();
                     }
                     v
                 });
+                crate::rfw_view::own_code_buffers(e.entity_id(), &self.tab, &env.host, cx);
                 self.rfw = Some(e.clone());
                 self.rfw_revision = None;
                 e
@@ -124,15 +136,17 @@ impl Surface {
         let data = view.rfw_data.clone();
         let (theme, typo) = (env.theme.clone(), env.typography.clone());
         entity.update(cx, |v, cx| {
-            v.set_library(&lib);
-            v.set_root(&root);
+            let mut changed = v.set_library(&lib);
+            changed |= v.set_root(&root);
             if fresh {
                 v.merge_data(&data);
             }
             if restyled {
                 v.set_theme(theme, &typo);
             }
-            cx.notify();
+            if changed || fresh || restyled {
+                cx.notify();
+            }
         });
     }
 

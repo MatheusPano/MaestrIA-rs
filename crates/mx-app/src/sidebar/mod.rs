@@ -1,3 +1,4 @@
+pub mod glyph;
 mod search;
 mod tab_row;
 mod trays;

@@ -4,14 +4,14 @@ use mx_plugins::chord::KeyPress;
 use mx_store::{ClaudeSpec, DocPlace, Store};
 
 use super::action::Action;
-use super::chord::{LINUX, is_editing_key, may_be_shortcut, press_of, slot_of, terminal_key};
+use super::chord::{LINUX, is_editing_key, may_be_shortcut, press_of, terminal_key};
 use super::map::Keymap;
 use crate::app::host::{StoreHost, update_store};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Hit {
     Action(Action),
-    Slot(usize),
+    Panel(String),
     Plugin(String),
 }
 
@@ -19,6 +19,7 @@ pub enum Hit {
 pub struct Focus {
     pub terminal: bool,
     pub text_field: bool,
+    pub own_find: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub enum UiRequest {
     Rename { tab_id: String, title: String },
     NewTask { folder: String },
     FocusSearch,
+    FindInPane { tab_id: Option<String> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,24 +47,27 @@ pub fn resolve(
     map: &Keymap,
     p: &KeyPress,
     focus: Focus,
+    panel: impl FnOnce(&KeyPress) -> Option<String>,
     plugin: impl FnOnce(&KeyPress) -> Option<String>,
 ) -> Option<Hit> {
     if !may_be_shortcut(p) || (focus.terminal && terminal_key(p, map.linux()).is_some()) {
         return None;
     }
     let action = map.matching(p);
+    if focus.own_find && action == Some(Action::FindInPane) {
+        return None;
+    }
     if focus.text_field && is_editing_key(p.key) {
         return if action.is_some() { None } else { plugin(p).map(Hit::Plugin) };
     }
     if let Some(a) = action {
         return Some(Hit::Action(a));
     }
-    let slot = || slot_of(p, map.linux()).map(Hit::Slot);
-    if focus.terminal {
-        slot().or_else(|| plugin(p).map(Hit::Plugin))
-    } else {
-        plugin(p).map(Hit::Plugin).or_else(slot)
-    }
+    panel(p).map(Hit::Panel).or_else(|| plugin(p).map(Hit::Plugin))
+}
+
+pub fn panel_hit(store: &Store, p: &KeyPress) -> Option<String> {
+    store.panel_for(|id| mx_plugins::chord::Chord::parse(id).is_some_and(|c| c.accepts(p)))
 }
 
 pub fn plugin_hit(plugins: &Plugins, p: &KeyPress, linux: bool) -> Option<String> {
@@ -84,8 +89,8 @@ pub fn keymap_of(store: &Store) -> Keymap {
 pub fn run(store: &mut Store, hit: &Hit) -> Option<UiRequest> {
     match hit {
         Hit::Action(a) => run_action(store, *a),
-        Hit::Slot(i) => {
-            store.select_index(*i);
+        Hit::Panel(id) => {
+            store.select(id);
             None
         }
         Hit::Plugin(full_id) => {
@@ -138,6 +143,7 @@ pub fn run_action(store: &mut Store, a: Action) -> Option<UiRequest> {
         Action::PrevPane => store.cycle_pane(-1),
         Action::NextSession => store.cycle(1),
         Action::PrevSession => store.cycle(-1),
+        Action::FindInPane => return Some(UiRequest::FindInPane { tab_id: focused }),
         Action::Search => {
             if store.prefs().sidebar_hidden || store.prefs().sidebar_view.is_some() {
                 store.show_sidebar_view(None);
@@ -173,6 +179,7 @@ pub fn focus_from(stack: &[KeyContext]) -> Focus {
     for ctx in stack {
         f.terminal |= ctx.contains("Terminal");
         f.text_field |= TEXT_CONTEXTS.iter().any(|name| ctx.contains(name));
+        f.own_find |= ctx.contains("CodeEditor");
     }
     f
 }
@@ -186,7 +193,7 @@ pub fn on_key_down(host: &Entity<StoreHost>, ev: &KeyDownEvent, window: &Window,
     let hit = {
         let store = &host.read(cx).store;
         let map = keymap_of(store);
-        resolve(&map, &p, focus, |p| store.plugins().and_then(|r| plugin_hit(r, p, LINUX)))
+        resolve(&map, &p, focus, |p| panel_hit(store, p), |p| store.plugins().and_then(|r| plugin_hit(r, p, LINUX)))
     };
     let Some(hit) = hit else { return Outcome::Pass };
     cx.stop_propagation();

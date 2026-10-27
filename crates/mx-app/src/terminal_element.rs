@@ -7,9 +7,10 @@ use gpui::{
     Pixels, Point, ShapedLine, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
     Window, fill, outline, point, px, relative, rgb, size,
 };
-use mx_term::{CellStyle, CursorKind, GridSize, SnapCell, Snapshot};
+use mx_term::{CellStyle, CursorKind, GridSize, Hit, SnapCell, Snapshot, Viewport};
 use mx_theme::{Color, Rgb};
 
+use crate::find_bar::{CURRENT_ALPHA, OTHER_ALPHA};
 use crate::terminal_view::TerminalView;
 
 pub const FONT_FAMILY: &str = "Hack";
@@ -67,6 +68,7 @@ pub struct RenderState {
     pub painted: bool,
     pub cursor_bounds: Option<Bounds<Pixels>>,
     pub marked: Option<String>,
+    pub hits: Vec<HitQuad>,
     snap: Snapshot,
     cache: Vec<RowCache>,
     cursor_text: Option<(Point<Pixels>, ShapedLine)>,
@@ -85,6 +87,7 @@ impl RenderState {
             painted: false,
             cursor_bounds: None,
             marked: None,
+            hits: Vec::new(),
             snap: Snapshot::default(),
             cache: Vec::new(),
             cursor_text: None,
@@ -114,6 +117,29 @@ impl RenderState {
 }
 
 pub type SharedRender = Rc<RefCell<RenderState>>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HitQuad {
+    pub row: usize,
+    pub col: usize,
+    pub len: usize,
+    pub current: bool,
+}
+
+pub fn hit_quads(marks: &[(Hit, bool)], view: Viewport, cols: usize) -> Vec<HitQuad> {
+    let mut out = Vec::new();
+    for (hit, current) in marks {
+        for y in hit.from.y..=hit.to.y {
+            let Some(row) = view.row_of(y) else { continue };
+            let col = if y == hit.from.y { hit.from.x } else { 0 };
+            let end = if y == hit.to.y { hit.to.x } else { cols }.min(cols);
+            if end > col {
+                out.push(HitQuad { row, col, len: end - col, current: *current });
+            }
+        }
+    }
+    out
+}
 
 fn hsla(c: Rgb) -> Hsla {
     rgb(c.to_u32()).into()
@@ -291,6 +317,7 @@ impl Element for TerminalElement {
         let focused = view.focus().is_focused(window);
         let session = view.session().clone();
         let dirty = view.dirty.take();
+        let marks = view.find_marks();
         let render = view.render().clone();
         let mut st = render.borrow_mut();
         st.painted = true;
@@ -324,6 +351,7 @@ impl Element for TerminalElement {
                 rebuild_row(row, cells, st.snap.background, font_size, m, window);
             }
         }
+        st.hits = if marks.is_empty() { Vec::new() } else { hit_quads(&marks, session.viewport(), st.cols) };
         st.cursor_text = None;
         st.cursor_bounds = None;
         if let Some(c) = st.snap.cursor {
@@ -389,6 +417,14 @@ impl Element for TerminalElement {
         for (r, row) in st.cache.iter().enumerate() {
             for &(col, len, bg) in &row.bg {
                 window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), hsla(bg)));
+            }
+        }
+        if !st.hits.is_empty() {
+            let yellow = crate::chrome::style::theme(cx).yellow;
+            for q in &st.hits {
+                let a = if q.current { CURRENT_ALPHA } else { OTHER_ALPHA };
+                let quad = Bounds::new(cell_at(q.row, q.col), size(m.width * q.len as f32, m.height));
+                window.paint_quad(fill(quad, color(yellow.with_alpha(a))));
             }
         }
         let selection = color(st.selection);

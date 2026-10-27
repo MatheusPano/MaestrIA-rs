@@ -51,6 +51,7 @@ impl Store {
             plugins: c.plugins,
             floats: c.floats,
         };
+        self.updates.app.load_active(c.auto_update);
         self.plugin.floats.read_json(&serde_json::Value::Object(self.prefs.floats.clone()));
         if let Some(r) = &self.plugin.registry {
             r.load(&serde_json::Value::Object(self.prefs.plugins.clone()));
@@ -96,6 +97,7 @@ impl Store {
                     tab.hooks.suggestions.extend(entry.suggestions);
                     tab.done = entry.done;
                     tab.pinned = entry.pinned;
+                    tab.hotkey = entry.hotkey.as_deref().and_then(crate::tabs_ops::valid_hotkey);
                     if known_group.is_some() {
                         tab.group_id = known_group;
                     }

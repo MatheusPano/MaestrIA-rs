@@ -1,6 +1,8 @@
 mod action;
 mod chord;
 mod dispatch;
+pub mod find;
+pub mod hotkey;
 mod map;
 mod settings;
 #[cfg(test)]

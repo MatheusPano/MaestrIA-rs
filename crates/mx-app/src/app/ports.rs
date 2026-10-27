@@ -33,6 +33,12 @@ impl Notifier for SysNotifier {
         self.rt.spawn(async move { notifier.alert(&title, &body).await });
     }
 
+    fn alert_with_image(&self, title: &str, body: &str, image: &str) {
+        let notifier = mx_sys::notify::Notifier::new(self.runner.clone());
+        let (title, body, image) = (title.to_owned(), body.to_owned(), image.to_owned());
+        self.rt.spawn(async move { notifier.alert_with_image(&title, &body, &image).await });
+    }
+
     fn badge(&self, _label: Option<&str>) {}
 
     fn open_link(&self, url: &str) {

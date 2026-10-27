@@ -15,17 +15,18 @@ use super::menu::{self, MenuRow};
 use super::style::{alpha, argb, hsla, set_padding, set_radius};
 use super::tooltip;
 use super::widgets_core::{child, optional};
+use super::zoom_view::scaled;
 
 pub fn render(cx: &mut Ctx, local: Local, fit: Fit, turns: f64) -> El {
     match local {
         Local::Svg(s) => {
             let Some(svg) = s.svg else { return cx.el() };
-            let image = svg_element(&svg, s.width.map(|v| v as f32), s.height.map(|v| v as f32));
+            let image = svg_element(&svg, s.width.map(|v| scaled(v as f32)), s.height.map(|v| scaled(v as f32)));
             cx.el().flex_none().child(image)
         }
         Local::Glyph(g) => {
             let color = g.color.map_or(hsla(cx.palette.fg_dim), argb);
-            let icon = glyph(g.icon.as_deref(), cx.dir, g.size as f32, color, turns);
+            let icon = glyph(g.icon.as_deref(), cx.dir, scaled(g.size as f32), color, turns);
             cx.el().flex_none().child(icon)
         }
         Local::IconButton(b) => icon_button(cx, &b),
@@ -39,6 +40,13 @@ pub fn render(cx: &mut Ctx, local: Local, fit: Fit, turns: f64) -> El {
         Local::Draggable(d) => draggable(cx, &d, fit, cx.palette.clone()),
         Local::DropTarget(d) => drop_target(cx, &d, fit),
         Local::CodeEditor(e) => super::code_editor::render(cx, &e),
+        Local::Sprite(s) => super::sprite::render(cx, &s),
+        Local::ZoomView(z) => super::zoom_view::render(cx, &z, fit),
+        Local::FittedBox(f) => super::zoom_view::fitted(cx, &f, fit),
+        Local::TextInput(t) => super::text_input_widget::render(cx, &t),
+        Local::Anchor(a) => super::anchor::render(cx, &a, fit),
+        Local::Selectable(s) | Local::SelectionLines(s) => super::selectable::render(cx, &s, fit),
+        Local::Markdown(m) => super::markdown_widget::render(cx, &m),
         _ => error_text(cx, "widget sem desenho", hsla(cx.palette.yellow)),
     }
 }
@@ -57,8 +65,8 @@ fn icon_button(cx: &mut Ctx, b: &IconButton) -> El {
         color.a *= 0.4;
     }
     let name = plugin_icon(b.icon.as_deref()).unwrap_or("circle_outlined");
-    let icon = named(name, b.size as f32, color);
-    let mut el = round_button(cx, b.extent as f32, icon, enabled);
+    let icon = named(name, scaled(b.size as f32), color);
+    let mut el = round_button(cx, scaled(b.extent as f32), icon, enabled);
     if let Some(t) = &b.tooltip {
         el = el.tooltip(tooltip::builder(t.clone(), cx.palette));
     }
@@ -168,8 +176,8 @@ fn pressable(cx: &mut Ctx, p: &Pressable, fit: Fit) -> El {
 fn menu_button(cx: &mut Ctx, p: &Pressable) -> El {
     let color = p.color.map_or(hsla(cx.palette.fg_dim), argb);
     let name = plugin_icon(p.icon.as_deref()).unwrap_or("more_horiz_rounded");
-    let icon = named(name, p.size as f32, color);
-    let mut el = round_button(cx, 26.0, icon, cx.interactive);
+    let icon = named(name, scaled(p.size as f32), color);
+    let mut el = round_button(cx, scaled(26.0), icon, cx.interactive);
     if let Some(t) = &p.tooltip {
         el = el.tooltip(tooltip::builder(t.clone(), cx.palette));
     }

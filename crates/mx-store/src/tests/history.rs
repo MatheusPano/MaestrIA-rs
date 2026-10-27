@@ -99,3 +99,66 @@ async fn y17_an_orphan_chat_names_the_missing_folder() {
     assert!(rig.s.resume_chat(&c, None, None).is_none());
     assert!(rig.s.banner().unwrap().contains("/repo/sumiu"));
 }
+
+fn entry(id: &str, cwd: &str) -> ChatEntry {
+    ChatEntry {
+        session_id: id.into(),
+        cwd: cwd.into(),
+        title: format!("conversa {id}"),
+        at: std::time::SystemTime::now(),
+        bytes: 10,
+        missing: false,
+    }
+}
+
+fn agent(v: serde_json::Value) -> AgentInfo {
+    AgentInfo::from_json(&v).unwrap()
+}
+
+#[tokio::test]
+async fn a_background_chat_attaches_in_a_shell_and_is_on_screen_until_it_exits() {
+    let mut rig = Rig::new();
+    rig.folder("/tmp", "tmp");
+    let c = chat(&rig, "aaaa").await;
+    rig.s.apply_agents(vec![agent(serde_json::json!({
+        "pid": null, "id": "40e816ba", "cwd": "/tmp", "kind": "background",
+        "sessionId": TITLED, "name": "revisão do schema"
+    }))]);
+    assert_eq!(rig.s.standing_of(&c), ChatStanding::Background);
+    assert!(ChatStanding::Background.note().unwrap().contains("segundo plano"));
+    let id = rig.s.resume_chat(&c, None, None).unwrap();
+    assert_eq!(rig.terms.log(&id).commands, vec!["claude attach '40e816ba'".to_owned()]);
+    let t = rig.t(&id);
+    assert_eq!((t.folder_root.as_str(), t.cwd.as_str(), t.kind), ("/tmp", "/tmp", mx_core::model::TabKind::Shell));
+    assert_eq!(rig.s.title(t), c.label());
+    assert_eq!(t.agent_name.as_deref(), Some("revisão do schema"));
+    assert_eq!(rig.s.standing_of(&c), ChatStanding::OnScreen);
+    assert_eq!(rig.s.resume_chat(&c, None, None), Some(id.clone()));
+    assert_eq!(rig.s.tabs().len(), 1);
+    rig.tm(&id).exited = true;
+    assert_eq!(rig.s.standing_of(&c), ChatStanding::Background);
+}
+
+#[tokio::test]
+async fn a_background_row_without_a_job_id_is_live() {
+    let mut rig = Rig::new();
+    let c = chat(&rig, "aaaa").await;
+    rig.s.apply_agents(vec![agent(serde_json::json!({"cwd": "/tmp", "kind": "background", "sessionId": TITLED}))]);
+    assert_eq!(rig.s.standing_of(&c), ChatStanding::Live);
+}
+
+#[test]
+fn a_tab_that_moved_to_a_new_session_holds_the_new_one_and_frees_the_old() {
+    let mut rig = Rig::new();
+    rig.folder("/tmp", "tmp");
+    rig.add_tab("c", "/tmp", mx_core::model::TabKind::Claude, "/tmp", None);
+    rig.tm("c").session_id = Some("old".into());
+    rig.terms.edit("c", |l| l.pid = Some(4242));
+    rig.hook("c", "SessionStart", serde_json::json!({"session_id": "now"}));
+    rig.s.agents = vec![agent(serde_json::json!({"pid": 4242, "kind": "interactive", "sessionId": "old"}))];
+    let (now, old) = (entry("now", "/tmp"), entry("old", "/tmp"));
+    assert_eq!(rig.s.standing_of(&now), ChatStanding::OnScreen);
+    assert_eq!(rig.s.resume_chat(&now, None, None).as_deref(), Some("c"));
+    rig.tm("c").session_id = Some("now".into());
+    assert_eq!(rig.s.standing_of(&old), ChatStanding::Fresh);
+}

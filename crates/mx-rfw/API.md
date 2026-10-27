@@ -63,6 +63,16 @@ No UI dependency; the renderer (mx-app) matches on `widgets::Local` and draws.
   maestria: Svg, Glyph, IconButton (`enabled()`), Tooltip, Pressable / MenuButton (`menu: Vec<MenuItem>`,
   `MenuItem::is_divider`, `shown_label`, submenu `color` int), Draggable (`draggable()`, `fits(id)`), DropTarget
   (`drop_extra(payload)` → `{payload, to}`), CodeEditor (`code_editor::CodeEditor`: doc, text, revision, language,
-  line/column, jump, readOnly, wordWrap, fontSize (int or double, default 13), onChange/onSave/onCursor);
+  line/column, jump, readOnly, wordWrap, fontSize (int or double, default 13), lineNumbers/autofocus (default
+  true), hint, onChange/onSave/onCursor; `language` is `None` when absent);
+  2.7 maestria: Sprite (`sprite::Sprite`, `motion()`, `frame_at(elapsed)`, `cell(frame)`), ZoomView (`zoom_view::ZoomView`),
+  TextInput (`text_input::TextInput`: `submitted(text)`, `arrow(key, text)`, `matches(text, dismissed)` ≤ 8,
+  `shown_hint()`, `lines()`), Anchor (`key(plugin)` = `"{plugin}/{id}"`), Selectable / SelectionLines
+  (`maestria::SelectionArea`), Markdown (`maestria::Markdown`, default size 13.5); core FittedBox (`zoom_view::FittedBox`);
   anything else → `Local::Unsupported(&Node)`.
 - `maestria::menu_extra(choice)` → `{action: choice}` for `onMenu`.
+- `sprite::{sprite_frame, plugin_file_of}` — Dart `spriteFrame` / `pluginFileOf` (no `..`, must stay under the plugin dir).
+- `zoom_view::{Transform, zoom_target, command_transform, zoom_around, wheel_factor, pan, clamp_translation,
+  should_report, zoom_extra, fitted_scale, ease_out_cubic, ease_in_cubic}` — the InteractiveViewer math (step 1.5,
+  scaleFactor 200, 220 ms command animation, onZoom 200 ms after settling when |Δscale| ≥ 0.005).
+- `text_input::{ClearSeen, completed}` — `clear` empties a field only when it changes after the first sight.

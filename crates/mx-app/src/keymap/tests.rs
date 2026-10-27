@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use mx_plugins::chord::{Chord, Key, KeyPress};
 use serde_json::json;
 
-use super::chord::{chord_id, press, slot_of};
+use super::chord::{chord_id, press};
 use super::dispatch::{Focus, Hit, focus_from, resolve};
 use super::settings::{edit, shortcut_rows, stolen_banner};
 use super::*;
@@ -27,6 +27,10 @@ fn pressed(id: &str) -> KeyPress {
 }
 
 fn no_plugin(_: &KeyPress) -> Option<String> {
+    None
+}
+
+fn no_panel(_: &KeyPress) -> Option<String> {
     None
 }
 
@@ -100,7 +104,6 @@ fn linux_defaults_have_no_meta_no_duplicates_and_avoid_fixed_keys() {
     let fixed: Vec<Chord> = paste_chords(true)
         .into_iter()
         .chain([copy_chord(true)])
-        .chain((0..9).map(|i| Chord::slot(i, true)))
         .collect();
     for c in all_defaults(true) {
         assert!(!c.meta);
@@ -109,11 +112,11 @@ fn linux_defaults_have_no_meta_no_duplicates_and_avoid_fixed_keys() {
 }
 
 #[test]
-fn linux_labels_ids_slot_and_paste() {
+fn linux_labels_ids_and_paste() {
     let c = Action::Claude.defaults(true)[0];
     assert_eq!(c.label(true), "Ctrl+Shift+T");
     assert_eq!(chord_id(&c), "ctrl+shift+t");
-    assert_eq!(Chord::slot(0, true).label(true), "Alt+1");
+    assert_eq!(chord("alt+1").label(true), "Alt+1");
     assert_eq!(chord("ctrl+pagedown").label(true), "Ctrl+PgDn");
     assert_eq!(paste_chords(true)[0].label(true), "Ctrl+Shift+V");
 }
@@ -222,12 +225,51 @@ fn recorder_accepts_shift_cmd_g_with_its_id_and_label() {
 }
 
 #[test]
-fn recorder_refuses_unknown_keys_and_slots() {
+fn recorder_refuses_unknown_keys_but_accepts_digits() {
     assert!(matches!(check_chord_for(&rec("menu", true, false, false, false), true), ChordCheck::Rejected(_)));
-    match check_chord_for(&rec("3", false, true, false, false), true) {
-        ChordCheck::Rejected(why) => assert_eq!(why, "é a tecla da 3ª sessão da lateral"),
-        other => panic!("{other:?}"),
+    assert_eq!(
+        check_chord_for(&rec("3", false, true, false, false), true),
+        ChordCheck::Accepted { id: "alt+3".into(), label: "Alt+3".into() }
+    );
+}
+
+#[test]
+fn cmd_one_to_nine_are_ordinary_recordable_chords() {
+    for d in '1'..='9' {
+        let mac = Chord { meta: true, ..Chord::new(Key::Char(d)) };
+        assert_eq!(mac.rejection(false), None, "{d}");
+        let linux = Chord { alt: true, ..Chord::new(Key::Char(d)) };
+        assert_eq!(linux.rejection(true), None, "{d}");
     }
+}
+
+#[test]
+fn cmd_zero_belongs_to_zoom_reset() {
+    let m = Keymap::defaults(false);
+    assert_eq!(m.owner(&chord("meta+0")), Some(Action::ZoomReset));
+}
+
+#[test]
+fn find_in_pane_takes_cmd_f_and_sidebar_search_moves_to_shift_cmd_f_on_mac() {
+    let m = Keymap::defaults(false);
+    assert_eq!(m.labels(Action::FindInPane), ["⌘F"]);
+    assert_eq!(m.labels(Action::Search), ["⇧⌘F"]);
+    assert_eq!(Action::FindInPane.id(), "find");
+    assert_eq!(Action::FindInPane.label(), "Buscar no painel");
+}
+
+#[test]
+fn find_in_pane_takes_ctrl_shift_f_and_sidebar_search_moves_to_ctrl_alt_f_on_linux() {
+    let m = Keymap::defaults(true);
+    assert_eq!(m.labels(Action::FindInPane), ["Ctrl+Shift+F"]);
+    assert_eq!(m.labels(Action::Search), ["Ctrl+Alt+F"]);
+    assert!(m.chords(Action::FindInPane).iter().chain(m.chords(Action::Search)).all(|c| c.rejection(true).is_none()));
+}
+
+#[test]
+fn find_in_pane_comes_right_before_search() {
+    let at = |a: Action| Action::ALL.iter().position(|x| *x == a).unwrap();
+    assert_eq!(at(Action::FindInPane) + 1, at(Action::Search));
 }
 
 #[test]
@@ -252,7 +294,7 @@ fn shortcut_rows_follow_enum_order_and_flag_changes() {
     let mut m = Keymap::defaults(true);
     m.bind(Action::Refresh, chord("f5"), None);
     let rows = shortcut_rows(&m);
-    assert_eq!(rows.len(), 20);
+    assert_eq!(rows.len(), 21);
     assert_eq!(rows[0].action, "claude");
     let refresh = rows.iter().find(|r| r.action == "refresh").unwrap();
     assert!(refresh.changed);
@@ -262,32 +304,44 @@ fn shortcut_rows_follow_enum_order_and_flag_changes() {
 #[test]
 fn a_keymap_chord_in_the_terminal_runs_its_action() {
     let m = Keymap::defaults(true);
-    let f = Focus { terminal: true, text_field: false };
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+b"), f, no_plugin), Some(Hit::Action(Action::Sidebar)));
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+f"), f, no_plugin), Some(Hit::Action(Action::Search)));
-    assert_eq!(resolve(&m, &pressed("ctrl+="), f, no_plugin), Some(Hit::Action(Action::ZoomIn)));
-    assert_eq!(resolve(&m, &pressed("ctrl+0"), f, no_plugin), Some(Hit::Action(Action::ZoomReset)));
-    assert_eq!(resolve(&m, &pressed("f2"), f, no_plugin), Some(Hit::Action(Action::Rename)));
+    let f = Focus { terminal: true, text_field: false, own_find: false };
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+b"), f, no_panel, no_plugin), Some(Hit::Action(Action::Sidebar)));
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+f"), f, no_panel, no_plugin), Some(Hit::Action(Action::FindInPane)));
+    assert_eq!(resolve(&m, &pressed("ctrl+alt+f"), f, no_panel, no_plugin), Some(Hit::Action(Action::Search)));
+    assert_eq!(resolve(&m, &pressed("ctrl+="), f, no_panel, no_plugin), Some(Hit::Action(Action::ZoomIn)));
+    assert_eq!(resolve(&m, &pressed("ctrl+0"), f, no_panel, no_plugin), Some(Hit::Action(Action::ZoomReset)));
+    assert_eq!(resolve(&m, &pressed("f2"), f, no_panel, no_plugin), Some(Hit::Action(Action::Rename)));
 }
 
 #[test]
-fn slot_chords_are_intercepted_inside_the_terminal() {
+fn digit_chords_without_a_panel_reach_the_terminal() {
     let m = Keymap::defaults(true);
-    let f = Focus { terminal: true, text_field: false };
-    assert_eq!(resolve(&m, &pressed("alt+1"), f, no_plugin), Some(Hit::Slot(0)));
-    assert_eq!(resolve(&m, &pressed("alt+9"), f, no_plugin), Some(Hit::Slot(8)));
-    assert_eq!(slot_of(&pressed("alt+0"), true), None);
+    let f = Focus { terminal: true, text_field: false, own_find: false };
+    assert_eq!(resolve(&m, &pressed("alt+1"), f, no_panel, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("alt+9"), Focus::default(), no_panel, no_plugin), None);
+}
+
+#[test]
+fn panel_hotkeys_come_after_actions_and_before_plugins() {
+    let m = Keymap::defaults(true);
+    let panel = |_: &KeyPress| Some("tab-b".to_owned());
+    let plugin = |_: &KeyPress| Some("p/cmd".to_owned());
+    for f in [Focus { terminal: true, text_field: false, own_find: false }, Focus::default()] {
+        assert_eq!(resolve(&m, &pressed("ctrl+shift+b"), f, panel, plugin), Some(Hit::Action(Action::Sidebar)));
+        assert_eq!(resolve(&m, &pressed("ctrl+alt+g"), f, panel, plugin), Some(Hit::Panel("tab-b".into())));
+        assert_eq!(resolve(&m, &pressed("ctrl+alt+g"), f, no_panel, plugin), Some(Hit::Plugin("p/cmd".into())));
+    }
 }
 
 #[test]
 fn fixed_terminal_keys_stay_in_the_terminal() {
     let mut m = Keymap::defaults(true);
     m.bind(Action::Refresh, chord("ctrl+shift+a"), None);
-    let term = Focus { terminal: true, text_field: false };
+    let term = Focus { terminal: true, text_field: false, own_find: false };
     for id in ["shift+enter", "ctrl+shift+v", "ctrl+v", "shift+insert", "ctrl+shift+c", "ctrl+shift+a"] {
-        assert_eq!(resolve(&m, &pressed_or_insert(id), term, no_plugin), None, "{id}");
+        assert_eq!(resolve(&m, &pressed_or_insert(id), term, no_panel, no_plugin), None, "{id}");
     }
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+a"), Focus::default(), no_plugin), Some(Hit::Action(Action::Refresh)));
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+a"), Focus::default(), no_panel, no_plugin), Some(Hit::Action(Action::Refresh)));
 }
 
 fn pressed_or_insert(id: &str) -> KeyPress {
@@ -302,25 +356,25 @@ fn plain_typing_never_reaches_the_keymap() {
     let m = Keymap::defaults(true);
     let called = std::cell::Cell::new(false);
     let p = press(Key::Char('t'), false, false, true, false);
-    assert_eq!(resolve(&m, &p, Focus { terminal: true, text_field: false }, |_| { called.set(true); None }), None);
+    assert_eq!(resolve(&m, &p, Focus { terminal: true, text_field: false, own_find: false }, |_| { called.set(true); None }, |_| { called.set(true); None }), None);
     assert!(!called.get());
 }
 
 #[test]
 fn editing_keys_in_a_text_field_skip_the_keymap() {
     let m = Keymap::defaults(false);
-    let f = Focus { terminal: false, text_field: true };
-    assert_eq!(resolve(&m, &pressed("meta+backspace"), f, no_plugin), None);
-    assert_eq!(resolve(&m, &pressed("meta+backspace"), Focus::default(), no_plugin), Some(Hit::Action(Action::Close)));
+    let f = Focus { terminal: false, text_field: true, own_find: false };
+    assert_eq!(resolve(&m, &pressed("meta+backspace"), f, no_panel, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("meta+backspace"), Focus::default(), no_panel, no_plugin), Some(Hit::Action(Action::Close)));
 }
 
 #[test]
 fn plugin_commands_only_run_when_the_keymap_misses() {
     let m = Keymap::defaults(true);
-    let f = Focus { terminal: true, text_field: false };
+    let f = Focus { terminal: true, text_field: false, own_find: false };
     let plugin = |_: &KeyPress| Some("p/cmd".to_owned());
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+b"), f, plugin), Some(Hit::Action(Action::Sidebar)));
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+alt+g"), f, plugin), Some(Hit::Plugin("p/cmd".into())));
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+b"), f, no_panel, plugin), Some(Hit::Action(Action::Sidebar)));
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+alt+g"), f, no_panel, plugin), Some(Hit::Plugin("p/cmd".into())));
 }
 
 #[test]
@@ -336,17 +390,25 @@ fn terminal_fixed_keys_by_platform() {
 fn the_setup_and_code_editors_count_as_text_fields() {
     for name in ["SetupEditor", "CodeEditor", "TextField", "SidebarSearch"] {
         let stack = [gpui::KeyContext::parse("Root").unwrap(), gpui::KeyContext::parse(name).unwrap()];
-        assert_eq!(focus_from(&stack), Focus { terminal: false, text_field: true }, "{name}");
+        assert_eq!(focus_from(&stack), Focus { terminal: false, text_field: true, own_find: name == "CodeEditor" }, "{name}");
     }
     let stack = [gpui::KeyContext::parse("Terminal").unwrap()];
-    assert_eq!(focus_from(&stack), Focus { terminal: true, text_field: false });
+    assert_eq!(focus_from(&stack), Focus { terminal: true, text_field: false, own_find: false });
 }
 
 #[test]
 fn ctrl_shift_arrows_select_words_in_the_setup_editor_instead_of_switching_sessions() {
     let m = Keymap::defaults(true);
     let f = focus_from(&[gpui::KeyContext::parse("SetupEditor").unwrap()]);
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), f, no_plugin), None);
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+right"), f, no_plugin), None);
-    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), Focus::default(), no_plugin), Some(Hit::Action(Action::PrevSession)));
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), f, no_panel, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+right"), f, no_panel, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+left"), Focus::default(), no_panel, no_plugin), Some(Hit::Action(Action::PrevSession)));
+}
+
+#[test]
+fn find_in_pane_is_left_to_a_focused_code_editor() {
+    let m = Keymap::defaults(true);
+    let f = Focus { terminal: false, text_field: true, own_find: true };
+    assert_eq!(resolve(&m, &pressed("ctrl+shift+f"), f, no_panel, no_plugin), None);
+    assert_eq!(resolve(&m, &pressed("ctrl+alt+f"), f, no_panel, no_plugin), Some(Hit::Action(Action::Search)));
 }

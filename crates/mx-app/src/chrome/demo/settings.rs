@@ -2,10 +2,11 @@ use std::rc::Rc;
 
 use gpui::{AnyView, App, AppContext, Window};
 use mx_core::model::LauncherIcon;
+use mx_plugins::catalog::PluginKind;
 use mx_theme::{HACK, Typography};
 
 use crate::chrome::settings::{
-    Account, ChordCheck, KeyPress, LauncherRow, PluginRow, PluginState, Section, SettingsData,
+    Account, ChordCheck, KeyPress, LauncherRow, PluginAuto, PluginRow, PluginState, RowUpdate, Section, SettingsData,
     SettingsDialog, ShortcutRow, UsageWindow, fixed_rows,
 };
 
@@ -27,7 +28,8 @@ fn shortcuts() -> Vec<ShortcutRow> {
         row("shell", "Novo shell", Some("Um terminal comum, no mesmo lugar"), "Sessões", &["Ctrl+Shift+Enter"], false),
         row("rename", "Renomear o painel em foco", Some("O título dele; em branco, volta a ser o da branch ou da pasta"), "Sessões", &["F2"], true),
         row("next-pane", "Próximo painel", Some("Na ordem em que estão na tela"), "Navegação", &["Ctrl+Tab", "Ctrl+PgDn"], false),
-        row("search", "Buscar na lateral", Some("Foca o campo de busca; Esc limpa e devolve o teclado"), "Navegação", &["Ctrl+Shift+F"], false),
+        row("find", "Buscar no painel", Some("No que o terminal em foco já escreveu; Enter sobe, Shift+Enter desce, Esc fecha"), "Navegação", &["Ctrl+Shift+F"], false),
+        row("search", "Buscar na lateral", Some("Foca o campo de busca; Esc limpa e devolve o teclado"), "Navegação", &["Ctrl+Alt+F"], false),
         row("zoom-in", "Aumentar o corpo do painel", Some("Só o painel em foco; a base de todos está em aparência"), "Exibição", &["Ctrl+=", "Ctrl+Shift+="], false),
         row("settings", "Configurações", Some("Esta tela"), "Janela", &["Ctrl+,", "Ctrl+Shift+P"], false),
     ]
@@ -49,9 +51,10 @@ pub fn data() -> SettingsData {
             LauncherRow { id: "l2".into(), name: "npm".into(), command: "npm run dev".into(), icon: LauncherIcon::Server, open: 0 },
         ],
         plugins: vec![
-            PluginRow { id: "git".into(), name: "Git".into(), version: "0.4.1".into(), state: PluginState::Running, dev: true, description: "Mudanças, branches e commits na lateral".into(), details: vec!["Hooks: SessionEnd".into()], commands: vec!["status".into(), "commit".into()], themes: vec![], enabled: true, conflicts: 1 },
-            PluginRow { id: "cat".into(), name: "Catppuccin".into(), version: "1.0.0".into(), state: PluginState::Ready, dev: false, description: "Quatro sabores de tema".into(), details: vec![], commands: vec![], themes: vec!["Mocha".into(), "Latte".into()], enabled: true, conflicts: 0 },
+            PluginRow { id: "git".into(), name: "Git".into(), version: "0.4.1".into(), state: PluginState::Running, dev: true, description: "Mudanças, branches e commits na lateral".into(), details: vec!["Hooks: SessionEnd".into()], commands: vec!["status".into(), "commit".into()], themes: vec![], enabled: true, conflicts: 1, kinds: vec![PluginKind::Feature], busy: false, update: Some(RowUpdate { from: "0.4.1".into(), to: "0.5.0".into(), asks_more: false, newer: true }), offer: None, has_origin: true, manual: false },
+            PluginRow { id: "cat".into(), name: "Catppuccin".into(), version: "1.0.0".into(), state: PluginState::Ready, dev: false, description: "Quatro sabores de tema".into(), details: vec![], commands: vec![], themes: vec!["Mocha".into(), "Latte".into()], enabled: true, conflicts: 0, kinds: vec![PluginKind::Theme], busy: false, update: None, offer: None, has_origin: false, manual: false },
         ],
+        plugin_auto: PluginAuto { on: true, checking: false, checked_at: Some("14:32".into()), error: None },
         hibernate_minutes: 30,
         account: Account::Ready {
             org: "Marrow".into(),

@@ -7,6 +7,7 @@ use mx_core::model::Tab;
 use crate::app::host::update_store;
 use crate::app::icons::{Icon, icon};
 use crate::app::confirms;
+use crate::chrome::widgets::HOVER_RADIUS;
 use crate::app::menus::Target;
 use crate::sidebar::tree::Ctx;
 use crate::sidebar::widgets::{badge, count_chip, count_text, menu_on, right_click, row_button};
@@ -39,9 +40,14 @@ impl Ctx<'_> {
         let ruler = div()
             .id("groups-ruler")
             .group("groups-ruler")
-            .mx(px(14.))
+            .ml(px(2.))
+            .mr(px(7.))
+            .pl(px(12.))
+            .pr(px(7.))
             .mt(px(6.))
             .py(px(4.))
+            .rounded(px(HOVER_RADIUS))
+            .hover(|s| s.bg(mx.bg_hover))
             .flex()
             .items_center()
             .gap(px(6.))

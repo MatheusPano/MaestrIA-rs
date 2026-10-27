@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use mx_theme::{Color, Palette};
 
-pub const ICONS: [(&str, &str); 56] = [
+pub const ICONS: [(&str, &str); 66] = [
     ("check", "check_circle_outline"),
     ("error", "error_outline"),
     ("warning", "warning_amber_outlined"),
@@ -59,6 +59,16 @@ pub const ICONS: [(&str, &str); 56] = [
     ("chevron", "chevron_right_rounded"),
     ("filter", "filter_list_rounded"),
     ("layers", "layers_outlined"),
+    ("clean", "cleaning_services_outlined"),
+    ("send", "send_rounded"),
+    ("chat", "chat_bubble_outline_rounded"),
+    ("pets", "pets_rounded"),
+    ("photo", "image_outlined"),
+    ("home", "home_outlined"),
+    ("moon", "bedtime_outlined"),
+    ("shield", "verified_user_outlined"),
+    ("close", "close_rounded"),
+    ("palette", "palette_outlined"),
 ];
 
 pub const GENERIC_ICON: &str = "extension_outlined";

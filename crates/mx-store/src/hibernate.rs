@@ -1,6 +1,7 @@
 use chrono::TimeDelta;
 use mx_core::model::ClaudeStatus;
 use mx_core::text::Time;
+use serde_json::json;
 
 use crate::msg::Done;
 use crate::store::Store;
@@ -19,6 +20,7 @@ impl Store {
         if !t.can_hibernate() {
             return;
         }
+        let before = t.hooks.status;
         t.hibernated = true;
         t.armed = false;
         t.rested_at = None;
@@ -36,8 +38,15 @@ impl Store {
         }
         self.sync_term(id);
         self.timers.cancel(&TimerKey::Settle(id.to_owned()));
+        self.sleep_changed(id, before);
         self.save();
         self.mark_tab(id);
+    }
+
+    fn sleep_changed(&self, id: &str, before: ClaudeStatus) {
+        let Some(t) = self.tab(id) else { return };
+        let data = json!({"tabId": id, "status": t.hooks.status.name(), "previous": before.name(), "hibernated": t.hibernated});
+        self.p.plugins.emit("session.status", data, &["onSession"], None);
     }
 
     pub fn wake(&mut self, id: &str) {
@@ -45,9 +54,11 @@ impl Store {
         if !t.hibernated {
             return;
         }
+        let before = t.hooks.status;
         t.hibernated = false;
         t.hooks.status = ClaudeStatus::Starting;
         let exited = t.exited;
+        self.sleep_changed(id, before);
         self.mark_tab(id);
         if exited {
             self.relaunch_woken(id);

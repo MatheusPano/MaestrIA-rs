@@ -216,3 +216,49 @@ impl<'a> DropTarget<'a> {
         Map::from_iter([("payload".to_owned(), Value::from(payload)), ("to".to_owned(), Value::from(self.id.as_str()))])
     }
 }
+
+pub const MARKDOWN_BASE_SIZE: f64 = 13.5;
+
+pub struct Markdown {
+    pub text: String,
+    pub font_size: f64,
+}
+
+impl Markdown {
+    pub fn from_node(n: &Node) -> Self {
+        Self {
+            text: s(n.arg("text")).unwrap_or_default(),
+            font_size: n.arg("fontSize").as_double().unwrap_or(MARKDOWN_BASE_SIZE),
+        }
+    }
+}
+
+pub struct Anchor<'a> {
+    pub id: String,
+    pub child: Child<'a>,
+}
+
+impl<'a> Anchor<'a> {
+    pub fn from_node(n: &'a Node) -> Self {
+        Self { id: s(n.arg("id")).unwrap_or_default(), child: n.child("child") }
+    }
+
+    pub fn key(&self, plugin_id: &str) -> String {
+        anchor_key(plugin_id, &self.id)
+    }
+}
+
+pub fn anchor_key(plugin_id: &str, id: &str) -> String {
+    format!("{plugin_id}/{id}")
+}
+
+pub struct SelectionArea<'a> {
+    pub lines_only: bool,
+    pub child: Child<'a>,
+}
+
+impl<'a> SelectionArea<'a> {
+    pub fn from_node(n: &'a Node, lines_only: bool) -> Self {
+        Self { lines_only, child: n.child("child") }
+    }
+}

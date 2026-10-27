@@ -523,3 +523,41 @@ fn pane_entries_read_legacy_keys_and_kinds() {
     let reader = PaneEntry::parse(&obj(json!({"kind": "reader", "cwd": "/r"})), now());
     assert_eq!(reader.doc, None);
 }
+
+#[test]
+fn app_auto_update_is_off_unless_the_config_says_true() {
+    let (absent, _) = Config::from_json(&obj(json!({})));
+    assert!(!absent.auto_update);
+    let (on, _) = Config::from_json(&obj(json!({"autoUpdate": true})));
+    assert!(on.auto_update);
+}
+
+#[test]
+fn app_auto_update_is_written_only_when_on_between_hibernate_and_theme() {
+    assert!(Config::default().to_json().get("autoUpdate").is_none());
+    let on = Config { auto_update: true, hibernate_minutes: 0, ..Config::default() };
+    let json = on.to_json();
+    assert_eq!(json["autoUpdate"], json!(true));
+    let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+    let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
+    assert_eq!((at("hibernateMinutes") + 1, at("autoUpdate") + 1), (at("autoUpdate"), at("theme")));
+}
+
+#[test]
+fn versions_compare_numerically() {
+    use mx_core::version::compare_versions;
+    use std::cmp::Ordering::*;
+    assert_eq!(compare_versions("2.10.0", "2.9.1"), Greater);
+    assert_eq!(compare_versions("2.4.0", "2.4.1"), Less);
+}
+
+#[test]
+fn versions_ignore_the_tag_v_and_missing_trailing_parts() {
+    use mx_core::version::compare_versions;
+    use std::cmp::Ordering::*;
+    assert_eq!(compare_versions("v2.5.0", "2.5.0"), Equal);
+    assert_eq!(compare_versions("2.5", "2.5.0"), Equal);
+    assert_eq!(compare_versions("v3", "2.99.99"), Greater);
+    assert_eq!(compare_versions("1.2.0-beta", "1.2.0.0"), Equal);
+    assert_eq!(compare_versions("2.5.0-1", "2.5.0"), Greater);
+}

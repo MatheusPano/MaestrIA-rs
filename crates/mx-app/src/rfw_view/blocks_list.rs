@@ -97,11 +97,13 @@ fn row(p: &mut Paint, it: &ListItem, tree: bool, flat: bool, always: bool, cx: &
         el = el.child(div().w(px(21.0)).flex_none());
     }
     if let Some(a) = &it.avatar {
-        el = el.child(avatar(p, a, if flat { 26.0 } else { 30.0 }, it.dim, it.status.as_deref())).child(div().w(px(10.0)).flex_none());
+        let size = it.avatar_size.map_or(if flat { 26.0 } else { 30.0 }, |s| s as f32);
+        let gap = if it.avatar_size.is_some() { 7.0 } else { 10.0 };
+        el = el.child(avatar(p, a, size, it.dim, it.status.as_deref())).child(div().w(px(gap)).flex_none());
     } else if let Some(icon) = plugin_icon(it.icon.as_deref()) {
         el = el.child(named(icon, 16.0, tone(p, it.tone.as_deref()))).child(div().w(px(10.0)).flex_none());
     }
-    let title_color = if it.selected { on_accent } else if it.dim { hsla(th.fg_dim) } else { hsla(th.fg) };
+    let title_color = title_color(p, it, on_accent);
     let mut title = div()
         .text_size(px(s - 0.5))
         .font_weight(if it.strong { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
@@ -192,6 +194,19 @@ fn row(p: &mut Paint, it: &ListItem, tree: bool, flat: bool, always: bool, cx: &
     }
     p.surface = saved;
     el.into_any_element()
+}
+
+pub fn title_color(p: &Paint, it: &ListItem, on_accent: Hsla) -> Hsla {
+    let th = &p.view.theme;
+    if it.selected {
+        on_accent
+    } else if it.title_tone.is_some() {
+        tone(p, it.title_tone.as_deref())
+    } else if it.dim {
+        hsla(th.fg_dim)
+    } else {
+        hsla(th.fg)
+    }
 }
 
 fn alpha_h(c: Hsla, a: f32) -> Hsla {

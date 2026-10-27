@@ -37,6 +37,7 @@ impl Render for Preview {
             interactive: false,
             bounded_w: true,
             editors: None,
+            widgets: None,
         };
         let body = self.widget.as_ref().map(|w| render(&mut cx, w, Fit { w: true, h: false }));
         text_root(div(), &self.theme)

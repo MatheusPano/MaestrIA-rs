@@ -78,6 +78,7 @@ impl TextEditor {
                 }
             }
             "s" if cmd => cx.emit(EditorEvent::Save),
+            "/" if cmd && self.style.code => self.toggle_comment(cx),
             _ => return,
         }
         cx.stop_propagation();

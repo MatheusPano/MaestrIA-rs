@@ -46,13 +46,13 @@ fn yaml_and_json_keys_differ_from_values() {
     );
     assert_eq!(
         tones("{\"a\": \"b\", \"c\": true}", "json"),
-        [("\"a\"", Tone::Key), ("\"b\"", Tone::String), ("\"c\"", Tone::Key), ("true", Tone::Keyword)]
+        [("\"a\"", Tone::Key), ("\"b\"", Tone::String), ("\"c\"", Tone::Key), ("true", Tone::Literal)]
     );
 }
 
 #[test]
 fn identifiers_with_digits_are_not_numbers_and_types_are_capitalised() {
-    assert_eq!(tones("let x2 = Vec::new();", "rust"), [("let", Tone::Keyword), ("Vec", Tone::Type)]);
+    assert_eq!(tones("let x2 = Vec::new();", "rust"), [("let", Tone::Keyword), ("Vec", Tone::Type), ("new", Tone::Function)]);
 }
 
 #[test]
@@ -65,7 +65,17 @@ fn sql_and_dockerfile_keywords_ignore_case() {
 fn markup_colours_tags_attributes_and_comments() {
     assert_eq!(
         tones("<a href=\"x\">t</a><!-- c -->", "xml"),
-        [("<a", Tone::Keyword), ("href", Tone::Key), ("\"x\"", Tone::String), ("</a", Tone::Keyword), ("<!-- c -->", Tone::Comment)]
+        [
+            ("<", Tone::Meta),
+            ("a", Tone::Variable),
+            ("href", Tone::Key),
+            ("\"x\"", Tone::String),
+            (">", Tone::Meta),
+            ("</", Tone::Meta),
+            ("a", Tone::Variable),
+            (">", Tone::Meta),
+            ("<!-- c -->", Tone::Comment)
+        ]
     );
 }
 
@@ -73,7 +83,7 @@ fn markup_colours_tags_attributes_and_comments() {
 fn markdown_headings_fences_and_inline_code() {
     assert_eq!(
         tones("# Título\nuse `x`\n```\ncode\n```", "markdown"),
-        [("# Título", Tone::Keyword), ("`x`", Tone::String), ("```", Tone::Meta), ("code", Tone::String), ("```", Tone::Meta)]
+        [("# Título", Tone::Section), ("`x`", Tone::String), ("```", Tone::String), ("code", Tone::String), ("```", Tone::String)]
     );
 }
 
@@ -99,4 +109,21 @@ fn spans_always_fall_on_char_boundaries() {
             assert!(text.is_char_boundary(r.start) && text.is_char_boundary(r.end), "{lang} {r:?}");
         }
     }
+}
+
+#[test]
+fn literals_function_names_and_shell_variables_get_their_own_tones() {
+    assert_eq!(
+        tones("function soma(x) { return null; }", "javascript"),
+        [("function", Tone::Keyword), ("soma", Tone::Function), ("return", Tone::Keyword), ("null", Tone::Literal)]
+    );
+    assert_eq!(tones("echo $HOME", "bash"), [("echo", Tone::Keyword), ("$HOME", Tone::Variable)]);
+}
+
+#[test]
+fn markdown_bullets_emphasis_strong_and_links() {
+    assert_eq!(
+        tones("- *a* **b** [t](u)", "markdown"),
+        [("-", Tone::Bullet), ("*a*", Tone::Emphasis), ("**b**", Tone::Strong), ("[t]", Tone::String), ("(u)", Tone::Link)]
+    );
 }

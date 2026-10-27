@@ -1,12 +1,16 @@
+mod catalog;
 mod floats;
+mod folder_picker;
 mod form;
 mod install;
+pub mod kind_tag;
 mod layer;
 mod log;
 mod modal;
 mod pick;
 mod settings;
 mod sidebar;
+mod trust;
 pub mod surface;
 mod widgets;
 
@@ -58,4 +62,15 @@ pub fn open_log(plugin: &str, window: &mut Window, cx: &mut App) {
     let Some(layer) = cx.try_global::<LayerHandle>().and_then(|h| h.0.upgrade()) else { return };
     let plugin = plugin.to_owned();
     layer.update(cx, |l, cx| l.open_log(&plugin, window, cx));
+}
+
+pub fn open_catalog(_window: &mut Window, cx: &mut App) {
+    let Some(layer) = cx.try_global::<LayerHandle>().and_then(|h| h.0.upgrade()) else { return };
+    layer.update(cx, |l, cx| l.open_catalog(cx));
+}
+
+pub fn update_plugin(update: mx_plugins::catalog::PluginUpdate, cx: &mut App) {
+    let Some(layer) = cx.try_global::<LayerHandle>().and_then(|h| h.0.upgrade()) else { return };
+    let host = layer.read(cx).host.clone();
+    trust::update(host, layer.downgrade(), update, cx);
 }

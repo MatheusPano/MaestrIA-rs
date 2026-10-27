@@ -1,6 +1,6 @@
 # 03 — Claude Code integration (hooks, MCP, status line, usage, notifications, setup, reader)
 
-Source of truth (READ-ONLY): `/home/lucas/maestria/repo`
+Source of truth (READ-ONLY): `~/maestria/repo`
 `lib/services/{hooks,task_mcp,usage,notify,setup,docs}.dart`, `lib/ui/{setup_pane,suggestions,doc_pane}.dart`,
 the hook/notice/suggestion parts of `lib/services/store.dart` and `lib/models.dart`.
 

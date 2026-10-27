@@ -7,6 +7,7 @@ use gpui::{
 };
 use mx_claude::markdown::{MdKind, MdNode};
 
+use super::select::{self, SelectionSlot};
 use super::style::{Marks, Sheet, run};
 
 pub type FollowHref = Rc<dyn Fn(&str, &mut Window, &mut App)>;
@@ -115,7 +116,10 @@ impl Inline {
         }
     }
 
-    pub fn into_element(self, id: ElementId, follow: Option<&FollowHref>) -> AnyElement {
+    pub fn into_element(self, id: ElementId, follow: Option<&FollowHref>, selection: Option<&SelectionSlot>) -> AnyElement {
+        if let Some(slot) = selection {
+            return self.into_piece(id, follow, slot);
+        }
         let text = StyledText::new(self.text).with_runs(self.runs);
         match follow {
             Some(follow) if !self.links.is_empty() => {
@@ -134,6 +138,32 @@ impl Inline {
                     .into_any_element()
             }
             _ => text.into_any_element(),
+        }
+    }
+}
+
+impl Inline {
+    fn into_piece(self, id: ElementId, follow: Option<&FollowHref>, slot: &SelectionSlot) -> AnyElement {
+        let index = slot.borrow().len();
+        let piece = select::piece(slot, self.text, Some(self.runs));
+        match follow {
+            Some(follow) if !self.links.is_empty() => {
+                let (follow, links, slot) = (follow.clone(), self.links, slot.clone());
+                div()
+                    .id(id)
+                    .on_click(move |ev, window, cx| {
+                        if slot.borrow().has_selection() {
+                            return;
+                        }
+                        let Some(at) = slot.borrow().offset_in(index, ev.position()) else { return };
+                        if let Some((_, url)) = links.iter().find(|(r, _)| r.contains(&at)) {
+                            follow(url, window, cx);
+                        }
+                    })
+                    .child(piece)
+                    .into_any_element()
+            }
+            _ => piece,
         }
     }
 }

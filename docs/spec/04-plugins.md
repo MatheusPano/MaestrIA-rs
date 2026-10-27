@@ -1846,8 +1846,8 @@ Icons used that the doc's icon table lacks: `filter`, `layers`, `chevron`, `pull
 
 #### Repo-level facts
 
-- **argocd copies are identical.** `diff -rq /home/lucas/maestria/maestria-plugins/argocd /home/lucas/maestria/argocd-plugin` prints nothing, so every file matches, including `bin/` and `ui/`.
-- **`maestria.js` is byte-identical everywhere.** All 8 copies (argocd, docker, flutter, git, pomodoro, relatorio-do-dia, ssh, wiboor) plus `/home/lucas/maestria/argocd-plugin/maestria.js` and `repo/examples/plugins/exemplo-completo/maestria.js` share md5 `c24a75ccc8094c7e1f93b666ecbd7463`.
+- **argocd copies are identical.** `diff -rq ~/maestria/maestria-plugins/argocd ~/maestria/argocd-plugin` prints nothing, so every file matches, including `bin/` and `ui/`.
+- **`maestria.js` is byte-identical everywhere.** All 8 copies (argocd, docker, flutter, git, pomodoro, relatorio-do-dia, ssh, wiboor) plus `~/maestria/argocd-plugin/maestria.js` and `repo/examples/plugins/exemplo-completo/maestria.js` share md5 `c24a75ccc8094c7e1f93b666ecbd7463`.
 - **pomodoro_dart shares pomodoro's UI and overlay files.** `ui/float.rfwtxt`, `ui/sidebar.rfwtxt`, `overlay/overlay_linux.py` and `overlay/overlay.swift` are identical to the node pomodoro's.
 - **README mentions a plugin that is missing.** `README.md` describes a `worktrees` plugin (`maestria.worktrees`, ⌥⌘W) that does not exist in this checkout. The git log has only 2 commits: "add the plugins and the official plugin catalog" and "add the argocd plugin".
 - **`external.json`** is `{"plugins": []}`. `.gitignore` lists `node_modules/`, `.DS_Store` and `dist/`.
@@ -2489,7 +2489,7 @@ Settings:
 - Reads `~/.ssh/config` and its `Include`s.
 - The command string it builds is `ssh [extra] -o ConnectTimeout=N [options] [-p port] [-i 'key'] 'user@host'`, or `ssh 'alias'`. The host runs it.
 
-#### 9. argocd (`maestria.argocd`), identical to `/home/lucas/maestria/argocd-plugin`
+#### 9. argocd (`maestria.argocd`), identical to `~/maestria/argocd-plugin`
 
 Manifest fields:
 - `id "maestria.argocd"`, `name "ArgoCD"`, `version "1.0.0"`, `author "Lucas"`, `maestria 1`, `icon "icons/argo.svg"`, `main ["node","main.js"]`.

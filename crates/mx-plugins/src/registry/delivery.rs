@@ -107,6 +107,15 @@ impl Plugins {
         }
     }
 
+    pub fn view_closed(&self, plugin_id: &str, view_id: &str) {
+        if !self.get(plugin_id).is_some_and(|p| p.active()) || !self.is_up(plugin_id) {
+            return;
+        }
+        let mut data = Map::new();
+        data.insert("viewId".into(), Value::from(view_id));
+        self.deliver_detached(plugin_id, "event", event_params("view.closed", &data));
+    }
+
     pub fn view_action(&self, plugin_id: &str, view_id: &str, action: &str, values: Obj) {
         if !self.get(plugin_id).is_some_and(|p| p.active()) {
             return;
@@ -179,5 +188,9 @@ impl PluginBus for Plugins {
         };
         let needs = permission.and_then(Permission::by_id);
         Plugins::emit(self, event, data, activations, needs);
+    }
+
+    fn view_closed(&self, plugin_id: &str, view_id: &str) {
+        Plugins::view_closed(self, plugin_id, view_id);
     }
 }

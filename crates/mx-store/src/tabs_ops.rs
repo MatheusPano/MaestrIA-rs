@@ -1,6 +1,7 @@
 use mx_core::layout::{DropSide, PaneNode};
 use mx_core::model::{Tab, TabKind, Tint};
 use mx_core::model::sidebar::{RowKey, sidebar_rows};
+use mx_plugins::chord::Chord;
 use serde_json::json;
 
 use crate::changes::Areas;
@@ -211,10 +212,49 @@ impl Store {
         self.select(&id);
     }
 
-    pub fn select_index(&mut self, i: usize) {
-        if let Some(id) = self.tabs.get(i).map(|t| t.id.clone()) {
-            self.select(&id);
+    pub fn set_hotkey(&mut self, id: &str, chord: Option<&str>) {
+        if !self.has_tab(id) {
+            return;
         }
+        let chord = chord.and_then(valid_hotkey);
+        if let Some(k) = &chord {
+            let stolen: Vec<String> =
+                self.tabs.iter().filter(|t| t.id != id && same_key(t.hotkey.as_ref(), k)).map(|t| t.id.clone()).collect();
+            for other in stolen {
+                let title = self.tab(&other).map(|t| self.title(t)).unwrap_or_default();
+                if let Some(t) = self.tab_mut(&other) {
+                    t.hotkey = None;
+                }
+                self.mark_tab(&other);
+                self.show_banner(&format!("{} saiu de \"{title}\"", hotkey_label(k)));
+            }
+        }
+        self.edit_tab(id, |t| t.hotkey = chord);
+        self.mark(Areas::PANES);
+    }
+
+    pub fn release_hotkey(&mut self, chord: &str) {
+        let Some(k) = valid_hotkey(chord) else { return };
+        let holders: Vec<String> =
+            self.tabs.iter().filter(|t| same_key(t.hotkey.as_ref(), &k)).map(|t| t.id.clone()).collect();
+        for id in holders {
+            let title = self.tab(&id).map(|t| self.title(t)).unwrap_or_default();
+            self.edit_tab(&id, |t| t.hotkey = None);
+            self.show_banner(&format!("{} saiu do painel \"{title}\"", hotkey_label(&k)));
+        }
+        self.mark(Areas::PANES);
+    }
+
+    pub fn retain_hotkeys(&mut self, keep: impl Fn(&str) -> bool) {
+        for t in &mut self.tabs {
+            if t.hotkey.as_deref().is_some_and(|k| !keep(k)) {
+                t.hotkey = None;
+            }
+        }
+    }
+
+    pub fn panel_for(&self, accepts: impl Fn(&str) -> bool) -> Option<String> {
+        self.tabs.iter().find(|t| t.hotkey.as_deref().is_some_and(&accepts)).map(|t| t.id.clone())
     }
 
     pub fn resize_split(&mut self, path: &[usize], gutter: isize, delta: f64, total: f64) {
@@ -315,4 +355,18 @@ impl Store {
         self.focused = Some(id.to_owned());
         self.mark(Areas::PANES);
     }
+}
+
+const LINUX: bool = cfg!(target_os = "linux");
+
+pub(crate) fn valid_hotkey(id: &str) -> Option<String> {
+    Chord::parse(id).filter(|c| c.rejection(LINUX).is_none()).map(|_| id.to_owned())
+}
+
+fn same_key(held: Option<&String>, chord: &str) -> bool {
+    held.is_some_and(|h| h == chord || (Chord::parse(h).is_some() && Chord::parse(h) == Chord::parse(chord)))
+}
+
+pub fn hotkey_label(id: &str) -> String {
+    Chord::parse(id).map(|c| c.label(LINUX)).unwrap_or_else(|| id.to_owned())
 }

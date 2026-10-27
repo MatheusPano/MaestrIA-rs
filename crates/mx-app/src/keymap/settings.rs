@@ -61,5 +61,8 @@ pub fn apply(store: &mut Store, action: &SettingsAction) -> bool {
     if let Some(text) = banner {
         store.show_banner(&text);
     }
+    if let SettingsAction::Bind { chord, .. } = action {
+        store.release_hotkey(chord);
+    }
     true
 }

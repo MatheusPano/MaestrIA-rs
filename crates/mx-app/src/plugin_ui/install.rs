@@ -2,11 +2,11 @@ use gpui::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, Styled, Subscription, Window, div, px,
 };
-use mx_plugins::registry::{installed_banner, trust_facts, trust_headline};
 use mx_plugins::{PluginInfo, StagedPlugin};
 
+use super::trust::{announce, finish, trust_body, trust_button, trust_title};
 use super::widgets::{Close, barrier, card, text_button, title};
-use crate::app::host::{StoreHost, update_store};
+use crate::app::host::StoreHost;
 use crate::chrome::dialog::confirm::Confirm;
 use crate::chrome::dialog::frame::BARRIER;
 use crate::chrome::icon;
@@ -15,14 +15,6 @@ use crate::chrome::style::{hsla, theme};
 use crate::chrome::widgets::{ButtonKind, TextField, TextFieldEvent};
 
 pub const INSTALL_TITLE: &str = "Instalar plugin";
-
-pub fn trust_title(name: &str, updating: bool) -> String {
-    if updating { format!("Atualizar {name}?") } else { format!("Instalar {name}?") }
-}
-
-pub fn trust_button(updating: bool) -> &'static str {
-    if updating { "Confio, atualizar" } else { "Confio, instalar" }
-}
 
 pub fn uninstall_text(linked: bool, dir: &str) -> String {
     if linked {
@@ -112,11 +104,7 @@ impl InstallDialog {
 
     fn commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Step::Trust(staged) = std::mem::replace(&mut self.step, Step::Installing) else { return };
-        let Some(r) = self.host.read(cx).store.plugins().cloned() else { return };
-        let task = self.host.read(cx).rt().spawn(async move {
-            let out = r.commit(&staged).await;
-            (out, staged)
-        });
+        let task = finish(&self.host, staged, cx);
         cx.notify();
         let close = self.close.clone();
         let host = self.host.clone();
@@ -125,9 +113,7 @@ impl InstallDialog {
             let Ok((outcome, staged)) = task.await else { return };
             match outcome {
                 Ok(info) => {
-                    let version = info.manifest.as_ref().map(|m| m.version.clone()).unwrap_or_default();
-                    let banner = installed_banner(info.name(), &version, staged.replacing.as_deref());
-                    cx.update(|cx| update_store(&host, cx, |s| s.plugin_installed(&info.id, &banner))).ok();
+                    cx.update(|cx| announce(&host, &info, &staged, cx)).ok();
                     window_handle.update(cx, |_, window, cx| close(window, cx)).ok();
                 }
                 Err(e) => {
@@ -175,17 +161,8 @@ impl InstallDialog {
                 (INSTALL_TITLE.to_owned(), col.into_any_element(), vec![cancel, go])
             }
             Step::Trust(staged) => {
-                let m = &staged.manifest;
                 let updating = staged.replacing.is_some();
-                let mut col = div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.))
-                    .child(div().font_family("Hack").text_size(px(11.5)).text_color(hsla(t.fg_dim)).child(trust_headline(m, staged.replacing.as_deref())))
-                    .child(div().text_size(px(13.)).text_color(hsla(t.fg)).child(m.description.clone()));
-                for f in trust_facts(m, crate::keymap::LINUX) {
-                    col = col.child(div().text_size(px(12.5)).text_color(hsla(t.fg_dim)).child(format!("• {f}")));
-                }
+                let col = trust_body(staged, &t);
                 let back = {
                     let me = me.clone();
                     text_button("install-back", "Voltar", hsla(t.accent), None, move |_, cx| {
@@ -195,7 +172,7 @@ impl InstallDialog {
                 let go = text_button("install-trust", trust_button(updating), hsla(t.on_accent()), Some(hsla(t.accent)), move |w, cx| {
                     me.update(cx, |d, cx| d.commit(w, cx)).ok();
                 });
-                (trust_title(&m.name, updating), col.into_any_element(), vec![back, go])
+                (trust_title(&staged.manifest.name, updating), col.into_any_element(), vec![back, go])
             }
             Step::Installing => (INSTALL_TITLE.to_owned(), div().text_size(px(12.)).text_color(hsla(t.fg_faint)).child("Instalando…").into_any_element(), vec![]),
         }
@@ -240,14 +217,6 @@ impl Render for InstallDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_trust_screen_says_install_or_update() {
-        assert_eq!(trust_title("Docker", false), "Instalar Docker?");
-        assert_eq!(trust_title("Docker", true), "Atualizar Docker?");
-        assert_eq!(trust_button(false), "Confio, instalar");
-        assert_eq!(trust_button(true), "Confio, atualizar");
-    }
 
     #[test]
     fn removing_a_linked_plugin_keeps_the_dev_folder() {

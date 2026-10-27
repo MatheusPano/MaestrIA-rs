@@ -1,6 +1,6 @@
 # 01 — Core state & persistence (behavioral spec)
 
-Source of truth (read-only): `/home/lucas/maestria/repo`
+Source of truth (read-only): `~/maestria/repo`
 - `lib/services/store.dart` (the `AppStore`, 5200 lines)
 - `lib/models.dart`
 - `lib/services/{workspace,layout,history,paths,shell,git,editor,agents}.dart`

@@ -32,3 +32,15 @@ pub use session::{
 pub use signals::GRACE;
 pub use snapshot::{CellStyle, CursorKind, Marks, SnapCell, SnapCursor, Snapshot};
 pub use spawn::{Launch, SpawnPlan, TERM};
+mod session_api;
+mod trust;
+pub use session_api::{KEY_GAP, key_text};
+pub use trust::asks_trust;
+mod rows;
+mod reflow;
+mod find;
+mod find_session;
+mod sticky;
+pub use find::{FIND_LIMIT, Hit, find_in_rows};
+pub use find_session::{FindSession, Viewport};
+pub use rows::{CellPos, Row, RowCell};

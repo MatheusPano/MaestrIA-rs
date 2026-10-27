@@ -2,6 +2,7 @@ mod blocks;
 pub mod demo;
 mod header;
 mod inline;
+pub mod select;
 mod style;
 mod table;
 
@@ -21,12 +22,12 @@ use mx_claude::markdown::{MdNode, parse_markdown};
 use mx_theme::Theme;
 
 pub use header::Action;
+pub use blocks::Painter;
+pub use inline::FollowHref;
+pub use style::{BASE_SIZE, SANS, Sheet};
 
-use blocks::Painter;
 use header::{Glyph, HeaderButton, header, notice, source_glyph};
 use crate::app::icons::Icon;
-use inline::FollowHref;
-use style::{SANS, Sheet};
 
 const PULSE: Duration = Duration::from_millis(1500);
 const COLUMN: f32 = 760.;
@@ -73,6 +74,7 @@ pub struct ReaderView {
     width: Rc<Cell<Pixels>>,
     poll: Option<Task<()>>,
     focus: FocusHandle,
+    selection: select::SelectionSlot,
 }
 
 impl Focusable for ReaderView {
@@ -101,6 +103,7 @@ impl ReaderView {
             width: Rc::new(Cell::new(px(COLUMN))),
             poll: None,
             focus: cx.focus_handle(),
+            selection: select::SelectionSlot::default(),
         };
         view.set_doc(doc, cx);
         view
@@ -316,7 +319,7 @@ impl ReaderView {
         }
     }
 
-    fn body(&self, sheet: &Sheet, window: &mut Window) -> gpui::AnyElement {
+    fn body(&self, sheet: &Sheet, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.doc.missing() {
             let path = self.doc.path.clone().unwrap_or_default();
             return notice(sheet, Glyph::Path("error_outline"), "Esse arquivo não está mais lá", path);
@@ -329,7 +332,16 @@ impl ReaderView {
             };
             return notice(sheet, Glyph::Path("description_outlined"), title, self.doc.path.clone().unwrap_or_default());
         }
-        let painter = Painter::new(sheet, self.follower(), window.text_system().clone(), self.width.get());
+        self.selection.borrow_mut().begin_frame();
+        self.selection.borrow_mut().color = Some(sheet.accent.opacity(0.35));
+        let painter = Painter::new(sheet, self.follower(), window.text_system().clone(), self.width.get())
+            .with_selection(Some(self.selection.clone()));
+        let document = painter.document(&self.tree);
+        self.selection.borrow_mut().end_frame();
+        let weak = cx.entity().downgrade();
+        let notify: select::Notify = Rc::new(move |app: &mut App| {
+            weak.update(app, |_, cx| cx.notify()).ok();
+        });
         let width = self.width.clone();
         let probe = canvas(
             move |bounds, window, _| {
@@ -361,12 +373,11 @@ impl ReaderView {
                     .flex()
                     .justify_center()
                     .child(
-                        div()
-                            .relative()
-                            .w_full()
-                            .max_w(px(COLUMN))
-                            .child(probe)
-                            .child(painter.document(&self.tree)),
+                        select::area(
+                            div().relative().w_full().max_w(px(COLUMN)).child(probe).child(document),
+                            &self.selection,
+                            notify,
+                        ),
                     ),
             )
             .into_any_element()
@@ -383,7 +394,7 @@ impl Render for ReaderView {
             SharedString::from(self.subtitle()),
             self.buttons(cx),
         );
-        let body = self.body(&sheet, window);
+        let body = self.body(&sheet, window, cx);
         div()
             .track_focus(&self.focus)
             .size_full()

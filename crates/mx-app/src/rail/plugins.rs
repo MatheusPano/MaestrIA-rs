@@ -73,8 +73,7 @@ pub fn button(mx: &Mx, host: &Entity<StoreHost>, at: usize, item: RailItem) -> A
     let badge: Option<AnyElement> = match &item.badge {
         Some(RailBadge::Busy) => Some(div().size(px(8.)).rounded(px(4.)).bg(mx.accent).border_1().border_color(mx.canvas).into_any_element()),
         Some(RailBadge::Said(text)) => Some(text_badge(mx, text.clone(), mx.accent).into_any_element()),
-        Some(RailBadge::Windows(n)) => Some(text_badge(mx, n.to_string(), mx.fg_faint).into_any_element()),
-        None => None,
+        Some(RailBadge::Windows(_)) | None => None,
     };
     rail_button(mx, SharedString::from(format!("rail-plugin:{}", item.id)), item.current)
         .child(plugin_glyph(item.icon.as_deref(), item.dir.as_deref(), 18., color))

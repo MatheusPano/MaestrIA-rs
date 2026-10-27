@@ -60,8 +60,14 @@ impl Store {
 
     pub(crate) fn view_open(&mut self, p: &PluginInfo, req: ViewOpen) -> String {
         if let Some(slot) = self.find_view(&p.id, &req.view_id) {
+            let modal = matches!(slot, Slot::Modal);
             if let Some(v) = self.view_mut(&slot) {
                 v.apply_open(&req.title, req.blocks, req.rfw.as_ref());
+                if modal {
+                    v.modal_from = req.from.or(v.modal_from.take());
+                } else {
+                    v.set_modal(req.from, req.width, req.height);
+                }
             }
             self.sync_view_title(&slot);
             return match slot {
@@ -80,6 +86,7 @@ impl Store {
         let id = self.next_tab_id();
         let loose = self.loose.clone();
         let mut view = PluginView::new(&p.id, p.name(), &req.view_id, &req.title, req.blocks);
+        view.set_modal(req.from, req.width, req.height);
         if let Some(r) = &req.rfw {
             view.set_rfw(r);
         }
@@ -101,10 +108,17 @@ impl Store {
         let Some(slot) = self.find_view(plugin, &req.view_id) else {
             return false;
         };
+        let mut seen = false;
         if let Some(v) = self.view_mut(&slot) {
+            let retitled = req.title.as_ref().is_some_and(|t| *t != v.title);
+            seen = retitled || v.switches_to(req.blocks.is_some(), req.rfw.as_ref());
             v.apply_update(req.title.as_deref(), req.blocks, req.rfw.as_ref());
         }
-        self.sync_view_title(&slot);
+        if seen {
+            self.sync_view_title(&slot);
+        } else {
+            self.mark(Areas::PLUGINS);
+        }
         true
     }
 
@@ -149,9 +163,11 @@ impl Store {
     }
 
     pub fn close_modal(&mut self) {
-        if self.plugin.modal.take().is_some() {
-            self.mark(Areas::PLUGINS);
+        let Some((_, view)) = self.plugin.modal.take() else { return };
+        if let Some(r) = &self.plugin.registry {
+            r.view_closed(&view.plugin_id, &view.id);
         }
+        self.mark(Areas::PLUGINS);
     }
 
     pub fn modal(&self) -> Option<(&Tab, &PluginView)> {

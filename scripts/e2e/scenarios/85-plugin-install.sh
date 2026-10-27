@@ -10,19 +10,29 @@ wait_staged() {
   sleep 1
 }
 
-ask_and_stage() {
+from_url() {
   click 15 65
+  sleep 1
+  click 764 615
+  sleep 1
+}
+
+ask_and_stage() {
+  from_url
   type_text "$E2E_TMP/sonda"
   key Return
   wait_staged
 }
 
 scenario() {
-  local before ask trust back after
+  local before catalog ask trust back after
   before=$(shot before)
   click 15 65
+  catalog=$(shot catalog)
+  if (($(region_diff "$before" "$catalog" 340 80 600 560) > 5000)); then ok "rail + opened the catalog"; else fail "no catalog (see $catalog)"; fi
+  click 764 615
   ask=$(shot ask)
-  if (($(region_diff "$before" "$ask" 840 280 330 150) > 5000)); then ok "rail + opened Instalar plugin"; else fail "no install dialog (see $ask)"; fi
+  if (($(region_diff "$catalog" "$ask" 340 80 600 560) > 5000)); then ok "De uma URL opened Instalar plugin"; else fail "no install dialog (see $ask)"; fi
   type_text "$E2E_TMP/sonda"
   key Return
   wait_staged

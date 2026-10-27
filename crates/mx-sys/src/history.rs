@@ -76,6 +76,7 @@ pub enum ChatStanding {
     Fresh,
     OnScreen,
     Live,
+    Background,
     Gone,
 }
 
@@ -85,12 +86,13 @@ impl ChatStanding {
             ChatStanding::Fresh => None,
             ChatStanding::OnScreen => Some("já está num painel"),
             ChatStanding::Live => Some("aberta fora daqui"),
+            ChatStanding::Background => Some("em segundo plano · anexar"),
             ChatStanding::Gone => Some("a pasta não existe mais"),
         }
     }
 
     pub fn opens(self) -> bool {
-        self == ChatStanding::Fresh
+        matches!(self, ChatStanding::Fresh | ChatStanding::Background)
     }
 }
 

@@ -10,7 +10,7 @@ use mx_theme::{Color, Theme};
 
 use crate::chrome::icon::{self, Icon, icon};
 use crate::chrome::style::{Handler, alpha, hsla};
-use crate::chrome::widgets::IconButton;
+use crate::chrome::widgets::{IconButton, MxHover};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NoticeView {
@@ -135,9 +135,6 @@ pub fn notice_row(n: &NoticeView, toast: bool, hovered: bool, h: &Rc<RowHandlers
         .flex()
         .items_start()
         .gap(px(10.))
-        .pl(px(12.))
-        .pr(px(6.))
-        .py(px(10.))
         .cursor_pointer()
         .on_click(move |_, w, cx| open(id, w, cx))
         .child(
@@ -146,6 +143,7 @@ pub fn notice_row(n: &NoticeView, toast: bool, hovered: bool, h: &Rc<RowHandlers
         )
         .child(body)
         .child(trailing);
+    row = if toast { row.pl(px(12.)).pr(px(6.)).py(px(10.)) } else { row.pl(px(6.)).pr(px(0.)).py(px(7.)).inset_hover(6., 3., 7., None) };
     if hovered && !n.gone {
         row = row.bg(hsla(t.bg_hover));
     }

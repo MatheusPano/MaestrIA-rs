@@ -8,7 +8,7 @@ use mx_store::DialogAnswer;
 use super::widgets::{PICK_BARRIER, answer, barrier, card, dim};
 use crate::app::host::StoreHost;
 use crate::chrome::style::{hsla, theme};
-use crate::chrome::widgets::{TextField, TextFieldEvent};
+use crate::chrome::widgets::{MxHover, TextField, TextFieldEvent};
 
 fn place(body: impl IntoElement, host: Entity<StoreHost>) -> impl IntoElement {
     barrier(PICK_BARRIER, move |_, cx| answer(&host, DialogAnswer::Text(None), cx))
@@ -83,8 +83,9 @@ impl Render for PickDialog {
             list = list.child(
                 div()
                     .id(("pick", i))
-                    .px(px(16.))
+                    .px(px(10.))
                     .py(px(7.))
+                    .inset_hover(6., 0., 6., None)
                     .flex()
                     .flex_col()
                     .cursor_pointer()

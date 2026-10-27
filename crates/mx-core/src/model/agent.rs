@@ -4,6 +4,7 @@ use crate::json::{get_num, str_of};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AgentInfo {
+    pub id: Option<String>,
     pub pid: Option<i64>,
     pub cwd: String,
     pub kind: String,
@@ -20,6 +21,7 @@ impl AgentInfo {
         let m = v.as_object()?;
         let owned = |k: &str| str_of(m, k).map(str::to_owned);
         Some(AgentInfo {
+            id: owned("id"),
             pid: m.get("pid").and_then(Value::as_i64),
             cwd: owned("cwd").unwrap_or_default(),
             kind: owned("kind").unwrap_or_else(|| "interactive".into()),
