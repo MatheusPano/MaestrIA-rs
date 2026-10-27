@@ -51,10 +51,11 @@ impl RenderOnce for Banner {
             .pt(px(12.))
             .pr(px(8.))
             .pb(px(12.))
-            .child(div().pt(px(1.)).child(icon(icon::INFO_OUTLINE, 16., hsla(t.accent))))
+            .child(div().flex_none().pt(px(1.)).child(icon(icon::INFO_OUTLINE, 16., hsla(t.accent))))
             .child(
                 div()
                     .flex_1()
+                    .min_w_0()
                     .mx(px(10.))
                     .text_size(px(12.5))
                     .line_height(px(17.5))
