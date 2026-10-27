@@ -129,6 +129,7 @@ impl<T: Clone + 'static> ContextMenu<T> {
     fn panel(&self, t: &Theme, max_h: f32, scroll: &ScrollHandle, frame: Frame) -> gpui::Div {
         div()
             .relative()
+            .occlude()
             .bg(hsla(t.bg_active))
             .rounded(px(10.))
             .border_1()

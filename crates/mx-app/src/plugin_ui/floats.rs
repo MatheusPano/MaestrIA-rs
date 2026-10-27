@@ -85,6 +85,7 @@ pub fn render(layer: &mut PluginLayer, window: &mut Window, cx: &mut Context<Plu
         let (grab_key, move_key) = (key.clone(), key.clone());
         let card = div()
             .id(gpui::ElementId::Name(format!("float:{key}").into()))
+            .occlude()
             .w(px(w))
             .h(px(h))
             .rounded(px(RADIUS))
