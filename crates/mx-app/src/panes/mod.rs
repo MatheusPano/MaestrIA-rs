@@ -278,7 +278,6 @@ impl PaneArea {
                     .into_any_element(),
             );
         }
-        let weights = split.weights.clone();
         let container = div()
             .id(SharedString::from(format!("split:{path:?}")))
             .size_full()
@@ -292,7 +291,7 @@ impl PaneArea {
                     cx.notify();
                 }
                 let host = this.host.clone();
-                grip::on_move(&host, &path, &weights, axis, ev, cx)
+                grip::on_move(&host, &path, axis, ev, cx)
             }));
         match axis {
             Axis::Row => container.flex_row(),

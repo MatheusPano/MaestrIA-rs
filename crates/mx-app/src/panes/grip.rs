@@ -88,14 +88,7 @@ fn equalize(host: &Entity<StoreHost>, path: &[usize], gutter: usize, cx: &mut Ap
     });
 }
 
-pub fn on_move(
-    host: &Entity<StoreHost>,
-    path: &[usize],
-    weights: &[f64],
-    axis: Axis,
-    ev: &DragMoveEvent<GripDrag>,
-    cx: &mut Context<PaneArea>,
-) {
+pub fn on_move(host: &Entity<StoreHost>, path: &[usize], axis: Axis, ev: &DragMoveEvent<GripDrag>, cx: &mut Context<PaneArea>) {
     let drag = ev.drag(cx);
     if drag.path != path {
         return;
@@ -106,26 +99,88 @@ pub fn on_move(
         Axis::Row => (b.origin.x, b.size.width, ev.event.position.x),
         Axis::Column => (b.origin.y, b.size.height, ev.event.position.y),
     };
-    let gaps = GAP as f64 * (weights.len().saturating_sub(1)) as f64;
-    let total = f64::from(f32::from(extent)) - gaps;
+    let extent = f64::from(f32::from(extent));
+    let pointer = f64::from(f32::from(at - origin));
+    update_store(host, cx, |s| {
+        let Some(weights) = s.panes_mut().and_then(|p| p.split_at_mut(path)).map(|split| split.weights.clone()) else {
+            return;
+        };
+        if let Some((delta, total)) = pointer_delta(&weights, gutter, extent, pointer) {
+            s.resize_split(path, gutter as isize, delta, total);
+        }
+    });
+}
+
+pub fn pointer_delta(weights: &[f64], gutter: usize, extent: f64, pointer: f64) -> Option<(f64, f64)> {
+    let gaps = GAP as f64 * weights.len().saturating_sub(1) as f64;
+    let total = extent - gaps;
     if total <= 0. {
-        return;
+        return None;
     }
     let edge = boundary(weights, gutter, total) + GAP as f64 / 2.;
-    let delta = f64::from(f32::from(at - origin)) - edge;
-    if delta.abs() < 0.5 {
-        return;
-    }
-    update_store(host, cx, |s| s.resize_split(path, gutter as isize, delta, total));
+    let delta = pointer - edge;
+    (delta.abs() >= 0.5).then_some((delta, total))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mx_core::layout::{PaneNode, PaneSplit};
 
     #[test]
     fn the_first_boundary_sits_after_the_first_weight() {
         assert_eq!(boundary(&[0.5, 0.5], 0, 1000.), 500.);
         assert_eq!(boundary(&[0.25, 0.25, 0.5], 1, 1000.), 508.);
+    }
+
+    fn three_way() -> PaneSplit {
+        let children = ["a", "b", "c"].map(|id| PaneNode::Leaf(id.into())).to_vec();
+        PaneSplit { axis: Axis::Row, weights: vec![1. / 3., 1. / 3., 1. / 3.], children }
+    }
+
+    fn drag_to(split: &mut PaneSplit, gutter: usize, extent: f64, pointer: f64) {
+        if let Some((delta, total)) = pointer_delta(&split.weights, gutter, extent, pointer) {
+            split.resize(gutter as isize, delta, total);
+        }
+    }
+
+    fn edge(split: &PaneSplit, gutter: usize, extent: f64) -> f64 {
+        boundary(&split.weights, gutter, extent - 16.) + 4.
+    }
+
+    #[test]
+    fn a_burst_of_moves_between_frames_lands_the_gutter_under_the_pointer() {
+        let mut split = three_way();
+        let start = edge(&split, 0, 1500.);
+        for step in 1..=10 {
+            drag_to(&mut split, 0, 1500., start - 3. * step as f64);
+        }
+        assert!((edge(&split, 0, 1500.) - (start - 30.)).abs() < 0.5);
+    }
+
+    #[test]
+    fn repeating_the_same_pointer_position_leaves_the_weights_alone() {
+        let mut split = three_way();
+        let target = edge(&split, 1, 1500.) + 80.;
+        drag_to(&mut split, 1, 1500., target);
+        let settled = split.weights.clone();
+        for _ in 0..5 {
+            drag_to(&mut split, 1, 1500., target);
+        }
+        assert_eq!(split.weights, settled);
+    }
+
+    #[test]
+    fn a_steady_drag_never_moves_the_gutter_backwards() {
+        let mut split = three_way();
+        let mut pointer = edge(&split, 0, 1500.);
+        let mut last = pointer;
+        for _ in 0..60 {
+            pointer -= 2.;
+            drag_to(&mut split, 0, 1500., pointer);
+            let now = edge(&split, 0, 1500.);
+            assert!(now <= last + 1e-9, "gutter went back from {last} to {now}");
+            last = now;
+        }
     }
 }

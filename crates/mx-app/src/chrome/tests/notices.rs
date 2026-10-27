@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gpui::{AppContext, TestAppContext};
+use gpui::{AppContext, IntoElement, ParentElement, Render, Styled, TestAppContext, div};
 
 use super::ui::{click, host, redraw};
 use crate::chrome::demo::demo_notices;
-use crate::chrome::notices::{NoticeCenter, NoticeCenterProps, RowHandlers, ToastStack, cascade_total, meta, sentence};
+use crate::chrome::notices::{Banner, NoticeCenter, NoticeCenterProps, RowHandlers, ToastStack, cascade_total, meta, sentence};
 
 fn center(cx: &mut TestAppContext) -> (gpui::Entity<NoticeCenter>, &mut gpui::VisualTestContext, Rc<RefCell<usize>>) {
     let cleared = Rc::new(RefCell::new(0));
@@ -76,4 +76,23 @@ fn finished_notice_reads_current_title_and_verb() {
     let gone = &demo_notices()[3];
     assert_eq!(meta(gone), "maestria · painel fechado · 12min");
     assert_eq!(sentence(gone).0, "Lint sugeriu uma tarefa: Remover código morto");
+}
+
+struct BannerHost;
+
+impl Render for BannerHost {
+    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+        let text = "backapply: o Claude saiu na largada (código 1) — abra o painel pra ver o motivo";
+        div().size_full().flex().flex_col().items_end().child(Banner::new(text, Rc::new(|_, _| {})))
+    }
+}
+
+#[gpui::test]
+fn a_long_banner_wraps_inside_its_max_width(cx: &mut TestAppContext) {
+    let (_, cx) = host(cx, |_, cx| cx.new(|_| BannerHost));
+    cx.executor().advance_clock(Duration::from_millis(300));
+    redraw(cx);
+    let b = cx.debug_bounds("banner:backapply: o Claude saiu na largada (código 1) — abra o painel pra ver o motivo").expect("banner drawn");
+    assert!(f32::from(b.size.width) <= 460.);
+    assert!(f32::from(b.size.height) > 24. + 17.5 * 1.5, "text did not wrap: {b:?}");
 }

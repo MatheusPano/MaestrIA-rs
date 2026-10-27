@@ -1,12 +1,12 @@
-Cockpit para sessões do Claude Code: painéis lado a lado, worktrees do git por
-tarefa e um leitor de markdown pro que as sessões escrevem.
+Cockpit para sessões do Claude Code, reescrito em Rust. Instala como
+`maestria-rs`, ao lado da versão em Flutter, sem substituí-la.
 
 ## Baixar
 
 | | arquivo |
 |---|---|
 | **macOS** (Intel e Apple Silicon) | `maestria_*_macos.dmg` |
-| **Linux** (Ubuntu 22.04+, Mint, Pop!_OS) | `maestria_*_amd64.deb` |
+| **Linux** (Ubuntu 22.04+, Mint, Pop!_OS) | `maestria-rs_*_amd64.deb` |
 
 ## Antes de tudo: o Claude Code
 
@@ -37,14 +37,13 @@ aviso que aparece logo depois da tentativa recusada.)
 ## Linux
 
 ```
-sudo apt install ./maestria_*_amd64.deb
+sudo apt install ./maestria-rs_*_amd64.deb
 ```
 
-O apt puxa o que falta. Depois é "maestria" no menu de aplicativos, ou
-`maestria` no terminal. Detalhes e as diferenças em relação ao Mac estão em
-[INSTALAR.md](https://github.com/MatheusPano/MaestrIA/blob/main/packaging/linux/INSTALAR.md).
+O apt puxa o que falta. Depois é "MaestrIA (Rust)" no menu de aplicativos, ou
+`maestria-rs` no terminal.
 
 ## Primeiro uso
 
 Não vem com pasta nenhuma: **adicionar pasta** e aponte pra um repo git seu. As
-configurações ficam em `~/.maestria/config.json`.
+configurações ficam em `~/.maestria-rs/config.json`.
