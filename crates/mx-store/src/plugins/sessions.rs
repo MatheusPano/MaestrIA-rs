@@ -24,7 +24,13 @@ impl ChatLister {
             .await
             .into_iter()
             .map(|c| {
-                let folder = self.roots.iter().find(|r| inside(&c.cwd, r)).cloned().unwrap_or_default();
+                let folder = self
+                    .roots
+                    .iter()
+                    .filter(|r| inside(&c.cwd, r))
+                    .max_by_key(|r| r.len())
+                    .cloned()
+                    .unwrap_or_default();
                 let at: DateTime<Local> = c.at.into();
                 ChatJson {
                     session_id: c.session_id.clone(),

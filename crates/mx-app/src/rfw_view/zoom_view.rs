@@ -17,7 +17,8 @@ use super::layout::{Ctx, El, Fit, fire, owned, stretch_self};
 use super::view::RfwView;
 use super::widgets_core::optional;
 
-const WHEEL_NOTCH: f64 = 100.0;
+// gpui reports a wheel notch as 3 lines; Flutter on Linux scrolls 53 px per notch.
+const WHEEL_LINE_PX: f64 = 53.0 / 3.0;
 const DEFAULT_TEXT: f32 = 13.0;
 
 thread_local! {
@@ -150,9 +151,17 @@ impl Reporter {
     }
 }
 
+// gpui drops window.refresh() calls made while the frame is being drawn.
+fn refresh_after_draw(window: &Window, cx: &mut App) {
+    let handle = window.window_handle();
+    cx.defer(move |cx| {
+        handle.update(cx, |_, window, _| window.refresh()).ok();
+    });
+}
+
 fn line_delta(delta: ScrollDelta) -> (f64, bool) {
     match delta {
-        ScrollDelta::Lines(p) => (-f64::from(p.y) * WHEEL_NOTCH, true),
+        ScrollDelta::Lines(p) => (-f64::from(p.y) * WHEEL_LINE_PX, true),
         ScrollDelta::Pixels(p) => (-f64::from(f32::from(p.y)), false),
     }
 }
@@ -168,8 +177,8 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
     };
     let s = m.scale as f32;
     let inner = with_scale(s, || cx.within(true, |cx| optional(cx, z.child, Fit::BOTH)));
-    let mut layer = cx.el().absolute().left(px(m.x as f32)).top(px(m.y as f32)).w(relative(s)).h(relative(s));
-    layer = layer.text_size(px(DEFAULT_TEXT * s)).flex().flex_col();
+    let mut layer = cx.within(false, |cx| cx.el()).absolute().left(px(m.x as f32)).top(px(m.y as f32));
+    layer = layer.w(relative(s)).h(relative(s)).text_size(px(DEFAULT_TEXT * s)).flex().flex_col();
     if let Some(i) = inner {
         layer = layer.child(super::layout::grow(i, 1.0));
     }
@@ -188,7 +197,7 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
                 window.request_animation_frame();
                 probe_reporter.changed(window.window_handle(), cx);
             } else if resized {
-                window.refresh();
+                refresh_after_draw(window, cx);
             }
         },
         |_, _, _, _| {},
@@ -275,13 +284,13 @@ pub fn fitted(cx: &mut Ctx, f: &FittedBox, fit: Fit) -> El {
     let used = s;
     let child_slot = slot.clone();
     let child_probe = canvas(
-        move |bounds, window: &mut Window, _| {
+        move |bounds, window: &mut Window, cx: &mut App| {
             let n = (f32::from(bounds.size.width) / used, f32::from(bounds.size.height) / used);
             let mut st = child_slot.borrow_mut();
             let fresh = st.natural.is_none_or(|o| (o.0 - n.0).abs() > 0.5 || (o.1 - n.1).abs() > 0.5);
             if fresh && n.0 > 0.0 && n.1 > 0.0 {
                 st.natural = Some(n);
-                window.refresh();
+                refresh_after_draw(window, cx);
             }
         },
         |_, _, _, _| {},
@@ -290,18 +299,19 @@ pub fn fitted(cx: &mut Ctx, f: &FittedBox, fit: Fit) -> El {
     .top_0()
     .left_0()
     .size_full();
-    let mut layer = cx.el().absolute().left(px(left)).top(px(top)).text_size(px(DEFAULT_TEXT * s));
+    let mut layer = cx.within(false, |cx| cx.el()).absolute().left(px(left)).top(px(top));
+    layer = layer.text_size(px(DEFAULT_TEXT * s));
     if !measured {
         layer = layer.opacity(0.0);
     }
     layer = layer.children(inner).child(child_probe);
     let outer_probe = canvas(
-        move |bounds, window: &mut Window, _| {
+        move |bounds, window: &mut Window, cx: &mut App| {
             let o = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let mut st = slot.borrow_mut();
             if st.outer != Some(o) {
                 st.outer = Some(o);
-                window.refresh();
+                refresh_after_draw(window, cx);
             }
         },
         |_, _, _, _| {},
@@ -316,3 +326,7 @@ pub fn fitted(cx: &mut Ctx, f: &FittedBox, fit: Fit) -> El {
     }
     stretch_self(el)
 }
+
+#[cfg(test)]
+#[path = "zoom_view_tests.rs"]
+mod tests;

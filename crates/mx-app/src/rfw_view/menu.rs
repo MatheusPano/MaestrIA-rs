@@ -55,6 +55,7 @@ pub fn color_dot(color: Option<Hsla>, p: &Palette) -> gpui::Div {
 
 fn panel(p: &Palette) -> gpui::Div {
     div()
+        .occlude()
         .min_w(px(MENU_WIDTH))
         .max_w(px(MENU_MAX_WIDTH))
         .py(px(5.0))

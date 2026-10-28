@@ -95,9 +95,24 @@ fn a_view_shown_again_repaints_on_new_output(cx: &mut TestAppContext) {
     let shown = host.read_with(vcx, |h, _| h.0.clone().unwrap());
     for word in ["one", "two"] {
         session.feed(format!("\r{word}").as_bytes());
-        vcx.run_until_parked();
+        vcx.executor().advance_clock(Duration::from_millis(50));
         assert_eq!(first_row(&shown, vcx), word);
     }
+}
+
+#[gpui::test]
+fn streaming_output_is_drawn_on_the_next_output_frame(cx: &mut TestAppContext) {
+    let session = TerminalSession::new(SIZE, TerminalPalette::default(), 100);
+    let (_host, view, vcx) = mount(cx, &session);
+    vcx.executor().advance_clock(Duration::from_millis(200));
+    session.feed(b"\rone");
+    vcx.run_until_parked();
+    assert_eq!(first_row(&view, vcx), "one");
+    session.feed(b"\rtwo");
+    vcx.run_until_parked();
+    assert_eq!(first_row(&view, vcx), "one");
+    vcx.executor().advance_clock(Duration::from_millis(50));
+    assert_eq!(first_row(&view, vcx), "two");
 }
 
 #[gpui::test]

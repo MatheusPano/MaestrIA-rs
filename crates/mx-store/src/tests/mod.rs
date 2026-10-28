@@ -11,6 +11,7 @@ mod plugin_live;
 mod plugin_screen;
 mod plugins;
 mod readers;
+mod replace_pane;
 mod reorder;
 mod rested;
 mod search;

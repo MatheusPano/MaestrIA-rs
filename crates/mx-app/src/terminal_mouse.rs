@@ -21,6 +21,10 @@ fn mods(m: &gpui::Modifiers) -> mx_term::Mods {
     mx_term::Mods { ctrl: m.control, alt: m.alt, shift: m.shift, platform: m.platform }
 }
 
+fn is_link_click(press: &Press, moved: f32) -> bool {
+    !press.selecting && press.clicks == 1 && moved <= CLICK_SLOP
+}
+
 impl TerminalView {
     fn cell(&self, position: Point<Pixels>) -> (usize, usize, bool) {
         let st = self.render.borrow();
@@ -94,10 +98,9 @@ impl TerminalView {
         let (col, row, _) = self.cell(event.position);
         if press.reporting {
             self.session.mouse_report(MouseButton::Left, MouseAction::Release, col, row, mods(&event.modifiers));
-            return;
         }
         let moved = (event.position - press.at).magnitude() as f32;
-        if press.selecting || press.clicks > 1 || moved > CLICK_SLOP {
+        if !is_link_click(&press, moved) {
             return;
         }
         if let Some(href) = self.session.link_at(col, row, self.cwd.as_deref()) {
@@ -129,5 +132,28 @@ impl TerminalView {
             }
         }
         cx.stop_propagation();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::point;
+
+    fn press(reporting: bool, selecting: bool, clicks: usize) -> Press {
+        Press { at: point(px(0.), px(0.)), reporting, selecting, clicks, cell: (0, 0) }
+    }
+
+    #[test]
+    fn a_still_single_click_follows_links_even_when_the_app_reports_the_mouse() {
+        assert!(is_link_click(&press(false, false, 1), 0.));
+        assert!(is_link_click(&press(true, false, 1), CLICK_SLOP));
+    }
+
+    #[test]
+    fn drags_selections_and_multi_clicks_do_not_follow_links() {
+        assert!(!is_link_click(&press(true, false, 1), CLICK_SLOP + 1.));
+        assert!(!is_link_click(&press(false, true, 1), 0.));
+        assert!(!is_link_click(&press(false, false, 2), 0.));
     }
 }

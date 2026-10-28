@@ -76,13 +76,12 @@ assets = [
 ]
 
 [package.metadata.bundle]
-name = "MaestrIA"
-identifier = "br.com.marrow.maestria"
+name = "MaestrIA-rs"
+identifier = "br.com.marrow.maestria-rs"
 icon = ["assets/icons/32.png", "assets/icons/64.png", "assets/icons/128.png", "assets/icons/256.png", "assets/icons/512.png", "assets/icons/1024.png"]
 copyright = "Copyright © 2026 br.com.marrow. All rights reserved."
 category = "public.app-category.developer-tools"
 short_description = "Cockpit para sessões do Claude Code"
-osx_minimum_system_version = "12.0"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
