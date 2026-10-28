@@ -397,3 +397,33 @@ fn markdown_paths_are_recognised_by_extension() {
     assert!(is_markdown_path("notas.markdown"));
     assert!(!is_markdown_path("/a.md/x.txt"));
 }
+
+#[test]
+fn context_usage_reads_a_full_claude_code_statusline_payload() {
+    let j = json!({
+        "hook_event_name": "Status",
+        "session_id": "0b3c6f1e-4c7a-4f0e-9d2b-1f6f7f1d2a33",
+        "transcript_path": "/home/u/.claude/projects/-home-u-proj/0b3c6f1e.jsonl",
+        "cwd": "/home/u/proj",
+        "model": {"id": "claude-opus-4-1", "display_name": "Opus"},
+        "workspace": {"current_dir": "/home/u/proj", "project_dir": "/home/u/proj"},
+        "version": "2.1.31",
+        "output_style": {"name": "default"},
+        "cost": {"total_cost_usd": 0.4213, "total_duration_ms": 45000, "total_api_duration_ms": 2300,
+            "total_lines_added": 156, "total_lines_removed": 23},
+        "exceeds_200k_tokens": false,
+        "context_window": {
+            "total_input_tokens": 15234, "total_output_tokens": 4521, "context_window_size": 200000,
+            "used_percentage": 64.2, "remaining_percentage": 35.8,
+            "current_usage": {"input_tokens": 8500, "output_tokens": 1200,
+                "cache_creation_input_tokens": 5000, "cache_read_input_tokens": 114900}
+        }
+    });
+    assert_eq!(
+        ContextUsage::from_statusline(&j),
+        Some(ContextUsage { percent: 64, tokens: 128400, window: 200000 })
+    );
+    let fresh = json!({"context_window": {"context_window_size": 200000, "used_percentage": null,
+        "remaining_percentage": null, "current_usage": null}});
+    assert_eq!(ContextUsage::from_statusline(&fresh), None);
+}
