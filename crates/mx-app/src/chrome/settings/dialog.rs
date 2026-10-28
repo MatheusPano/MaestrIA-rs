@@ -41,6 +41,7 @@ fn section_icon(s: Section) -> Icon {
         Section::Programs => icon::ROCKET_LAUNCH_OUTLINED,
         Section::Plugins => icon::EXTENSION_OUTLINED,
         Section::Sessions => icon::BEDTIME_OUTLINED,
+        Section::Updates => icon::SYSTEM_UPDATE_ALT_ROUNDED,
         Section::Account => icon::SPEED_OUTLINED,
     }
 }
@@ -227,6 +228,7 @@ impl SettingsDialog {
             Section::Programs => super::programs::page(self, cx),
             Section::Plugins => super::plugins::page(self, cx),
             Section::Sessions => super::programs::sessions(self, cx),
+            Section::Updates => super::updates::page(self, cx),
             Section::Account => super::account::page(self, cx),
         }
     }

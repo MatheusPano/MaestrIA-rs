@@ -62,6 +62,15 @@ nem ícone, e o mesmo nome `maestria` pode encobrir o da versão em Flutter no
 PATH. No Linux com ibus, rode `XMODIFIERS= maestria` (o `.deb` já faz isso)
 pra evitar letras duplicadas sob carga.
 
+## Atualizações
+
+O app pode se atualizar sozinho, se você ligar em **Configurações →
+Atualizações** (vem desligado). Ligado, quando sai versão nova ele baixa em
+segundo plano e mostra o número dela na barra de baixo, ao lado do sino. No Mac
+ela entra quando você fecha o app; no Linux, quando você clica (o sistema pede a
+senha pra instalar o pacote). Nada reinicia sem você pedir. Vale só pro app
+instalado pelo `.deb` ou pelo `.dmg` da release.
+
 ## Primeiro uso
 
 Não vem com pasta nenhuma: **adicionar pasta** e aponte pra um repo git seu. As

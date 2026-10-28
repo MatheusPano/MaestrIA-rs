@@ -12,11 +12,8 @@ serde_json.workspace = true
 chrono.workspace = true
 regex.workspace = true
 nix.workspace = true
-reqwest = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-
-[features]
-self-update = ["dep:reqwest", "dep:sha2"]
+reqwest.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

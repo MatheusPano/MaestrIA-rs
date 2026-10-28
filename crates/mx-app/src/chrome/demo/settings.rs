@@ -6,7 +6,7 @@ use mx_plugins::catalog::PluginKind;
 use mx_theme::{HACK, Typography};
 
 use crate::chrome::settings::{
-    Account, ChordCheck, KeyPress, LauncherRow, PluginAuto, PluginRow, PluginState, RowUpdate, Section, SettingsData,
+    Account, AppUpdates, ChordCheck, KeyPress, LauncherRow, PluginAuto, PluginRow, PluginState, RowUpdate, Section, SettingsData,
     SettingsDialog, ShortcutRow, UsageWindow, fixed_rows,
 };
 
@@ -56,6 +56,7 @@ pub fn data() -> SettingsData {
         ],
         plugin_auto: PluginAuto { on: true, checking: false, checked_at: Some("14:32".into()), error: None },
         hibernate_minutes: 30,
+        app_updates: AppUpdates { current: "3.0.0".into(), enabled: true, active: false, installs_on_quit: cfg!(target_os = "macos") },
         account: Account::Ready {
             org: "Marrow".into(),
             plan: "Max".into(),
@@ -96,6 +97,7 @@ pub fn scene(_component: &str, _window: &mut Window, cx: &mut App) -> AnyView {
         Ok("programas") => Section::Programs,
         Ok("plugins") => Section::Plugins,
         Ok("sessoes") => Section::Sessions,
+        Ok("atualizacoes") => Section::Updates,
         Ok("conta") => Section::Account,
         _ => Section::Appearance,
     };

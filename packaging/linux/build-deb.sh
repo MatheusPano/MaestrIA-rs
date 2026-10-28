@@ -7,6 +7,8 @@ set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 HERE="$REPO/packaging/linux"
 RUST_VERSION="${RUST_VERSION:-1.93.0}"
+MAESTRIA_VERSION="${MAESTRIA_VERSION:-$(cd "$REPO" && sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)}"
+export MAESTRIA_VERSION
 
 if [ "${NATIVE:-0}" = 1 ]; then
   command -v cargo-deb >/dev/null || { echo "cargo-deb não instalado -- cargo install cargo-deb" >&2; exit 1; }
@@ -30,6 +32,7 @@ JOBS=()
 
 echo "==> build"
 docker run --rm ${JOBS[@]+"${JOBS[@]}"} \
+  -e "MAESTRIA_VERSION=$MAESTRIA_VERSION" \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp \
   -e CARGO_HOME=/src/target-deb/cargo-home \

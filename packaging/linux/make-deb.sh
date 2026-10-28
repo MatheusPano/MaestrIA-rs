@@ -5,6 +5,10 @@ REPO="${REPO:-/src}"
 DIST="${DIST:-$REPO/packaging/linux/dist}"
 cd "$REPO"
 
+MAESTRIA_VERSION="${MAESTRIA_VERSION:-$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)}"
+export MAESTRIA_VERSION
+echo "==> MAESTRIA_VERSION=$MAESTRIA_VERSION"
+
 mkdir -p "$DIST"
 cargo deb -p mx-app --locked --strip -o "$DIST/" "$@"
 
