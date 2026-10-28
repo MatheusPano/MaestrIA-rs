@@ -69,6 +69,7 @@ fn mount<'a>(cx: &'a mut TestAppContext, session: &TerminalSession) -> (Entity<H
         let view = cx.new(|cx| TerminalView::for_session(s, &TerminalPalette::default(), window, cx));
         Host(Some(view))
     });
+    vcx.update(|window, _| window.activate_window());
     vcx.run_until_parked();
     let view = host.read_with(vcx, |h, _| h.0.clone().unwrap());
     (host, view, vcx)
@@ -113,6 +114,50 @@ fn streaming_output_is_drawn_on_the_next_output_frame(cx: &mut TestAppContext) {
     assert_eq!(first_row(&view, vcx), "one");
     vcx.executor().advance_clock(Duration::from_millis(50));
     assert_eq!(first_row(&view, vcx), "two");
+}
+
+fn frames_drawn_over_a_second(vcx: &mut VisualTestContext, view: &Entity<TerminalView>, session: &TerminalSession) -> usize {
+    let mut drawn = 0;
+    for i in 0..20 {
+        let word = format!("w{i}");
+        session.feed(format!("\r{word}").as_bytes());
+        vcx.executor().advance_clock(Duration::from_millis(50));
+        if first_row(view, vcx) == word {
+            drawn += 1;
+        }
+    }
+    drawn
+}
+
+#[gpui::test]
+fn an_inactive_window_draws_streaming_output_half_as_often(cx: &mut TestAppContext) {
+    let session = TerminalSession::new(SIZE, TerminalPalette::default(), 100);
+    let (_host, view, vcx) = mount(cx, &session);
+    vcx.executor().advance_clock(Duration::from_millis(200));
+    assert!(frames_drawn_over_a_second(vcx, &view, &session) >= 19);
+    vcx.deactivate_window();
+    vcx.executor().advance_clock(Duration::from_millis(200));
+    assert!(frames_drawn_over_a_second(vcx, &view, &session) <= 11);
+}
+
+#[gpui::test]
+fn scrolled_rows_paint_the_text_now_on_them(cx: &mut TestAppContext) {
+    let session = TerminalSession::new(SIZE, TerminalPalette::default(), 100);
+    let (_host, view, vcx) = mount(cx, &session);
+    for batch in 0..4 {
+        for i in 0..7 {
+            session.feed(format!("line {batch}-{i}\r\n").as_bytes());
+        }
+        vcx.executor().advance_clock(Duration::from_millis(50));
+        vcx.run_until_parked();
+        view.read_with(vcx, |v, _| {
+            let st = v.render.borrow();
+            for r in 0..st.rows {
+                let want: String = st.snapshot().row(r).iter().map(|c| c.c).collect();
+                assert_eq!(st.painted_row(r), want.trim_end(), "row {r} after batch {batch}");
+            }
+        });
+    }
 }
 
 #[gpui::test]

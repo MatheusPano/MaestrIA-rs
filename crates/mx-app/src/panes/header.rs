@@ -17,6 +17,7 @@ use crate::app::tooltip::tip;
 
 pub const HEIGHT: f32 = 42.;
 
+#[derive(Clone, PartialEq)]
 pub struct Header {
     id: String,
     title: String,

@@ -1,4 +1,4 @@
-use gpui::{AppContext, Context, Entity, Window};
+use gpui::{App, AppContext, Context, Entity, Window};
 use mx_term::TermRegistry;
 use mx_theme::TerminalPalette;
 
@@ -25,6 +25,14 @@ impl Terminals {
 
     pub fn all(&self) -> Vec<Entity<TerminalView>> {
         self.views.borrow().values().cloned().collect()
+    }
+
+    pub fn repaint_focus_changes(&self, window: &mut Window, cx: &App) {
+        for view in self.views.borrow().values() {
+            if view.read(cx).painted_with_stale_focus(window) {
+                window.invalidate_cached_view(view.entity_id());
+            }
+        }
     }
 
     pub fn shared(&self) -> TermViews {
@@ -61,7 +69,9 @@ impl Terminals {
                 }
             };
             let (size, line) = s.type_size;
-            view.update(cx, |v, cx| v.set_typography(size, line, cx));
+            if view.update(cx, |v, cx| v.set_typography(size, line, cx)) {
+                window.invalidate_cached_view(view.entity_id());
+            }
         }
         self.views.borrow_mut().retain(|id, _| shown.iter().any(|s| &s.id == id));
     }

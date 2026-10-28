@@ -41,7 +41,7 @@ Dev profile: `opt-level=1` for workspace crates, `opt-level=2` for all deps (kee
 
 `gpui` is gpui 0.2.2 copied from crates.io into `vendor/gpui` and wired with
 `[patch.crates-io]` in the root `Cargo.toml` (`exclude = ["vendor"]` keeps it out of the workspace,
-so it builds with the deps profile and without our lints). Two changes. First, in
+so it builds with the deps profile and without our lints). Three changes. First, in
 `src/platform/linux/x11/client.rs` `X11Client::run`:
 
 - **Bug:** the X11 loop is a calloop `Generic` source on the xcb fd, so it only wakes when the
@@ -66,6 +66,29 @@ Second change, in `src/elements/text.rs` `TextLayout::layout`:
   pass the runs cover only the first few bytes and the rest of the line loses its weight/color
   (`ellipsis` texts showed "**pro**ducao…").
 - **Fix:** each measurement truncates a clone of the runs.
+
+Third change, frame cost of a streaming terminal (`src/scene.rs`, `src/bounds_tree.rs`, `src/window.rs`).
+gpui rebuilds the whole scene every frame; with one terminal printing, the CPU went to inserting
+primitives into the `BoundsTree`, sorting the scene and painting every glyph of the grid again.
+
+- **Nested layers** (`Scene::push_layer`): a layer opened inside another reuses the outer order
+  instead of inserting into the `BoundsTree`. Only the terminal nests layers (`ShapedLine::paint`
+  opens one per line inside the grid's `paint_layer`); before, every text run of the grid was a tree
+  insert against everything that overlaps it.
+- **Replay of cached views** (`Scene::replay`, `BoundsTree::insert_span`): a range reused by
+  `AnyView::cached` is inserted into the tree once, as its union bounds reserving as many orders
+  as it spans, and its primitives keep their relative orders shifted by the new base. Before, every
+  replayed primitive was inserted again. Falls back to the old path when replayed inside a layer.
+- **Sprite sort** (`Scene::finish`): sprites use an unstable sort; equal `(order, tile)` keys are
+  the same glyph at the same draw order, which never overlap.
+- **`Window::invalidate_cached_view`**: lets a view re-render a cached child in the frame it is
+  being rendered (a notify during draw only lands in the next frame). Used for pane headers and for
+  terminals whose focus or typography changed.
+- **`Window::record_paint` / `replay_paint`** (`PaintRecording`): keep the primitives painted for a
+  region and insert them again moved to another origin, skipping shaping, raster bounds and atlas
+  lookups. Refuses (returns false/None) on scale change, fractional device-pixel moves, paths,
+  transformed sprites, or a region not fully inside the content mask. The terminal records each row.
+- Not upstream. Drop when gpui gains retained rendering for unchanged subtrees.
 
 ## How the terminal works
 

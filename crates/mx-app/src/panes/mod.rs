@@ -4,6 +4,7 @@ mod drop;
 mod empty;
 mod grip;
 mod header;
+mod header_cache;
 mod plugin_tiles;
 mod session_cards;
 mod terminals;
@@ -41,6 +42,7 @@ pub struct PaneArea {
     bodies: bodies::Bodies,
     layer: Option<Entity<PluginLayer>>,
     watch: Option<Subscription>,
+    headers: HashMap<String, Entity<header_cache::PaneHeader>>,
 }
 
 impl PaneArea {
@@ -58,6 +60,7 @@ impl PaneArea {
             bodies: bodies::Bodies::default(),
             layer: None,
             watch: None,
+            headers: HashMap::new(),
         }
     }
 
@@ -167,7 +170,9 @@ impl PaneArea {
             TabKind::Plugin => view_header::ViewHeader::of(store, id, show_focus, focused)
                 .map(|h| h.lifted(lifted).render(mx, &self.host, Some(settings), 1000.).into_any_element()),
             TabKind::Reader => None,
-            _ => Some(header::Header::of(store, mx, tab, show_focus, focused).lifted(lifted).render(mx, &self.host).into_any_element()),
+            _ => self.cached_header(id).or_else(|| {
+                Some(header::Header::of(store, mx, tab, show_focus, focused).lifted(lifted).render(mx, &self.host).into_any_element())
+            }),
         };
         let (body, padded): (AnyElement, bool) = match kind {
             TabKind::Claude | TabKind::Shell => match self.terminals.get(id) {
@@ -312,13 +317,13 @@ impl Render for PaneArea {
         ids.extend(host.store.tabs().iter().filter(|t| t.embedded).map(|t| t.id.clone()));
         let shown: Vec<terminals::Shown> = ids
             .into_iter()
-            .filter_map(|id| host.store.tab(&id).cloned())
+            .filter_map(|id| host.store.tab(&id))
             .filter(|t| matches!(t.kind, TabKind::Claude | TabKind::Shell))
             .map(|t| terminals::Shown {
                 claude: t.kind == TabKind::Claude,
                 cwd: t.cwd.clone(),
                 type_size: (typo.size_at(t.zoom as i64) as f32, typo.line as f32),
-                id: t.id,
+                id: t.id.clone(),
             })
             .collect();
         let registry = host.terms.clone();
@@ -333,6 +338,7 @@ impl Render for PaneArea {
         };
         self.bodies.sync(&env, window, cx);
         self.follow_focus(window, cx);
+        self.terminals.repaint_focus_changes(window, cx);
         let store = &self.host.read(cx).store;
         let gone: Vec<String> = self.plugin_focus.keys().filter(|id| !store.has_tab(id)).cloned().collect();
         for id in gone {
@@ -343,6 +349,8 @@ impl Render for PaneArea {
         let tree = store.panes().cloned();
         let screen = store.screen().map(str::to_owned);
         let show_focus = store.pane_count() > 1;
+        let ids = tree.as_ref().map(PaneNode::order).unwrap_or_default();
+        self.sync_headers(&ids, show_focus, &mx, window, cx);
         let body = match (tree, screen) {
             (Some(tree), _) => self.node(&tree, Vec::new(), show_focus, &mx, cx),
             (None, Some(plugin)) => empty::empty_screen(&mx, &self.host, &plugin, cx).into_any_element(),

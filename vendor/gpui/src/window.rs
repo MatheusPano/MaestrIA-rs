@@ -11,7 +11,7 @@ use crate::{
     MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PolychromeSprite, PromptButton, PromptLevel, Quad,
     Render, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
-    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, PaintRecording, ScaledPixels, Scene, Shadow,
     SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextStyle, TextStyleRefinement,
     TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
@@ -1315,6 +1315,11 @@ impl Window {
                 break;
             }
         }
+    }
+
+    /// Makes a cached view under the view being rendered re-render in the current frame.
+    pub fn invalidate_cached_view(&mut self, view_id: EntityId) {
+        self.dirty_views.insert(view_id);
     }
 
     /// Registers a callback to be invoked when the window appearance changes.
@@ -2798,6 +2803,49 @@ impl Window {
         }
 
         result
+    }
+
+    /// Runs `f` and keeps what it painted inside `bounds`, or returns `None` when that cannot be
+    /// replayed (content clipped by the current mask, paths, transformed sprites).
+    pub fn record_paint(&mut self, bounds: Bounds<Pixels>, f: impl FnOnce(&mut Self)) -> Option<PaintRecording> {
+        self.invalidator.debug_assert_paint();
+        let start = self.next_frame.scene.paint_operations.len();
+        f(self);
+        let mask = self.content_mask();
+        if bounds.intersect(&mask.bounds) != bounds {
+            return None;
+        }
+        let scale_factor = self.scale_factor();
+        let scaled = bounds.scale(scale_factor);
+        Some(PaintRecording {
+            origin: scaled.origin,
+            size: scaled.size,
+            scale_factor,
+            primitives: self.next_frame.scene.primitives_since(start)?,
+        })
+    }
+
+    /// Paints a recording again with its region moved to `bounds`. Returns false, painting nothing,
+    /// when the move is not a whole number of device pixels or the region is no longer fully visible.
+    pub fn replay_paint(&mut self, recording: &PaintRecording, bounds: Bounds<Pixels>) -> bool {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let mask = self.content_mask();
+        let scaled = bounds.scale(scale_factor);
+        let delta = scaled.origin - recording.origin;
+        if scale_factor != recording.scale_factor
+            || scaled.size != recording.size
+            || delta.x.0.fract() != 0.
+            || delta.y.0.fract() != 0.
+            || bounds.intersect(&mask.bounds) != bounds
+        {
+            return false;
+        }
+        let mask = mask.scale(scale_factor);
+        for primitive in &recording.primitives {
+            self.next_frame.scene.insert_primitive(primitive.shifted(delta, &mask));
+        }
+        true
     }
 
     /// Paint one or more drop shadows into the scene for the next frame at the current z-index.

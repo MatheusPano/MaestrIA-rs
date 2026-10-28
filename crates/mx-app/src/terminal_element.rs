@@ -5,7 +5,7 @@ use std::time::Instant;
 use gpui::{
     App, BorderStyle, Bounds, Element, ElementId, ElementInputHandler, Entity, Font, FontFallbacks,
     FontStyle, FontWeight, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Point, ShapedLine, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
+    PaintRecording, Pixels, Point, ShapedLine, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
     Window, fill, outline, point, px, relative, rgb, size,
 };
 use mx_term::{CellStyle, CursorKind, GridSize, Hit, SnapCell, Snapshot, Viewport};
@@ -57,6 +57,7 @@ struct RowCache {
     bg: Vec<(usize, usize, Rgb)>,
     selected: Vec<(usize, usize)>,
     texts: Vec<(usize, ShapedLine)>,
+    painted: Option<PaintRecording>,
 }
 
 pub struct RenderState {
@@ -68,6 +69,8 @@ pub struct RenderState {
     pub rows: usize,
     pub painted: bool,
     pub painted_at: Option<Instant>,
+    pub window_active: bool,
+    pub painted_focused: bool,
     pub cursor_bounds: Option<Bounds<Pixels>>,
     pub marked: Option<String>,
     pub hits: Vec<HitQuad>,
@@ -88,6 +91,8 @@ impl RenderState {
             rows: 24,
             painted: false,
             painted_at: None,
+            window_active: true,
+            painted_focused: false,
             cursor_bounds: None,
             marked: None,
             hits: Vec::new(),
@@ -112,6 +117,18 @@ impl RenderState {
     #[cfg(test)]
     pub fn snapshot(&self) -> &Snapshot {
         &self.snap
+    }
+
+    #[cfg(test)]
+    pub fn painted_row(&self, r: usize) -> String {
+        let mut out = String::new();
+        for (col, line) in &self.cache[r].texts {
+            while out.chars().count() < *col {
+                out.push(' ');
+            }
+            out.push_str(&line.text);
+        }
+        out
     }
 
     fn invalidate(&mut self) {
@@ -155,10 +172,14 @@ fn color(c: Color) -> Hsla {
 }
 
 pub fn font(bold: bool, italic: bool) -> Font {
+    thread_local! {
+        static FALLBACK_LIST: FontFallbacks =
+            FontFallbacks::from_fonts(FALLBACKS.iter().map(|f| (*f).to_owned()).collect());
+    }
     let mut font = gpui::font(FONT_FAMILY);
     font.weight = if bold { FontWeight::BOLD } else { FontWeight::NORMAL };
     font.style = if italic { FontStyle::Italic } else { FontStyle::Normal };
-    font.fallbacks = Some(FontFallbacks::from_fonts(FALLBACKS.iter().map(|f| (*f).to_owned()).collect()));
+    font.fallbacks = Some(FALLBACK_LIST.with(Clone::clone));
     font
 }
 
@@ -205,6 +226,7 @@ fn rebuild_row(row: &mut RowCache, cells: &[SnapCell], background: Rgb, font_siz
     row.bg.clear();
     row.selected.clear();
     row.texts.clear();
+    row.painted = None;
     let mut col = 0;
     while col < cells.len() {
         let (start, bg) = (col, cells[col].style.bg);
@@ -259,6 +281,29 @@ fn rebuild_row(row: &mut RowCache, cells: &[SnapCell], background: Rgb, font_siz
         row.texts.push((start, shaped));
     }
     row.valid = true;
+}
+
+fn refresh_rows(cache: &mut Vec<RowCache>, snap: &Snapshot, font_size: Pixels, m: CellMetrics, window: &Window) {
+    let mut prev = std::mem::take(cache);
+    cache.resize_with(snap.rows, RowCache::default);
+    let reusable = |old: &RowCache, cells: &[SnapCell]| old.valid && old.cells.as_slice() == cells;
+    let mut shift = 0;
+    for (r, row) in cache.iter_mut().enumerate() {
+        let cells = snap.row(r);
+        let hinted = (r + shift).min(prev.len());
+        let found = prev[hinted..]
+            .first()
+            .filter(|old| reusable(old, cells))
+            .map(|_| hinted)
+            .or_else(|| prev.iter().position(|old| reusable(old, cells)));
+        match found {
+            Some(j) => {
+                *row = std::mem::take(&mut prev[j]);
+                shift = j.saturating_sub(r);
+            }
+            None => rebuild_row(row, cells, snap.background, font_size, m, window),
+        }
+    }
 }
 
 pub struct TerminalElement {
@@ -325,6 +370,7 @@ impl Element for TerminalElement {
         let mut st = render.borrow_mut();
         st.painted = true;
         st.painted_at = Some(cx.background_executor().now());
+        st.window_active = window.is_window_active();
         let t = st.typography;
         let m = match st.metrics {
             Some((key, m)) if key == t => m,
@@ -345,16 +391,8 @@ impl Element for TerminalElement {
         st.origin = point(bounds.origin.x + px(PAD_X), bounds.origin.y + px(PAD_Y));
         st.cols = st.snap.cols;
         st.rows = st.snap.rows;
-        if st.cache.len() != st.rows {
-            st.cache.resize_with(st.rows, RowCache::default);
-        }
         let font_size = px(t.size);
-        for (r, row) in st.cache.iter_mut().enumerate() {
-            let cells = st.snap.row(r);
-            if !row.valid || row.cells.as_slice() != cells {
-                rebuild_row(row, cells, st.snap.background, font_size, m, window);
-            }
-        }
+        refresh_rows(&mut st.cache, &st.snap, font_size, m, window);
         st.hits = if marks.is_empty() { Vec::new() } else { hit_quads(&marks, session.viewport(), st.cols) };
         st.cursor_text = None;
         st.cursor_bounds = None;
@@ -413,7 +451,8 @@ impl Element for TerminalElement {
         let focus = view.focus().clone();
         let focused = focus.is_focused(window);
         let render = view.render().clone();
-        let st = render.borrow();
+        let mut guard = render.borrow_mut();
+        let st = &mut *guard;
         let m = st.cell();
         let origin = st.origin;
         let cell_at = |row: usize, col: usize| point(origin.x + m.width * col as f32, origin.y + m.height * row as f32);
@@ -438,12 +477,22 @@ impl Element for TerminalElement {
                     window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), selection));
                 }
             }
-            for (r, row) in st.cache.iter().enumerate() {
-                for (col, line) in &row.texts {
-                    if let Err(err) = line.paint(cell_at(r, *col), m.height, window, cx) {
-                        log::warn!("terminal line paint failed: {err}");
-                    }
+            let width = m.width * st.cols as f32;
+            for (r, row) in st.cache.iter_mut().enumerate() {
+                if row.texts.is_empty() {
+                    continue;
                 }
+                let area = Bounds::new(cell_at(r, 0), size(width, m.height));
+                if row.painted.as_ref().is_some_and(|rec| window.replay_paint(rec, area)) {
+                    continue;
+                }
+                row.painted = window.record_paint(area, |window| {
+                    for (col, line) in &row.texts {
+                        if let Err(err) = line.paint(cell_at(r, *col), m.height, window, cx) {
+                            log::warn!("terminal line paint failed: {err}");
+                        }
+                    }
+                });
             }
         });
         if let (Some(c), Some(b)) = (st.snap.cursor, st.cursor_bounds)
@@ -477,7 +526,7 @@ impl Element for TerminalElement {
             window.paint_quad(fill(Bounds::new(*at, size(line.width, m.height)), hsla(st.snap.background)));
             let _ = line.paint(*at, m.height, window, cx);
         }
-        drop(st);
+        drop(guard);
         window.handle_input(&focus, ElementInputHandler::new(bounds, self.view.clone()), cx);
     }
 }
