@@ -1,5 +1,6 @@
 mod bodies;
 mod cards_model;
+mod changes;
 mod drop;
 mod empty;
 mod grip;
@@ -10,7 +11,7 @@ mod session_cards;
 mod terminals;
 mod view_header;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gpui::{
     AnyElement, AnyView, App, AppContext, Context, DragMoveEvent, Entity, FocusHandle, Focusable, InteractiveElement,
@@ -24,6 +25,7 @@ use mx_core::model::TabKind;
 use crate::app::drag::DraggedTab;
 use crate::app::host::{StoreChanged, StoreHost, update_store};
 use crate::app::theme::{Mx, RADIUS};
+use crate::chrome::style::{rest_border, seat_shadow};
 use crate::plugin_ui::PluginLayer;
 use crate::plugin_ui::surface::SurfaceEnv;
 
@@ -43,6 +45,8 @@ pub struct PaneArea {
     layer: Option<Entity<PluginLayer>>,
     watch: Option<Subscription>,
     headers: HashMap<String, Entity<header_cache::PaneHeader>>,
+    changes_open: HashSet<String>,
+    changes: HashMap<String, Entity<changes::ChangesView>>,
 }
 
 impl PaneArea {
@@ -61,7 +65,43 @@ impl PaneArea {
             layer: None,
             watch: None,
             headers: HashMap::new(),
+            changes_open: HashSet::new(),
+            changes: HashMap::new(),
         }
+    }
+
+    pub fn toggle_changes(&mut self, id: &str, cx: &mut Context<Self>) {
+        if !self.changes_open.remove(id) {
+            self.changes_open.insert(id.to_owned());
+        }
+        cx.notify();
+    }
+
+    pub fn close_changes(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.changes_open.remove(id) {
+            cx.notify();
+        }
+    }
+
+    fn sync_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let store = &self.host.read(cx).store;
+        self.changes_open.retain(|id| store.is_open(id));
+        let shown: Vec<(String, changes::Shown)> = self
+            .changes_open
+            .iter()
+            .map(|id| (id.clone(), changes::Shown::of(store, id)))
+            .filter(|(_, s)| !s.files.is_empty())
+            .collect();
+        let mut keep = HashMap::new();
+        for (id, s) in shown {
+            let (host, area) = (self.host.clone(), cx.weak_entity());
+            let view = self.changes.remove(&id).unwrap_or_else(|| cx.new(|_| changes::ChangesView::new(host, area, &id)));
+            if view.update(cx, |v, _| v.set(s)) {
+                window.invalidate_cached_view(view.entity_id());
+            }
+            keep.insert(id, view);
+        }
+        self.changes = keep;
     }
 
     pub fn terminal_views(&self) -> crate::plugin_ui::surface::TermViews {
@@ -71,6 +111,9 @@ impl PaneArea {
     pub fn set_palette(&mut self, palette: &mx_theme::TerminalPalette, cx: &mut Context<Self>) {
         for view in self.terminals.all() {
             view.update(cx, |v, cx| v.set_palette(palette, cx));
+        }
+        for view in self.changes.values() {
+            view.update(cx, |_, cx| cx.notify());
         }
     }
 
@@ -171,33 +214,43 @@ impl PaneArea {
                 .map(|h| h.lifted(lifted).render(mx, &self.host, Some(settings), 1000.).into_any_element()),
             TabKind::Reader => None,
             _ => self.cached_header(id).or_else(|| {
-                Some(header::Header::of(store, mx, tab, show_focus, focused).lifted(lifted).render(mx, &self.host).into_any_element())
+                let open = self.changes_open.contains(id);
+                let header = header::Header::of(store, mx, tab, show_focus, focused).lifted(lifted).files_open(open);
+                Some(header.render(mx, &self.host, &cx.weak_entity()).into_any_element())
             }),
         };
-        let (body, padded): (AnyElement, bool) = match kind {
+        let body: AnyElement = match kind {
             TabKind::Claude | TabKind::Shell => match self.terminals.get(id) {
-                Some(view) => (AnyView::from(view).cached(StyleRefinement::default().size_full()).into_any_element(), true),
-                None => (bodies::placeholder(if hibernated { "Hibernada" } else { "" }, mx.fg_faint), true),
+                Some(view) => AnyView::from(view).cached(StyleRefinement::default().size_full()).into_any_element(),
+                None => bodies::placeholder(if hibernated { "Hibernada" } else { "" }, mx.fg_faint),
             },
-            TabKind::Reader => (self.bodies.reader(id).unwrap_or_else(|| bodies::placeholder("", mx.fg_faint)), false),
+            TabKind::Reader => self.bodies.reader(id).unwrap_or_else(|| bodies::placeholder("", mx.fg_faint)),
             TabKind::Plugin => {
                 let body = self
                     .bodies
                     .surface(id)
                     .unwrap_or_else(|| bodies::placeholder(mx_plugins::ui::view::MISSING_PLUGIN, mx.fg_faint));
-                let body = match self.plugin_focus.get(id) {
+                match self.plugin_focus.get(id) {
                     Some(h) => div().size_full().track_focus(h).child(body).into_any_element(),
                     None => body,
-                };
-                (body, false)
+                }
             }
-            TabKind::Setup => (self.bodies.setup(id).unwrap_or_else(|| bodies::placeholder("Configuração do projeto", mx.fg_faint)), false),
+            TabKind::Setup => self.bodies.setup(id).unwrap_or_else(|| bodies::placeholder("Configuração do projeto", mx.fg_faint)),
         };
         let ring = if show_focus && focused {
             mx.accent.opacity(0.65)
         } else {
-            mx.border
+            rest_border(&mx.theme)
         };
+        let side = self.changes.get(id).map(|view| {
+            div()
+                .flex_none()
+                .h_full()
+                .w(relative(changes::SHARE))
+                .min_w(px(changes::MIN_WIDTH))
+                .max_w(px(changes::MAX_WIDTH))
+                .child(AnyView::from(view.clone()).cached(StyleRefinement::default().size_full()))
+        });
         let width = if show_focus && focused { 2. } else { 1. };
         let hint = self
             .hint
@@ -215,6 +268,7 @@ impl PaneArea {
             .flex_col()
             .rounded(px(RADIUS))
             .bg(mx.bg)
+            .shadow(seat_shadow(&mx.theme))
             .overflow_hidden()
             .capture_any_mouse_down(move |_, _, cx: &mut App| {
                 update_store(&focus_host, cx, |s| s.focus_pane(&focus_id))
@@ -236,8 +290,10 @@ impl PaneArea {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(padded, |d| d.px(px(12.)).py(px(10.)))
-                    .child(body),
+                    .flex()
+                    .flex_row()
+                    .child(div().flex_1().min_w_0().h_full().child(body))
+                    .children(side),
             )
             .child(
                 div()
@@ -350,6 +406,7 @@ impl Render for PaneArea {
         let screen = store.screen().map(str::to_owned);
         let show_focus = store.pane_count() > 1;
         let ids = tree.as_ref().map(PaneNode::order).unwrap_or_default();
+        self.sync_changes(window, cx);
         self.sync_headers(&ids, show_focus, &mx, window, cx);
         let body = match (tree, screen) {
             (Some(tree), _) => self.node(&tree, Vec::new(), show_focus, &mx, cx),

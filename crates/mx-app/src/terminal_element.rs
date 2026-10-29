@@ -11,6 +11,7 @@ use gpui::{
 use mx_term::{CellStyle, CursorKind, GridSize, Hit, SnapCell, Snapshot, Viewport};
 use mx_theme::{Color, Rgb};
 
+use crate::app::theme::RADIUS;
 use crate::find_bar::{CURRENT_ALPHA, OTHER_ALPHA};
 use crate::terminal_view::TerminalView;
 
@@ -29,8 +30,9 @@ pub const FALLBACKS: [&str; 12] = [
     "monospace",
     "sans-serif",
 ];
-pub const PAD_X: f32 = 12.0;
-pub const PAD_Y: f32 = 10.0;
+pub const PAD_X: f32 = 18.0;
+pub const PAD_TOP: f32 = 14.0;
+pub const PAD_BOTTOM: f32 = 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Typography {
@@ -195,7 +197,7 @@ fn measure(window: &Window, t: Typography) -> CellMetrics {
 
 fn grid_size(bounds: Bounds<Pixels>, m: CellMetrics, scale: f32) -> GridSize {
     let w = bounds.size.width - px(2. * PAD_X);
-    let h = bounds.size.height - px(2. * PAD_Y);
+    let h = bounds.size.height - px(PAD_TOP + PAD_BOTTOM);
     GridSize {
         cols: (w / m.width).floor().max(2.0) as u16,
         rows: (h / m.height).floor().max(1.0) as u16,
@@ -388,7 +390,7 @@ impl Element for TerminalElement {
         if dirty || resized || st.snap.cols == 0 {
             session.snapshot_into(&mut st.snap);
         }
-        st.origin = point(bounds.origin.x + px(PAD_X), bounds.origin.y + px(PAD_Y));
+        st.origin = point(bounds.origin.x + px(PAD_X), bounds.origin.y + px(PAD_TOP));
         st.cols = st.snap.cols;
         st.rows = st.snap.rows;
         let font_size = px(t.size);
@@ -457,7 +459,8 @@ impl Element for TerminalElement {
         let origin = st.origin;
         let cell_at = |row: usize, col: usize| point(origin.x + m.width * col as f32, origin.y + m.height * row as f32);
         window.paint_layer(bounds, |window| {
-            window.paint_quad(fill(bounds, hsla(st.snap.background)));
+            // Rounded like the pane card it fills edge to edge, or its corners would square the card off.
+            window.paint_quad(fill(bounds, hsla(st.snap.background)).corner_radii(px(RADIUS)));
             for (r, row) in st.cache.iter().enumerate() {
                 for &(col, len, bg) in &row.bg {
                     window.paint_quad(fill(Bounds::new(cell_at(r, col), size(m.width * len as f32, m.height)), hsla(bg)));

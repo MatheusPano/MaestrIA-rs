@@ -2,6 +2,7 @@
 
 mod events;
 mod follow;
+mod frames;
 mod ime;
 mod io;
 mod keys;
@@ -19,6 +20,7 @@ mod text;
 pub use alacritty_terminal::term::TermMode;
 pub use events::{DirtyFlag, Subscriber};
 pub use follow::{LinkFollow, follow_link, url_failed_banner};
+pub use frames::{FRAME_PATIENCE, VtFrameGate};
 pub use ime::{TextInputGuard, TextOrigin};
 pub use keys::{Mods, encode_key, is_slot_chord, is_text_key};
 pub use links::{link_at, local_path, resolve_link_path, trim_tail};

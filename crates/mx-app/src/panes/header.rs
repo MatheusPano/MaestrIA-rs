@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, ClickEvent, ClipboardItem, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    Modifiers, ParentElement, prelude::FluentBuilder, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    px,
+    Modifiers, ParentElement, prelude::FluentBuilder, SharedString, StatefulInteractiveElement, Styled, WeakEntity,
+    Window, div, px,
 };
 use mx_claude::{ChipLevel, ContextUsage};
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
@@ -12,8 +12,10 @@ use crate::app::drag::{DraggedTab, pane_grab};
 use crate::app::host::{StoreHost, update_store};
 use crate::app::icons::{Icon, icon};
 use crate::app::keys;
-use crate::app::theme::Mx;
+use crate::app::theme::{Mx, RADIUS};
 use crate::app::tooltip::tip;
+use crate::chrome::icon as chrome_icon;
+use crate::panes::PaneArea;
 
 pub const HEIGHT: f32 = 42.;
 
@@ -21,6 +23,7 @@ pub const HEIGHT: f32 = 42.;
 pub struct Header {
     id: String,
     title: String,
+    feature: Option<String>,
     branch: Option<String>,
     context: Option<ContextUsage>,
     kind: TabKind,
@@ -40,6 +43,8 @@ pub struct Header {
     folder_root: String,
     grab: bool,
     lifted: bool,
+    files: usize,
+    files_open: bool,
 }
 
 pub fn close_tooltip() -> String {
@@ -55,6 +60,7 @@ impl Header {
         let launcher = t.launcher_id.as_deref().and_then(|l| store.launcher_by_id(l));
         Header {
             id: t.id.clone(),
+            feature: store.feature_of(t).map(|f| f.name.clone()),
             branch: (!t.branch.is_empty() && t.branch != title).then(|| t.branch.clone()),
             context: t.context.filter(|_| t.kind == TabKind::Claude).map(|c| ContextUsage {
                 percent: c.percent,
@@ -83,11 +89,18 @@ impl Header {
             folder_root: t.folder_root.clone(),
             grab: store.pane_count() >= 2,
             lifted: false,
+            files: t.hooks.touched.len(),
+            files_open: false,
         }
     }
 
     pub fn lifted(mut self, lifted: bool) -> Self {
         self.lifted = lifted;
+        self
+    }
+
+    pub fn files_open(mut self, open: bool) -> Self {
+        self.files_open = open;
         self
     }
 
@@ -142,7 +155,7 @@ impl Header {
         })
     }
 
-    pub fn render(self, mx: &Mx, host: &Entity<StoreHost>) -> impl IntoElement {
+    pub fn render(self, mx: &Mx, host: &Entity<StoreHost>, area: &WeakEntity<PaneArea>) -> impl IntoElement {
         let faint = mx.fg_faint;
         let mut buttons: Vec<AnyElement> = Vec::new();
         if let Some(cmd) = &self.relaunch {
@@ -175,24 +188,24 @@ impl Header {
         buttons.push(self.button(mx, ("close", Icon::CloseRounded, faint), close_tooltip(), host, |s, id| s.dismiss(id)));
 
         let lead: AnyElement = match self.kind {
-            TabKind::Claude => claude_avatar(mx, self.status, 22., self.done).into_any_element(),
+            TabKind::Claude => claude_avatar(mx, self.status, 22., self.done, self.hibernated).into_any_element(),
             _ => dot(if self.running { mx.green } else { mx.fg_faint }, 8.).into_any_element(),
         };
-        let mut chips = div().flex().items_center().gap(px(6.)).min_w_0().flex_1();
+        let mut chips: Vec<AnyElement> = Vec::new();
+        if let Some(feature) = &self.feature {
+            chips.push(text_chip(mx.purple, Icon::TrackChanges, div().text_size(px(11.)).child(feature.clone())));
+        }
         if let Some(branch) = &self.branch {
-            chips = chips.child(
-                div()
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(3.))
-                    .child(icon(Icon::CallSplit, 12., mx.fg_dim))
-                    .child(div().font_family("Hack").text_size(px(11.)).text_color(mx.fg_dim).child(branch.clone())),
-            );
+            let muted = mx.fg_muted;
+            chips.push(text_chip(muted, Icon::CallSplit, div().font_family("Hack").text_size(px(11.)).child(branch.clone())));
         }
         if let Some(usage) = &self.context {
-            chips = chips.child(context_chip(mx, &self.id, usage));
+            chips.push(context_chip(mx, &self.id, usage));
         }
+        if self.files > 0 {
+            chips.push(files_chip(mx, &self.id, self.files, self.files_open, area));
+        }
+        let chips = div().flex().items_center().min_w_0().flex_1().children(dotted(mx, chips));
         let fade = if self.dim { 0.55 } else { 1. };
         let drag = DraggedTab {
             id: self.id.clone(),
@@ -207,6 +220,7 @@ impl Header {
             .pr(px(8.))
             .flex()
             .items_center()
+            .rounded_t(px(RADIUS))
             .bg(mx.bg_sidebar)
             .border_b(px(if self.tint.is_some() { 3. } else { 1. }))
             .border_color(self.tint.unwrap_or(mx.border));
@@ -229,6 +243,70 @@ impl Header {
     }
 }
 
+fn dotted(mx: &Mx, items: Vec<AnyElement>) -> Vec<AnyElement> {
+    let mut out = Vec::new();
+    for (i, item) in items.into_iter().enumerate() {
+        if i > 0 {
+            out.push(div().flex_none().px(px(7.)).text_size(px(11.)).text_color(mx.fg_faint).child("·").into_any_element());
+        }
+        out.push(item);
+    }
+    out
+}
+
+fn text_chip(color: Hsla, glyph: Icon, text: gpui::Div) -> AnyElement {
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .child(icon(glyph, 11., color))
+        .child(text.text_color(color))
+        .into_any_element()
+}
+
+pub fn files_label(n: usize) -> String {
+    if n == 1 { "1 arquivo".to_owned() } else { format!("{n} arquivos") }
+}
+
+fn files_chip(mx: &Mx, tab: &str, count: usize, open: bool, area: &WeakEntity<PaneArea>) -> AnyElement {
+    let color = if open { mx.accent } else { mx.fg_dim };
+    let fg = mx.fg;
+    let tooltip = if open { "Esconder as mudanças desta sessão" } else { "Ver as mudanças desta sessão, arquivo por arquivo" };
+    let (area, id) = (area.clone(), tab.to_owned());
+    div()
+        .id(SharedString::from(format!("pane-files:{tab}")))
+        .group("pane-files")
+        .flex_none()
+        .flex()
+        .items_center()
+        .pl(px(6.))
+        .pr(px(6.))
+        .py(px(2.))
+        .rounded(px(5.))
+        .cursor_pointer()
+        .when(open, |d| d.bg(mx.accent.opacity(0.12)))
+        .when(!open, |d| d.hover(|s| s.bg(mx.bg_hover)))
+        .tooltip(tip(tooltip))
+        .on_click(move |_, _, cx: &mut App| {
+            cx.stop_propagation();
+            area.update(cx, |a, cx| a.toggle_changes(&id, cx)).ok();
+        })
+        .child(
+            chrome_icon::icon(chrome_icon::EDIT_OUTLINED, 14., color)
+                .when(!open, |d| d.group_hover("pane-files", move |s| s.text_color(fg))),
+        )
+        .child(div().w(px(4.)))
+        .child(
+            div()
+                .text_size(px(11.))
+                .text_color(color)
+                .when(!open, |d| d.group_hover("pane-files", move |s| s.text_color(fg)))
+                .child(files_label(count)),
+        )
+        .into_any_element()
+}
+
 fn context_chip(mx: &Mx, tab: &str, usage: &ContextUsage) -> AnyElement {
     let color = match usage.chip_level() {
         ChipLevel::Danger => mx.red,
@@ -241,10 +319,7 @@ fn context_chip(mx: &Mx, tab: &str, usage: &ContextUsage) -> AnyElement {
         .flex_none()
         .flex()
         .items_center()
-        .px(px(7.))
         .py(px(3.))
-        .rounded(px(4.))
-        .bg(color.opacity(0.12))
         .tooltip(tip(usage.chip_tooltip()))
         .children((0..5).map(|i| {
             div()

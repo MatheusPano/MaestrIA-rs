@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight, InteractiveElement,
@@ -15,6 +16,12 @@ use crate::chrome::style::{Handler, cb, hsla, theme};
 use crate::chrome::widgets::{Button, ButtonKind, wide_tip};
 
 pub type Validate = Rc<dyn Fn(&KeyPress) -> ChordCheck>;
+
+const VEIL_FADE: Duration = Duration::from_millis(180);
+
+fn veil(s: Section) -> f32 {
+    if s == Section::Appearance { 0.2 } else { 0.5 }
+}
 
 pub struct Recording {
     pub action: String,
@@ -32,6 +39,8 @@ pub struct SettingsDialog {
     pub(super) menu: Option<Entity<ContextMenu<PluginMenuAction>>>,
     pub(super) focus: FocusHandle,
     pub(crate) scroll: ScrollHandle,
+    veil_from: f32,
+    veil_at: Option<Instant>,
 }
 
 fn section_icon(s: Section) -> Icon {
@@ -64,6 +73,8 @@ impl SettingsDialog {
             menu: None,
             focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
+            veil_from: veil(section),
+            veil_at: None,
         }
     }
 
@@ -77,7 +88,22 @@ impl SettingsDialog {
         self.section
     }
 
+    #[cfg(test)]
+    pub fn veil(&self) -> f32 {
+        veil(self.section)
+    }
+
+    fn veil_now(&self, now: Instant) -> (f32, bool) {
+        let to = veil(self.section);
+        let Some(at) = self.veil_at else { return (to, false) };
+        let p = (now.saturating_duration_since(at).as_secs_f32() / VEIL_FADE.as_secs_f32()).min(1.);
+        (self.veil_from + (to - self.veil_from) * p, p < 1.)
+    }
+
     pub fn show(&mut self, section: Section, cx: &mut Context<Self>) {
+        let now = Instant::now();
+        self.veil_from = self.veil_now(now).0;
+        self.veil_at = Some(now);
         self.section = section;
         self.recording = None;
         self.scroll.set_offset(gpui::point(px(0.), px(0.)));
@@ -187,8 +213,8 @@ impl SettingsDialog {
                 .py(px(8.))
                 .rounded(px(7.))
                 .cursor_pointer()
-                .when_bg(on, hsla(t.bg_active))
-                .hover(|st| st.bg(hsla(t.bg_hover)))
+                .when_bg(on, hsla(t.bg_selected()))
+                .when_hover(!on, hsla(t.bg_hover))
                 .child(icon(section_icon(s), 15., hsla(if on { t.accent } else { t.fg_dim })))
                 .child(
                     div()
@@ -246,6 +272,14 @@ trait When: Styled + Sized {
 
 impl<E: Styled> When for E {}
 
+trait WhenHover: InteractiveElement + Styled + Sized {
+    fn when_hover(self, on: bool, c: gpui::Hsla) -> Self {
+        if on { self.hover(move |st| st.bg(c)) } else { self }
+    }
+}
+
+impl<E: InteractiveElement + Styled> WhenHover for E {}
+
 pub fn heading(title: &str, hint: Option<&str>, info: bool, trailing: Option<AnyElement>, cx: &App) -> AnyElement {
     let t = theme(cx);
     let title_s = title.to_owned();
@@ -279,6 +313,10 @@ impl Render for SettingsDialog {
         let vp = window.viewport_size();
         let w = 800f32.min(f32::from(vp.width) - 56.);
         let h = 620f32.min(f32::from(vp.height) - 56.);
+        let (dim, fading) = self.veil_now(Instant::now());
+        if fading {
+            window.request_animation_frame();
+        }
         let footer = div()
             .flex()
             .items_center()
@@ -288,7 +326,7 @@ impl Render for SettingsDialog {
             .border_color(hsla(t.border))
             .child(div().flex_1().text_size(px(11.)).text_color(hsla(t.fg_faint)).child("Tudo aqui vale na hora"))
             .child(Button::new("settings-done", "Pronto", ButtonKind::Text).on_click(cb(me, |this, w, cx| this.act(SettingsAction::Close, w, cx))));
-        barrier(0x0000_0033, Some(close))
+        barrier((dim * 255.).round() as u32, Some(close))
             .child(
                 card(&t, 12.)
                     .debug_selector(|| "settings".into())

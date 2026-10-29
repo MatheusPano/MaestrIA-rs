@@ -15,6 +15,7 @@ use mx_theme::TerminalPalette;
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
 use crate::events::Fanout;
+use crate::frames::VtFrameGate;
 use crate::scrubber::VtScrubber;
 use crate::session::{GridSize, TermEvent};
 use crate::sticky::StickyClock;
@@ -154,42 +155,67 @@ pub(crate) type SharedTerm = Arc<FairMutex<Term<Proxy>>>;
 #[derive(Default)]
 pub(crate) struct Feeder {
     scrubber: VtScrubber,
+    frames: VtFrameGate,
     parser: Processor,
     buf: Vec<u8>,
+    out: Vec<u8>,
     generation: u64,
 }
 
 impl Feeder {
-    pub fn adopt(&mut self, generation: u64) {
+    pub fn adopt(&mut self, generation: u64, term: &SharedTerm, port: &Port) {
         self.generation = generation;
+        self.out.clear();
+        self.frames.flush(&mut self.out);
+        self.advance(term, port);
     }
 
     fn feed_from(&mut self, generation: u64, term: &SharedTerm, port: &Port, bytes: &[u8]) {
-        if generation == self.generation {
-            self.feed(term, port, bytes);
-        }
-    }
-
-    pub fn feed(&mut self, term: &SharedTerm, port: &Port, bytes: &[u8]) {
-        self.buf.clear();
-        self.scrubber.scrub_into(bytes, &mut self.buf);
-        if self.buf.is_empty() {
+        if generation != self.generation {
             return;
         }
-        self.parser.advance(&mut *term.lock(), &self.buf);
-        if self.parser.sync_bytes_count() < self.buf.len() {
+        self.buf.clear();
+        self.scrubber.scrub_into(bytes, &mut self.buf);
+        self.out.clear();
+        self.frames.feed(&self.buf, Instant::now(), &mut self.out);
+        self.advance(term, port);
+    }
+
+    /// The app's own lines, after whatever frame the pty left open.
+    pub fn feed(&mut self, term: &SharedTerm, port: &Port, bytes: &[u8]) {
+        self.out.clear();
+        self.frames.flush(&mut self.out);
+        self.scrubber.scrub_into(bytes, &mut self.out);
+        self.advance(term, port);
+    }
+
+    fn advance(&mut self, term: &SharedTerm, port: &Port) {
+        if self.out.is_empty() {
+            return;
+        }
+        self.parser.advance(&mut *term.lock(), &self.out);
+        if self.parser.sync_bytes_count() < self.out.len() {
             port.wake();
         }
         port.sticky.written();
     }
 
-    fn sync_deadline(&self) -> Option<Instant> {
-        self.parser.sync_timeout().sync_timeout()
+    fn deadline(&self) -> Option<Instant> {
+        match (self.parser.sync_timeout().sync_timeout(), self.frames.deadline()) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
-    fn stop_sync(&mut self, term: &SharedTerm, port: &Port) {
-        self.parser.stop_sync(&mut *term.lock());
-        port.wake();
+    fn expire(&mut self, term: &SharedTerm, port: &Port) {
+        let now = Instant::now();
+        self.out.clear();
+        self.frames.expire(now, &mut self.out);
+        self.advance(term, port);
+        if self.parser.sync_timeout().sync_timeout().is_some_and(|d| now >= d) {
+            self.parser.stop_sync(&mut *term.lock());
+            port.wake();
+        }
     }
 }
 
@@ -262,7 +288,7 @@ impl Life {
         let mut recheck = HUP_RECHECK;
         while !self.stop.load(Ordering::Acquire) {
             let wants_write = !hung_up && self.has_pending();
-            let timeout = match (hung_up, self.sync_deadline()) {
+            let timeout = match (hung_up, self.deadline()) {
                 (true, _) => recheck,
                 (false, Some(d)) => d.saturating_duration_since(Instant::now()).min(CHILD_CHECK),
                 (false, None) => CHILD_CHECK,
@@ -279,12 +305,12 @@ impl Life {
             if wants_write {
                 self.flush();
             }
-            if let Some(d) = self.sync_deadline()
+            if let Some(d) = self.deadline()
                 && Instant::now() >= d
                 && let Ok(mut f) = self.feeder.lock()
                 && f.generation == self.generation
             {
-                f.stop_sync(&self.term, &self.port);
+                f.expire(&self.term, &self.port);
             }
             if !reported && (hung_up || Instant::now() >= next_check) {
                 next_check = Instant::now() + CHILD_CHECK;
@@ -321,8 +347,8 @@ impl Life {
             .unwrap_or(false)
     }
 
-    fn sync_deadline(&self) -> Option<Instant> {
-        self.feeder.lock().ok().and_then(|f| f.sync_deadline())
+    fn deadline(&self) -> Option<Instant> {
+        self.feeder.lock().ok().and_then(|f| f.deadline())
     }
 
     fn wait(&self, timeout: Duration, write: bool, hung_up: bool) -> (bool, bool) {

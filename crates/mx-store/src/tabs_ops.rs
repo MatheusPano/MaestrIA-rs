@@ -94,6 +94,10 @@ impl Store {
         self.edit_tab(id, |t| t.tint = tint);
     }
 
+    pub fn clear_touched(&mut self, id: &str) {
+        self.edit_tab(id, |t| t.hooks.touched.clear());
+    }
+
     fn edit_tab(&mut self, id: &str, edit: impl FnOnce(&mut Tab)) {
         let Some(t) = self.tab_mut(id) else { return };
         edit(t);

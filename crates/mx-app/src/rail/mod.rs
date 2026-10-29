@@ -55,6 +55,16 @@ fn rail_button(mx: &Mx, id: impl Into<gpui::ElementId>, selected: bool) -> gpui:
         .when(!selected, |d| d.hover(|s| s.bg(mx.bg_hover)))
 }
 
+/// The 16×1 thread between the rail's three blocks: sessions, plugins, the +.
+fn rule(mx: &Mx) -> impl IntoElement {
+    div()
+        .flex_none()
+        .py(px(4.))
+        .flex()
+        .justify_center()
+        .child(div().w(px(16.)).h(px(1.)).bg(mx.border))
+}
+
 pub fn text_badge(mx: &Mx, text: String, bg: Hsla) -> impl IntoElement {
     div()
         .h(px(14.))
@@ -122,6 +132,7 @@ impl Render for Rail {
             .tooltip(tip("Instalar plugin"))
             .on_click(|_, window, cx: &mut App| crate::plugin_ui::open_catalog(window, cx));
 
+        let has_plugins = !items.is_empty();
         div()
             .w(px(WIDTH))
             .mr(px(GAP))
@@ -130,7 +141,9 @@ impl Render for Rail {
             .flex_col()
             .gap(px(4.))
             .child(sessions)
+            .child(rule(&mx))
             .children(items.into_iter().enumerate().map(|(i, item)| plugins::button(&mx, &self.host, i, item)))
+            .when(has_plugins, |d| d.child(rule(&mx)))
             .child(install)
     }
 }

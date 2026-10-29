@@ -79,7 +79,7 @@ impl TabRow {
 
     fn background(&self, mx: &Mx) -> Option<Hsla> {
         let grey = match (self.selected, self.focused) {
-            (true, true) => Some(mx.bg_active),
+            (true, true) => Some(mx.bg_selected),
             (true, false) => Some(mx.bg_hover),
             _ => None,
         };
@@ -94,7 +94,7 @@ impl TabRow {
     }
 
     fn leading(&self, mx: &Mx) -> AnyElement {
-        tab_glyph(mx, self.kind, self.status, self.done, 34.)
+        tab_glyph(mx, self.kind, self.status, self.done, self.hibernated, 34.)
     }
 
     fn trailing(&self, mx: &Mx) -> impl IntoElement {
@@ -105,16 +105,6 @@ impl TabRow {
                     .id("done")
                     .tooltip(tip("Concluída"))
                     .child(icon(Icon::TaskAlt, 14., mx.green)),
-            );
-        }
-        if self.hibernated {
-            row = row.child(
-                div()
-                    .id("asleep")
-                    .tooltip(tip(
-                        "Hibernada — sem processo; clique pra retomar a conversa",
-                    ))
-                    .child(icon(Icon::Bedtime, 13., mx.fg_faint)),
             );
         }
         if let Some(color) = self.needs {
@@ -142,7 +132,7 @@ impl TabRow {
         let weight = if self.selected {
             FontWeight::SEMIBOLD
         } else {
-            FontWeight::NORMAL
+            FontWeight::MEDIUM
         };
         let mut sub = div()
             .flex()
@@ -154,7 +144,7 @@ impl TabRow {
                     .flex_1()
                     .min_w_0()
                     .text_size(px(12.))
-                    .text_color(mx.fg_faint)
+                    .text_color(if self.selected { mx.fg_dim } else { mx.fg_muted })
                     .truncate()
                     .child(self.subtitle.clone()),
             );
@@ -163,7 +153,7 @@ impl TabRow {
                 div()
                     .flex_none()
                     .text_size(px(11.))
-                    .text_color(if *unseen { mx.green } else { mx.fg_faint })
+                    .text_color(if *unseen { mx.green } else { mx.fg_muted })
                     .when(*unseen, |d| d.font_weight(FontWeight::SEMIBOLD))
                     .child(ago.clone()),
             );
@@ -208,10 +198,10 @@ impl TabRow {
             .group("tab-row")
             .relative()
             .mx(px(7.))
-            .my(px(3.))
+            .my(px(2.))
             .pl(px(11.))
             .pr(px(9.))
-            .py(px(11.))
+            .py(px(9.))
             .rounded(px(9.))
             .flex()
             .items_center()
@@ -265,7 +255,7 @@ impl TabRow {
                     .gap(px(2.))
                     .child(
                         div()
-                            .text_size(px(14.5))
+                            .text_size(px(13.))
                             .font_weight(weight)
                             .text_color(title_color)
                             .truncate()

@@ -46,6 +46,20 @@ impl Color {
         }
     }
 
+    pub fn lerp(self, to: Self, t: f64) -> Self {
+        let mix = |a: u8, b: u8| {
+            (f64::from(a) + (f64::from(b) - f64::from(a)) * t)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        Self {
+            a: mix(self.a, to.a),
+            r: mix(self.r, to.r),
+            g: mix(self.g, to.g),
+            b: mix(self.b, to.b),
+        }
+    }
+
     pub fn alpha(self) -> f64 {
         f64::from(self.a) / 255.0
     }

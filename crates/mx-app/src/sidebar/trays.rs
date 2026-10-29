@@ -44,7 +44,7 @@ impl Ctx<'_> {
             .mr(px(7.))
             .pl(px(12.))
             .pr(px(7.))
-            .mt(px(6.))
+            .mt(px(4.))
             .py(px(4.))
             .rounded(px(HOVER_RADIUS))
             .hover(|s| s.bg(mx.bg_hover))
@@ -55,6 +55,7 @@ impl Ctx<'_> {
             .on_click(move |_, _, cx: &mut App| {
                 update_store(&host, cx, |s| s.toggle_groups_collapsed())
             })
+            .on_hover(self.track("groups-ruler"))
             .child(icon(
                 if collapsed {
                     Icon::ChevronRight
@@ -64,15 +65,13 @@ impl Ctx<'_> {
                 14.,
                 mx.fg_faint,
             ))
-            .child(div().text_size(px(10.5)).text_color(mx.fg_faint).child("Grupos"))
+            .child(div().text_size(px(11.)).text_color(mx.fg_muted).child("Grupos"))
             .child(div().flex_1().h(px(1.)).bg(mx.border))
             .child(count_text(mx, groups.len()))
-            .child(
-                div()
-                    .invisible()
-                    .group_hover("groups-ruler", |s| s.visible())
-                    .child(row_button(mx, "groups-clear", Icon::CloseRounded, "Esquecer todos os grupos", |_, cx| confirms::clear_groups(cx))),
-            );
+            .child(self.reveal(
+                "groups-ruler",
+                row_button(mx, "groups-clear", Icon::CloseRounded, "Esquecer todos os grupos", |_, cx| confirms::clear_groups(cx)),
+            ));
         let mut col = div().flex().flex_col().child(ruler);
         if !collapsed {
             for g in groups {
@@ -80,23 +79,25 @@ impl Ctx<'_> {
                 let selected = self.store.showing(&g.id);
                 let host = self.host.clone();
                 let id = g.id.clone();
+                let key = format!("group:{}", g.id);
                 col = col.child(
                     div()
-                        .id(SharedString::from(format!("group:{}", g.id)))
+                        .id(SharedString::from(key.clone()))
                         .mx(px(7.))
-                        .my(px(3.))
+                        .my(px(2.))
                         .pl(px(11.))
                         .pr(px(9.))
-                        .py(px(9.))
+                        .py(px(10.))
                         .rounded(px(9.))
                         .flex()
                         .items_center()
                         .gap(px(10.))
                         .cursor_pointer()
-                        .when(selected, |d| d.bg(mx.bg_active))
+                        .when(selected, |d| d.bg(mx.bg_selected))
                         .when(!selected, |d| d.hover(|s| s.bg(mx.bg_hover)))
                         .on_click(move |_, _, cx: &mut App| update_store(&host, cx, |s| s.open_group(&id)))
                         .on_mouse_down(MouseButton::Right, right_click(Target::Group(g.id.clone())))
+                        .on_hover(self.track(key.clone()))
                         .child(icon(Icon::GridView, 17., color))
                         .child(
                             div()
@@ -107,27 +108,27 @@ impl Ctx<'_> {
                                 .child(
                                     div()
                                         .truncate()
-                                        .text_size(px(14.5))
+                                        .text_size(px(13.))
                                         .text_color(mx.fg)
-                                        .when(selected, |d| d.font_weight(FontWeight::SEMIBOLD))
+                                        .font_weight(if selected { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
                                         .child(g.name.clone()),
                                 )
                                 .child(
                                     div()
                                         .truncate()
                                         .text_size(px(12.))
-                                        .text_color(mx.fg_faint)
+                                        .text_color(if selected { mx.fg_dim } else { mx.fg_muted })
                                         .child(group_subtitle(&g.name, &g.summary(), &g.where_())),
                                 ),
                         )
                         .child(count_chip(mx, g.count()))
-                        .child(row_button(
+                        .child(self.reveal(&key, row_button(
                             mx,
                             SharedString::from(format!("group-more:{}", g.id)),
                             Icon::MoreHoriz,
                             "O que fazer com esse grupo",
                             menu_on(Target::Group(g.id.clone())),
-                        )),
+                        ))),
                 );
             }
         }
@@ -149,31 +150,32 @@ impl Ctx<'_> {
         let plus = Target::Plus { root: loose.root.clone(), feature: None };
         let ruler = div()
             .id("loose-ruler")
-            .group("loose-ruler")
             .mx(px(14.))
             .mt(px(if has_folders { 22. } else { 4. }))
             .mb(px(2.))
             .flex()
             .items_center()
             .gap(px(6.))
-            .child(div().text_size(px(10.5)).text_color(mx.fg_faint).child(loose.name.clone()))
+            .on_mouse_down(MouseButton::Right, right_click(Target::Loose))
+            .on_hover(self.track("loose-ruler"))
+            .child(div().text_size(px(11.)).text_color(mx.fg_muted).child(loose.name.clone()))
             .child(div().flex_1().h(px(1.)).bg(mx.border))
             .when(needs > 0, |d| d.child(badge(mx, needs, None)))
-            .child(count_text(mx, tabs.len()))
             .when(settled > 0, |d| {
-                d.child(
-                    div()
-                        .invisible()
-                        .group_hover("loose-ruler", |s| s.visible())
-                        .child(row_button(mx, "loose-clear", Icon::TaskAlt, settled_label(settled), move |_, cx| {
-                            update_store(&clear_host, cx, |s| {
-                                s.close_settled(&clear_root);
-                            })
-                        })),
-                )
+                d.child(self.reveal(
+                    "loose-ruler",
+                    row_button(mx, "loose-clear", Icon::TaskAlt, settled_label(settled), move |_, cx| {
+                        update_store(&clear_host, cx, |s| {
+                            s.close_settled(&clear_root);
+                        })
+                    }),
+                ))
             })
-            .child(row_button(mx, "loose-add", Icon::Add, "Abrir aqui", menu_on(plus)))
-            .child(row_button(mx, "loose-more", Icon::MoreHoriz, "O que fazer com os avulsos", menu_on(Target::Loose)));
+            .child(self.reveal("loose-ruler", row_button(mx, "loose-add", Icon::Add, "Abrir aqui", menu_on(plus))))
+            .child(self.reveal(
+                "loose-ruler",
+                row_button(mx, "loose-more", Icon::MoreHoriz, "O que fazer com os avulsos", menu_on(Target::Loose)),
+            ));
         let body = self.folder_body(loose, &tabs, None);
         Some(div().flex().flex_col().child(ruler).children(body).into_any_element())
     }

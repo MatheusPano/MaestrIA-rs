@@ -101,6 +101,17 @@ impl Palette {
         Color::from_argb(if self.dark { 0x5900_0000 } else { 0x1410_1828 })
     }
 
+    /// Secondary text that is meant to be read (subtitles, branch, counts); `fg_faint` stays for hints.
+    /// Derived, so plugin palettes need no new field.
+    pub fn fg_muted(&self) -> Color {
+        self.fg_faint.lerp(self.fg_dim, 0.4)
+    }
+
+    /// The selected row of a list: one step above `bg_hover`, not the full `bg_active` slab.
+    pub fn bg_selected(&self) -> Color {
+        self.bg_hover.lerp(self.bg_active, 0.4)
+    }
+
     pub fn on_accent(&self) -> Color {
         if self.accent.luminance() > 0.5 {
             self.canvas
