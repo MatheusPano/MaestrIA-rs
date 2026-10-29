@@ -1,8 +1,8 @@
-use gpui::{AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px};
+use gpui::{AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px};
 use mx_theme::Typography;
 
 use super::dialog::{SettingsDialog, heading};
-use super::gallery::swatch;
+use super::gallery::gallery;
 use super::model::{SettingsAction, line_label, size_label};
 use crate::chrome::style::{hsla, theme};
 use crate::chrome::widgets::{Button, ButtonKind, Stepper, Toggle};
@@ -16,22 +16,9 @@ fn typo(t: &Typography, mono: Option<&str>, size: Option<f64>, line: Option<f64>
 pub fn page(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
     let t = theme(cx);
     let data = &d.data;
-    let mut gallery = div().flex().flex_wrap().gap(px(12.));
-    for p in &data.themes {
-        gallery = gallery.child(swatch(p, p.id == data.theme_id, &t, d.send(SettingsAction::SetTheme(p.id.clone()))));
-    }
-    let mut themes = div().flex().flex_col().mb(px(28.))
-        .child(heading("Tema", Some("Clicar já aplica — a janela atrás deste diálogo é o preview, e o pty vai junto: a paleta pinta o scrollback, não só a moldura."), false, None, cx))
-        .child(gallery);
-    if !data.plugin_themes.is_empty() {
-        let mut extra = div().flex().flex_wrap().gap(px(12.));
-        for p in &data.plugin_themes {
-            extra = extra.child(swatch(p, p.id == data.theme_id, &t, d.send(SettingsAction::SetTheme(p.id.clone()))));
-        }
-        themes = themes
-            .child(div().mt(px(18.)).mb(px(10.)).text_size(px(10.5)).font_weight(FontWeight::SEMIBOLD).text_color(hsla(t.fg_faint)).child("De plugins"))
-            .child(extra);
-    }
+    let themes = div().flex().flex_col().mb(px(28.))
+        .child(heading("Tema", Some("A janela atrás é o preview."), false, None, cx))
+        .child(gallery(d, &t));
     let ty = data.typography.clone();
     let restore = (ty != Typography::standard()).then(|| {
         Button::new("typo-restore", "Restaurar padrões", ButtonKind::Text)

@@ -51,6 +51,7 @@ struct Row {
     meta: String,
     status: ClaudeStatus,
     focused: bool,
+    hibernated: bool,
 }
 
 #[derive(Default)]
@@ -93,6 +94,7 @@ impl SessionList {
                 meta,
                 status: t.status(),
                 focused: focused.as_deref() == Some(t.id.as_str()),
+                hibernated: t.hibernated,
             });
         }
         blocks.retain(|(_, rows)| !rows.is_empty());
@@ -158,7 +160,7 @@ fn session_row(mx: &Mx, host: &Entity<StoreHost>, row: Row) -> impl IntoElement 
         .when(row.focused, |d| d.bg(mx.bg_active))
         .when(!row.focused, |d| d.hover(|s| s.bg(mx.bg_hover)))
         .on_click(move |_, _, cx: &mut App| update_store(&host, cx, |s| s.open_session(&id)))
-        .child(claude_avatar(mx, row.status, 20., false))
+        .child(claude_avatar(mx, row.status, 20., false, row.hibernated))
         .child(
             div()
                 .ml(px(12.))

@@ -277,7 +277,7 @@ impl TerminalSession {
         st.life = None;
         st.pid = None;
         st.generation += 1;
-        lock(&self.shared.feeder).adopt(st.generation);
+        lock(&self.shared.feeder).adopt(st.generation, &self.shared.term, &self.shared.port);
     }
 
     pub fn park_now(&self) {

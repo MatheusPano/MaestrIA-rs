@@ -67,6 +67,7 @@ struct Card {
     follow_ups: usize,
     ago: Option<(String, bool)>,
     glyph: (mx_core::model::TabKind, mx_core::model::ClaudeStatus),
+    asleep: bool,
 }
 
 impl Card {
@@ -92,6 +93,7 @@ impl Card {
             follow_ups: t.follow_ups.len(),
             ago: t.rested_ago(&chrono::Local::now()).map(|a| (a, t.unseen)),
             glyph: (t.kind, t.status()),
+            asleep: t.hibernated,
         }
     }
 
@@ -99,7 +101,7 @@ impl Card {
         let head = div()
             .flex()
             .items_center()
-            .child(div().w(px(30.)).flex().justify_center().child(tab_glyph(mx, self.glyph.0, self.glyph.1, self.done, 30.)))
+            .child(div().w(px(30.)).flex().justify_center().child(tab_glyph(mx, self.glyph.0, self.glyph.1, self.done, self.asleep, 30.)))
             .child(div().w(px(10.)))
             .child(
                 div()

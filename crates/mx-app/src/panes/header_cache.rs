@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui::{
     AnyElement, AnyView, App, AppContext, Context, Entity, EntityId, IntoElement, ParentElement, Render, StyleRefinement,
-    Styled,
+    Styled, WeakEntity,
     Window, div, px,
 };
 use mx_core::model::TabKind;
@@ -15,6 +15,7 @@ use crate::panes::header::{HEIGHT, Header};
 
 pub struct PaneHeader {
     host: Entity<StoreHost>,
+    area: WeakEntity<PaneArea>,
     header: Option<Header>,
 }
 
@@ -33,7 +34,7 @@ impl Render for PaneHeader {
         slots::forget(cx.entity_id(), cx);
         let mx = Mx::get(cx).clone();
         match self.header.clone() {
-            Some(header) => div().size_full().flex().flex_col().child(header.render(&mx, &self.host)).into_any_element(),
+            Some(header) => div().size_full().flex().flex_col().child(header.render(&mx, &self.host, &self.area)).into_any_element(),
             None => div().into_any_element(),
         }
     }
@@ -55,7 +56,8 @@ impl PaneArea {
         let tab = store.tab(id).filter(|t| matches!(t.kind, TabKind::Claude | TabKind::Shell))?;
         let focused = store.focused_tab_id().as_deref() == Some(id);
         let lifted = cx.has_active_drag() && self.lifted.as_deref() == Some(id);
-        Some(Header::of(store, mx, tab, show_focus, focused).lifted(lifted))
+        let open = self.changes_open.contains(id);
+        Some(Header::of(store, mx, tab, show_focus, focused).lifted(lifted).files_open(open))
     }
 
     pub(super) fn sync_headers(
@@ -69,8 +71,8 @@ impl PaneArea {
         let mut keep = HashMap::new();
         for id in ids {
             let Some(header) = self.header_of(id, show_focus, mx, cx) else { continue };
-            let host = self.host.clone();
-            let view = self.headers.remove(id).unwrap_or_else(|| cx.new(|_| PaneHeader { host, header: None }));
+            let (host, area) = (self.host.clone(), cx.weak_entity());
+            let view = self.headers.remove(id).unwrap_or_else(|| cx.new(|_| PaneHeader { host, area, header: None }));
             if view.update(cx, |h, _| h.set(header)) {
                 window.invalidate_cached_view(view.entity_id());
             }

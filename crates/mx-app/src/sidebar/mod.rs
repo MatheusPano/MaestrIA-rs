@@ -21,6 +21,7 @@ use crate::keymap::{Action, keymap_of};
 use crate::app::theme::{Mx, RADIUS};
 use crate::app::tooltip::tip;
 use tree::Ctx;
+use widgets::Hover;
 
 pub const MIN_WIDTH: f32 = 248.;
 pub const DEFAULT_WIDTH: f32 = 352.;
@@ -32,6 +33,7 @@ pub struct Sidebar {
     revealed: Option<(String, Option<String>)>,
     search_marked: Option<std::ops::Range<usize>>,
     search_bounds: gpui::Bounds<gpui::Pixels>,
+    hover: Hover,
 }
 
 pub fn no_hits_text(query: &str, filters: usize) -> String {
@@ -59,6 +61,7 @@ impl Sidebar {
             revealed: None,
             search_marked: None,
             search_bounds: gpui::Bounds::default(),
+            hover: Hover::default(),
         }
     }
 
@@ -86,7 +89,7 @@ impl Sidebar {
             ))
     }
 
-    fn list(&mut self, mx: &Mx, cx: &Context<Self>) -> impl IntoElement {
+    fn list(&mut self, mx: &Mx, at: std::time::Instant, cx: &Context<Self>) -> impl IntoElement {
         let store = &self.host.read(cx).store;
         let now = store.revealed().map(|r| (r.tab_id.clone(), r.within.clone()));
         let fresh = now.is_some() && now != self.revealed;
@@ -96,6 +99,9 @@ impl Sidebar {
             mx,
             host: &self.host,
             scroll: fresh.then(|| self.scroll.clone()),
+            sidebar: cx.weak_entity(),
+            hover: &self.hover,
+            now: at,
         };
         let filtering = store.filtering();
         let mut items: Vec<AnyElement> = Vec::new();
@@ -246,9 +252,13 @@ impl Render for Sidebar {
         if let Some(view) = plugin_tab {
             return frame.child(view);
         }
+        let now = std::time::Instant::now();
+        if self.hover.moving(now) {
+            window.request_animation_frame();
+        }
         frame
             .child(self.header(&mx, window, cx))
-            .child(self.list(&mx, cx))
+            .child(self.list(&mx, now, cx))
             .child(self.footer(&mx, cx))
     }
 }

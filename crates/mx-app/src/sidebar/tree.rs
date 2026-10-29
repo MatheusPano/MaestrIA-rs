@@ -1,6 +1,9 @@
+use std::time::Instant;
+
 use gpui::{
     AnyElement, App, Entity, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px,
+    ParentElement, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window, div,
+    prelude::FluentBuilder, px,
 };
 use mx_core::model::{FeatureOrHotfix, FeatureOrHotfixKind, Folder, Tab, Workspace};
 use mx_store::Store;
@@ -12,16 +15,36 @@ use crate::app::tooltip::tip;
 use crate::chrome::widgets::{HOVER_MARGIN, HOVER_RADIUS, MxHover};
 use crate::sidebar::tab_row::TabRow;
 use crate::app::menus::Target;
-use crate::sidebar::widgets::{badge, chevron, count_text, menu_on, nest, right_click, row_button};
+use crate::sidebar::Sidebar;
+use crate::sidebar::widgets::{Hover, badge, chevron, menu_on, nest, reveal, right_click, row_button};
 
 pub struct Ctx<'a> {
     pub store: &'a Store,
     pub mx: &'a Mx,
     pub host: &'a Entity<StoreHost>,
     pub scroll: Option<ScrollHandle>,
+    pub sidebar: WeakEntity<Sidebar>,
+    pub hover: &'a Hover,
+    pub now: Instant,
 }
 
 impl Ctx<'_> {
+    pub fn track(&self, key: impl Into<SharedString>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+        let sidebar = self.sidebar.clone();
+        let key = key.into();
+        move |on, _, cx| {
+            let _ = sidebar.update(cx, |s, cx| {
+                if s.hover.set(key.clone(), *on, Instant::now()) {
+                    cx.notify();
+                }
+            });
+        }
+    }
+
+    pub fn reveal(&self, key: &str, child: impl IntoElement) -> gpui::Div {
+        reveal(self.hover.opacity(key, self.now), child)
+    }
+
     fn visible(&self, t: &Tab) -> bool {
         !t.embedded && (!self.store.filtering() || self.store.matches(t))
     }
@@ -52,10 +75,10 @@ impl Ctx<'_> {
         let color = w.tint.map(|t| mx.tint(t)).unwrap_or(mx.accent);
         let host = self.host.clone();
         let ws_id = w.id.clone();
-        let noun = if folders.len() == 1 { "pasta" } else { "pastas" };
+        let key = format!("ws:{}", w.id);
         let header = div()
-            .id(SharedString::from(format!("ws:{}", w.id)))
-            .mt(px(6.))
+            .id(SharedString::from(key.clone()))
+            .mt(px(4.))
             .pl(px(10. - HOVER_MARGIN))
             .pr(px(3.))
             .py(px(8.))
@@ -68,6 +91,7 @@ impl Ctx<'_> {
                 update_store(&host, cx, |s| s.toggle_workspace_collapsed(&ws_id))
             })
             .on_mouse_down(MouseButton::Right, right_click(Target::Workspace(w.id.clone())))
+            .on_hover(self.track(key.clone()))
             .child(chevron(mx, collapsed, 20.))
             .child(icon(Icon::Hexagon, 15., color))
             .child(
@@ -75,25 +99,19 @@ impl Ctx<'_> {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(px(13.5))
+                    .text_size(px(13.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(mx.fg)
                     .child(w.name.clone()),
             )
             .when(collapsed && needs > 0, |d| d.child(badge(mx, needs, None)))
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(mx.fg_faint)
-                    .child(format!("{} {noun}", folders.len())),
-            )
-            .child(row_button(
+            .child(self.reveal(&key, row_button(
                 mx,
                 SharedString::from(format!("ws-more:{}", w.id)),
                 Icon::MoreHoriz,
                 "O que fazer com esse workspace",
                 menu_on(Target::Workspace(w.id.clone())),
-            ));
+            )));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
             let mut kids: Vec<AnyElement> = folders
@@ -163,7 +181,7 @@ impl Ctx<'_> {
         let mut name = div().flex_1().min_w_0().flex().flex_col().child(
             div()
                 .truncate()
-                .text_size(px(13.5))
+                .text_size(px(13.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(mx.fg)
                 .child(f.name.clone()),
@@ -174,13 +192,13 @@ impl Ctx<'_> {
                     .flex()
                     .items_center()
                     .gap(px(3.))
-                    .child(icon(Icon::CallSplit, 10., mx.fg_faint))
+                    .child(icon(Icon::CallSplit, 10., mx.fg_muted))
                     .child(
                         div()
                             .truncate()
                             .font_family("Hack")
-                            .text_size(px(10.5))
-                            .text_color(mx.fg_faint)
+                            .text_size(px(11.))
+                            .text_color(mx.fg_muted)
                             .child(f.branch.clone()),
                     ),
             );
@@ -188,10 +206,10 @@ impl Ctx<'_> {
         let ghosts = self.store.worktrees_of(&f.root).iter().filter(|w| w.prunable).count();
         let target = Target::Folder { root: f.root.clone(), within: within.map(str::to_owned) };
         let plus = Target::Plus { root: f.root.clone(), feature: None };
+        let row = format!("folder:{key}");
         let header = div()
-            .id(SharedString::from(format!("folder:{key}")))
-            .group("folder-row")
-            .mt(px(6.))
+            .id(SharedString::from(row.clone()))
+            .mt(px(4.))
             .pl(px(10. - HOVER_MARGIN))
             .pr(px(3.))
             .py(px(8.))
@@ -206,33 +224,27 @@ impl Ctx<'_> {
                 })
             })
             .on_mouse_down(MouseButton::Right, right_click(target.clone()))
+            .on_hover(self.track(row.clone()))
             .child(chevron(mx, collapsed, 20.))
             .child(glyph)
             .child(div().w(px(3.)))
             .child(name)
             .when(ghosts > 0, |d| d.child(ghost_chip(mx, ghosts)))
             .when(needs > 0, |d| d.child(badge(mx, needs, None)))
-            .child(count_text(mx, tabs.len()))
-            .child(
-                div()
-                    .when(!tabs.is_empty(), |d| {
-                        d.invisible().group_hover("folder-row", |s| s.visible())
-                    })
-                    .child(row_button(
-                        mx,
-                        SharedString::from(format!("folder-add:{key}")),
-                        Icon::Add,
-                        "Abrir aqui",
-                        menu_on(plus),
-                    )),
-            )
-            .child(row_button(
+            .child(self.reveal(&row, row_button(
+                mx,
+                SharedString::from(format!("folder-add:{key}")),
+                Icon::Add,
+                "Abrir aqui",
+                menu_on(plus),
+            )))
+            .child(self.reveal(&row, row_button(
                 mx,
                 SharedString::from(format!("folder-more:{key}")),
                 Icon::MoreHoriz,
                 "O que fazer com essa pasta",
                 menu_on(target),
-            ));
+            )));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
             col = col.child(nest(20., color.opacity(0.35), self.folder_body(f, &tabs, within)));
@@ -286,12 +298,12 @@ impl Ctx<'_> {
         let root = f.folder_root.clone();
         let accent = mx.accent;
         let hover = mx.bg_hover;
+        let row = format!("feature:{}:{}", f.id, within.unwrap_or(""));
         let header = div()
-            .id(SharedString::from(format!("feature:{}:{}", f.id, within.unwrap_or(""))))
+            .id(SharedString::from(row.clone()))
             .pl(px(10.))
             .pr(px(11.))
-            .pt(px(8.))
-            .pb(px(4.))
+            .py(px(7.))
             .inset_hover(4., 0., HOVER_RADIUS, None)
             .border_1()
             .border_color(gpui::transparent_black())
@@ -304,6 +316,7 @@ impl Ctx<'_> {
                 update_store(&host, cx, |s| s.toggle_feature_collapsed(&id))
             })
             .on_mouse_down(MouseButton::Right, right_click(Target::Feature(f.id.clone())))
+            .on_hover(self.track(row.clone()))
             .drag_over::<crate::app::drag::DraggedTab>(move |s, d, _, _| {
                 if d.folder_root == root {
                     s.bg(hover).border_color(accent)
@@ -321,13 +334,13 @@ impl Ctx<'_> {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_size(px(12.5))
+                    .text_size(px(13.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(mx.fg)
                     .child(f.name.clone()),
             )
             .when(f.kind == FeatureOrHotfixKind::Hotfix, |d| {
-                d.child(div().text_size(px(10.5)).text_color(mx.fg_faint).child("hotfix"))
+                d.child(div().text_size(px(11.)).text_color(mx.fg_muted).child("hotfix"))
             })
             .when(!f.brief.trim().is_empty(), |d| {
                 d.child(
@@ -338,21 +351,20 @@ impl Ctx<'_> {
                 )
             })
             .when(needs > 0, |d| d.child(badge(mx, needs, None)))
-            .child(count_text(mx, tabs.len()))
-            .child(row_button(
+            .child(self.reveal(&row, row_button(
                 mx,
                 SharedString::from(format!("feature-add:{}:{}", f.id, within.unwrap_or(""))),
                 Icon::Add,
                 "Abrir aqui",
                 menu_on(Target::Plus { root: f.folder_root.clone(), feature: Some(f.id.clone()) }),
-            ))
-            .child(row_button(
+            )))
+            .child(self.reveal(&row, row_button(
                 mx,
                 SharedString::from(format!("feature-more:{}:{}", f.id, within.unwrap_or(""))),
                 Icon::MoreHoriz,
                 format!("O que fazer com {}", f.kind.this_one()),
                 menu_on(Target::Feature(f.id.clone())),
-            ));
+            )));
         let mut col = div().flex().flex_col().child(header);
         if !collapsed {
             col = col.child(nest(15., color.opacity(0.35), self.rows(tabs, within)));

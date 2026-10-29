@@ -284,3 +284,18 @@ fn futures_block(fut: mx_core::ports::BoxFuture<'static, ()>) {
     });
     rx.recv_timeout(Duration::from_secs(10)).unwrap();
 }
+
+#[test]
+fn a_frame_that_never_shows_the_cursor_still_reaches_the_screen() {
+    let t = sh("printf 'antes\\033[?25lhtop'; sleep 5");
+    assert!(until(Duration::from_secs(2), || t.row_text(0) == "anteshtop"));
+    assert!(!t.is_exited());
+}
+
+#[test]
+fn an_open_frame_comes_out_before_the_exit_line() {
+    let t = sh("printf 'a\\033[?25lultimo'; exit 0");
+    assert!(until(Duration::from_secs(5), || t.is_exited()));
+    assert_eq!(t.row_text(0), "aultimo");
+    assert!((1..4).any(|r| t.row_text(r).contains("[processo saiu com 0]")));
+}

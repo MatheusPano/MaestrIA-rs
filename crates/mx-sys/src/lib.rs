@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod code_workspace;
+pub mod diff;
 pub mod editor;
 pub mod git;
 pub mod history;

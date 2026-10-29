@@ -54,6 +54,27 @@ pub fn shadow(theme: &Theme, blur: f32, dy: f32) -> Vec<BoxShadow> {
     }]
 }
 
+/// The pane card's seat: a shallow cut of the shadow token. The full one (menus, notices, floats)
+/// stacked up in the gap between two cards and turned it into a trench.
+pub fn seat_shadow(theme: &Theme) -> Vec<BoxShadow> {
+    let full = theme.shadow();
+    vec![BoxShadow {
+        color: hsla(full.with_alpha(full.alpha() * 0.4)),
+        offset: point(px(0.), px(1.)),
+        blur_radius: px(6.),
+        spread_radius: px(0.),
+    }]
+}
+
+/// The card's border at rest, at half strength; High Contrast keeps its high border by choice.
+pub fn rest_border(theme: &Theme) -> Hsla {
+    if theme.id == "high-contrast" {
+        hsla(theme.border)
+    } else {
+        alpha(theme.border, 0.55)
+    }
+}
+
 pub fn cb<V: 'static>(
     this: WeakEntity<V>,
     f: impl Fn(&mut V, &mut Window, &mut Context<V>) + 'static,

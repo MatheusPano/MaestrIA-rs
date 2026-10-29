@@ -50,6 +50,24 @@ fn picking_a_theme_applies_it(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn gallery_splits_dark_and_light_themes(cx: &mut TestAppContext) {
+    let (_, cx, _) = open(cx, Section::Appearance);
+    cx.simulate_resize(gpui::size(gpui::px(1200.), gpui::px(820.)));
+    super::ui::redraw(cx);
+    assert!(cx.debug_bounds("group:Escuros").is_some());
+    assert!(cx.debug_bounds("group:Claros").is_some());
+    assert!(cx.debug_bounds("group:De plugins").is_none());
+}
+
+#[gpui::test]
+fn veil_is_light_over_appearance_and_darker_elsewhere(cx: &mut TestAppContext) {
+    let (d, cx, _) = open(cx, Section::Appearance);
+    assert_eq!(d.read_with(cx, |d, _| d.veil()), 0.2);
+    click(cx, "section:Plugins");
+    assert_eq!(d.read_with(cx, |d, _| d.veil()), 0.5);
+}
+
+#[gpui::test]
 fn rail_switches_sections(cx: &mut TestAppContext) {
     let (d, cx, _) = open(cx, Section::Appearance);
     click(cx, "section:Plugins");

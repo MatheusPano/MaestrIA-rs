@@ -76,7 +76,6 @@ pub const UNDO: Icon = Icon('\u{e68c}');
 pub const REMOVE: Icon = Icon('\u{e516}');
 pub const BLOCK: Icon = Icon('\u{e0e1}');
 pub const CLOUD_OFF_OUTLINED: Icon = Icon('\u{ef61}');
-pub const LIGHT_MODE_OUTLINED: Icon = Icon('\u{f162}');
 pub const CHECK: Icon = Icon('\u{e156}');
 pub const KEYBOARD_ARROW_UP: Icon = Icon('\u{e356}');
 pub const KEYBOARD_ARROW_DOWN: Icon = Icon('\u{e353}');
