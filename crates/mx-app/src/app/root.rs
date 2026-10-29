@@ -80,6 +80,7 @@ impl Root {
         let theme = host.read(cx).store.prefs().theme.clone();
         let resolved = Mx::resolve(&host.read(cx).store);
         Mx::install(resolved, cx);
+        host.read(cx).terms.set_palette(Mx::get(cx).theme.terminal());
         Root {
             host,
             ui,
