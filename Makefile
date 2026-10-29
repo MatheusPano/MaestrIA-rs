@@ -26,7 +26,7 @@ help:
 	@echo "  make release    clippy, testes, .deb e smoke test -- o caminho completo"
 	@echo
 	@echo "  make tag        publica a v$(RAW_VERSION) no GitHub (.deb e .dmg saem do CI)"
-	@echo "  make publish    gera o .deb nesta máquina e sobe na release v$(RAW_VERSION) (cria se faltar)"
+	@echo "  make publish    gera o .deb nesta máquina e sobe na release v$(RAW_VERSION) com o SHA256SUMS (cria se faltar)"
 	@echo
 	@echo "  make clippy     cargo clippy --workspace -D warnings"
 	@echo "  make test       cargo test --workspace"
@@ -86,10 +86,14 @@ clean:
 
 publish:
 	@git diff --quiet || { echo "há alterações não commitadas -- commite antes de publicar."; exit 1; }
-	@NATIVE=1 ./packaging/linux/build-deb.sh --variant rs
+	@NATIVE=1 MAESTRIA_VERSION=$(RAW_VERSION) ./packaging/linux/build-deb.sh --variant rs
 	@git rev-parse -q --verify "refs/tags/v$(RAW_VERSION)" >/dev/null || git tag "v$(RAW_VERSION)"
 	@git push $(REMOTE) "v$(RAW_VERSION)" 2>/dev/null || true
+	@rm -rf "$(DIST)/published" && mkdir -p "$(DIST)/published"
+	@gh release download "v$(RAW_VERSION)" -R $(REPO) -p SHA256SUMS -D "$(DIST)/published" 2>/dev/null || true
+	@{ grep -v " \*\?$(notdir $(DEB))$$" "$(DIST)/published/SHA256SUMS" 2>/dev/null; cd $(DIST) && sha256sum "$(notdir $(DEB))"; } > "$(DIST)/SHA256SUMS"
+	@cat "$(DIST)/SHA256SUMS"
 	@gh release view "v$(RAW_VERSION)" -R $(REPO) >/dev/null 2>&1 \
-	  && gh release upload "v$(RAW_VERSION)" "$(DEB)" -R $(REPO) --clobber \
-	  || gh release create "v$(RAW_VERSION)" "$(DEB)" -R $(REPO) --title "maestria-rs $(RAW_VERSION)" --notes "$$(sed "s/{TAG}/v$(RAW_VERSION)/g" packaging/NOTAS-DA-RELEASE.md)"
+	  && gh release upload "v$(RAW_VERSION)" "$(DEB)" "$(DIST)/SHA256SUMS" -R $(REPO) --clobber \
+	  || gh release create "v$(RAW_VERSION)" "$(DEB)" "$(DIST)/SHA256SUMS" -R $(REPO) --title "maestria-rs $(RAW_VERSION)" --notes "$$(sed "s/{TAG}/v$(RAW_VERSION)/g" packaging/NOTAS-DA-RELEASE.md)"
 	@echo "https://github.com/$(REPO)/releases/tag/v$(RAW_VERSION)"

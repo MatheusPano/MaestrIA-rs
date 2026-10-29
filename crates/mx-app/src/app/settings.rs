@@ -12,7 +12,7 @@ use crate::keymap;
 use crate::app::ui::{self, Layer};
 use crate::app::dialogs;
 use crate::chrome::settings::{
-    Account, LauncherRow, PluginAuto, PluginMenuAction, PluginRow, PluginState, RowUpdate, Section, SettingsAction, SettingsData,
+    Account, AppUpdates, LauncherRow, PluginAuto, PluginMenuAction, PluginRow, PluginState, RowUpdate, Section, SettingsAction, SettingsData,
     SettingsDialog, UsageWindow, fixed_rows,
 };
 
@@ -101,6 +101,16 @@ fn plugin_auto(store: &mx_store::Store) -> PluginAuto {
     }
 }
 
+fn app_updates(store: &mx_store::Store) -> AppUpdates {
+    let u = store.app_updater();
+    AppUpdates {
+        current: u.current().to_owned(),
+        enabled: u.enabled(),
+        active: u.active(),
+        installs_on_quit: mx_sys::updater::INSTALLS_ON_QUIT,
+    }
+}
+
 pub fn data(host: &Entity<StoreHost>, cx: &App) -> SettingsData {
     let store = &host.read(cx).store;
     let names = cx.try_global::<Fonts>().map(|f| f.0.clone()).unwrap_or_default();
@@ -126,6 +136,7 @@ pub fn data(host: &Entity<StoreHost>, cx: &App) -> SettingsData {
         plugins: store.plugins().map(|p| p.all().iter().map(|i| plugin_row(i, crate::plugin_ui::conflicts(store, &i.id), store)).collect()).unwrap_or_default(),
         plugin_auto: plugin_auto(store),
         hibernate_minutes: prefs.hibernate_minutes.max(0) as u32,
+        app_updates: app_updates(store),
         account: cx.try_global::<Usage>().map_or(Account::Loading, |u| u.0.clone()),
     }
 }
@@ -228,6 +239,7 @@ fn act(action: SettingsAction, window: &mut Window, cx: &mut App) {
         S::RemoveLauncher(id) => ui::act(cx, |s| s.remove_launcher(&id)),
         S::SetPluginEnabled(id, on) => ui::act(cx, |s| s.set_plugin_enabled(&id, on)),
         S::SetHibernateMinutes(m) => ui::act(cx, |s| s.set_hibernate_minutes(m as i64)),
+        S::SetAutoUpdate(on) => ui::act(cx, |s| s.set_auto_update(on)),
         S::ReloadUsage => {
             refresh(cx);
             push(cx);

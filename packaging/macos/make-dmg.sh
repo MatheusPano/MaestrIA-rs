@@ -14,6 +14,7 @@ VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/
 REVISION=$(sed -n '/^\[package.metadata.deb\]/,/^\[/s/^revision *= *"\([^"]*\)".*/\1/p' crates/mx-app/Cargo.toml | head -1)
 REVISION="${REVISION:-1}"
 FULL="${VERSION}-${REVISION}"
+export MAESTRIA_VERSION="${MAESTRIA_VERSION:-$VERSION}"
 TARGET_DIR=$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
 
 if [ "${1:-}" != "--no-build" ]; then

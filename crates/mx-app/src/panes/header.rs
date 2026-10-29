@@ -1,8 +1,9 @@
 use gpui::{
     AnyElement, App, ClickEvent, ClipboardItem, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    Modifiers, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    Modifiers, ParentElement, prelude::FluentBuilder, SharedString, StatefulInteractiveElement, Styled, Window, div,
     px,
 };
+use mx_claude::{ChipLevel, ContextUsage};
 use mx_core::model::{ClaudeStatus, Tab, TabKind};
 use mx_store::Store;
 
@@ -16,10 +17,12 @@ use crate::app::tooltip::tip;
 
 pub const HEIGHT: f32 = 42.;
 
+#[derive(Clone, PartialEq)]
 pub struct Header {
     id: String,
     title: String,
     branch: Option<String>,
+    context: Option<ContextUsage>,
     kind: TabKind,
     status: ClaudeStatus,
     running: bool,
@@ -53,6 +56,11 @@ impl Header {
         Header {
             id: t.id.clone(),
             branch: (!t.branch.is_empty() && t.branch != title).then(|| t.branch.clone()),
+            context: t.context.filter(|_| t.kind == TabKind::Claude).map(|c| ContextUsage {
+                percent: c.percent,
+                tokens: c.tokens,
+                window: c.window,
+            }),
             title,
             kind: t.kind,
             status: t.status(),
@@ -182,6 +190,9 @@ impl Header {
                     .child(div().font_family("Hack").text_size(px(11.)).text_color(mx.fg_dim).child(branch.clone())),
             );
         }
+        if let Some(usage) = &self.context {
+            chips = chips.child(context_chip(mx, &self.id, usage));
+        }
         let fade = if self.dim { 0.55 } else { 1. };
         let drag = DraggedTab {
             id: self.id.clone(),
@@ -216,6 +227,35 @@ impl Header {
             .child(div().ml(px(10.)).flex_1().min_w_0().flex().opacity(fade).child(chips))
             .child(div().flex_none().flex().items_center().gap(px(2.)).opacity(fade).children(buttons))
     }
+}
+
+fn context_chip(mx: &Mx, tab: &str, usage: &ContextUsage) -> AnyElement {
+    let color = match usage.chip_level() {
+        ChipLevel::Danger => mx.red,
+        ChipLevel::Warn => mx.yellow,
+        ChipLevel::Calm => mx.fg_dim,
+    };
+    let filled = usage.chip_filled();
+    div()
+        .id(SharedString::from(format!("pane-context:{tab}")))
+        .flex_none()
+        .flex()
+        .items_center()
+        .px(px(7.))
+        .py(px(3.))
+        .rounded(px(4.))
+        .bg(color.opacity(0.12))
+        .tooltip(tip(usage.chip_tooltip()))
+        .children((0..5).map(|i| {
+            div()
+                .w(px(4.))
+                .h(px(7.))
+                .when(i < 4, |d| d.mr(px(1.)))
+                .bg(color.opacity(if i < filled { 1. } else { 0.25 }))
+        }))
+        .child(div().w(px(4.)))
+        .child(div().text_size(px(11.)).text_color(color).child(usage.chip_text()))
+        .into_any_element()
 }
 
 pub fn key_hint(mx: &Mx, label: Option<String>) -> Option<gpui::Div> {

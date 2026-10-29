@@ -75,8 +75,8 @@ impl RenderOnce for Animated {
     }
 }
 
-pub fn layer(owners: Vec<EntityId>) -> impl IntoElement {
-    canvas(|_, _, _| {}, move |_, _, window, cx| paint_layer(&owners, window, cx)).absolute().size_0()
+pub fn layer(owners: impl Fn(&App) -> Vec<EntityId> + 'static) -> impl IntoElement {
+    canvas(|_, _, _| {}, move |_, _, window, cx| paint_layer(&owners(cx), window, cx)).absolute().size_0()
 }
 
 fn paint_layer(owners: &[EntityId], window: &mut Window, cx: &mut App) {

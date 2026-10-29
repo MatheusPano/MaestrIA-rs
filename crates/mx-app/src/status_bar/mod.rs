@@ -1,4 +1,5 @@
 mod sessions;
+mod update_chip;
 
 use gpui::{
     App, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
@@ -148,6 +149,7 @@ impl Render for StatusBar {
         let bell_el =
             bell_el.on_click(move |_, _, cx: &mut App| update_store(&host, cx, Store::toggle_notices));
 
+        let update = update_chip::chip(store, &mx);
         let (pt, pb) = if top { (3., 0.) } else { (0., 3.) };
         div()
             .h(px(HEIGHT))
@@ -161,6 +163,7 @@ impl Render for StatusBar {
             .pb(px(pb))
             .child(sessions)
             .child(div().flex_1())
+            .children(update)
             .child(bell_el)
     }
 }

@@ -21,10 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.rust.outputs.version }}
+      versao: ${{ steps.check.outputs.versao }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
       - name: a tag bate com o Cargo.toml?
+        id: check
         run: |
           set -euo pipefail
           v=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)
@@ -33,6 +35,7 @@ jobs:
             exit 1
           fi
           echo "maestria $v"
+          echo "versao=$v" >> "$GITHUB_OUTPUT"
       - id: rust
         run: echo "version=$(sed -n 's/^RUST_VERSION ?= *//p' Makefile)" >> "$GITHUB_OUTPUT"
 
@@ -53,6 +56,7 @@ jobs:
       - run: ./packaging/linux/build-deb.sh --variant rs
         env:
           RUST_VERSION: ${{ needs.versao.outputs.rust }}
+          MAESTRIA_VERSION: ${{ needs.versao.outputs.versao }}
       - uses: actions/upload-artifact@v4
         with:
           name: deb
@@ -81,6 +85,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with: { tool: cargo-bundle }
       - run: ./packaging/macos/make-dmg.sh
+        env:
+          MAESTRIA_VERSION: ${{ needs.versao.outputs.versao }}
       - uses: actions/upload-artifact@v4
         with:
           name: dmg
@@ -100,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh anexos
+          (cd anexos && shopt -s nullglob && sha256sum *.deb *.dmg > SHA256SUMS && cat SHA256SUMS)
           sed "s/{TAG}/$TAG/g" packaging/NOTAS-DA-RELEASE.md > notas.md
           gh release view "$TAG" >/dev/null 2>&1 \
             && gh release upload "$TAG" anexos/* --clobber \

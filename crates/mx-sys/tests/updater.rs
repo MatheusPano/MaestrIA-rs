@@ -85,12 +85,44 @@ fn an_updater_without_a_version_is_disabled() {
 }
 
 #[test]
-fn this_build_has_the_updater_compiled_out_unless_the_feature_is_on() {
+fn a_dev_binary_outside_the_install_dir_is_disabled() {
     let dir = tempfile::tempdir().unwrap();
-    assert_eq!(mx_sys::updater::BUILT_IN, cfg!(feature = "self-update"));
-    if !mx_sys::updater::BUILT_IN {
+    if std::env::var_os(mx_sys::updater::ENABLED_ENV).is_none() {
         assert!(!Updater::new("3.0.0", dir.path()).enabled());
     }
+}
+
+#[test]
+fn the_mac_bundle_is_the_app_folder_around_the_executable() {
+    use mx_sys::updater::bundle_of;
+    let exe = std::path::Path::new("/Users/a/Apps/maestria-rs.app/Contents/MacOS/maestria");
+    assert_eq!(bundle_of(exe), Some(PathBuf::from("/Users/a/Apps/maestria-rs.app")));
+    assert_eq!(bundle_of(std::path::Path::new("/opt/maestria-rs/maestria-rs")), None);
+}
+
+#[test]
+fn the_asset_is_the_maestria_rs_package_for_this_platform() {
+    let want = if cfg!(target_os = "macos") { "_macos.dmg" } else { "_amd64.deb" };
+    assert_eq!(mx_sys::updater::ASSET_SUFFIX, want);
+    assert_eq!(mx_sys::updater::PACKAGE_PREFIX, "maestria-rs_");
+}
+
+#[test]
+fn linux_quits_into_a_relaunch_only_after_installing_on_request() {
+    use mx_sys::updater::QuitPlan;
+    if mx_sys::updater::INSTALLS_ON_QUIT {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut u = updater(&dir, true);
+    u.load_active(true);
+    ready(&mut u, &dir);
+    assert_eq!(u.quit_plan(), None);
+    u.begin_install();
+    u.installed(Ok(())).unwrap();
+    assert_eq!(u.quit_plan(), None);
+    u.relaunch_after_quit();
+    assert_eq!(u.quit_plan(), Some(QuitPlan::Relaunch));
 }
 
 #[test]
@@ -194,15 +226,14 @@ fn installing_goes_to_installed_or_back_to_ready() {
     assert!(u.relaunches_on_quit());
 }
 
-#[cfg(feature = "self-update")]
-mod self_update {
+mod network {
     use std::collections::HashMap;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::sync::Arc;
 
     use mx_sys::updater::fetch::{Latest, fetch, latest, sha256_of};
-    use mx_sys::updater::install::install_error;
+    use mx_sys::updater::install::{INSTALL_ENV, LAUNCHER, RELAUNCH_ENV, install_command, install_error, relaunch_target};
 
     use super::*;
 
@@ -246,6 +277,26 @@ mod self_update {
         assert_eq!(install_error(Some(100), "a\nE: broken\n\n", deb), "Não deu pra instalar (E: broken). No terminal: sudo apt install /s/x.deb");
     }
 
+    #[test]
+    fn the_real_install_is_pkexec_apt_get_and_the_relaunch_is_the_launcher() {
+        let deb = std::path::Path::new("/s/maestria-rs_3.1.0-1_amd64.deb");
+        if std::env::var_os(INSTALL_ENV).is_none() {
+            let (program, args) = install_command(deb);
+            assert_eq!(program, "pkexec");
+            assert_eq!(args, ["apt-get", "install", "-y", "/s/maestria-rs_3.1.0-1_amd64.deb"]);
+        }
+        if std::env::var_os(RELAUNCH_ENV).is_none() {
+            assert_eq!(relaunch_target(), PathBuf::from(LAUNCHER));
+        }
+    }
+
+    #[test]
+    fn the_latest_release_comes_from_the_maestria_rs_repo() {
+        if std::env::var_os(mx_sys::updater::fetch::API_ENV).is_none() {
+            assert_eq!(mx_sys::updater::fetch::latest_url(), "https://api.github.com/repos/MatheusPano/MaestrIA-rs/releases/latest");
+        }
+    }
+
     #[tokio::test]
     async fn the_latest_release_answers_with_its_etag_and_maestria_rs_asset() {
         let body = json!({"tag_name": "v3.1.0", "assets": [
@@ -272,12 +323,12 @@ mod self_update {
         ]));
         let dir = tempfile::tempdir().unwrap();
         let mut r = Release { version: "3.1.0".into(), asset: name.into(), asset_url: format!("{base}/deb"), sums_url: Some(format!("{base}/sums")) };
-        let staged = fetch("3.0.0", &r, &dir.path().join("update")).await.unwrap();
+        let staged = fetch("3.0.0", &r, &dir.path().join("update"), None).await.unwrap();
         assert_eq!(std::fs::read(&staged).unwrap(), b"pacote");
         r.sums_url = Some(format!("{base}/bad"));
-        let err = fetch("3.0.0", &r, &dir.path().join("update")).await.unwrap_err();
+        let err = fetch("3.0.0", &r, &dir.path().join("update"), None).await.unwrap_err();
         assert!(err.starts_with(&format!("{name}: sha256 ")), "{err}");
         r.sums_url = None;
-        assert_eq!(fetch("3.0.0", &r, &dir.path().join("update")).await.unwrap_err(), "3.1.0 sem SHA256SUMS");
+        assert_eq!(fetch("3.0.0", &r, &dir.path().join("update"), None).await.unwrap_err(), "3.1.0 sem SHA256SUMS");
     }
 }

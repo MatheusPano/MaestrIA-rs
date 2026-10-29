@@ -80,6 +80,7 @@ impl Root {
         let theme = host.read(cx).store.prefs().theme.clone();
         let resolved = Mx::resolve(&host.read(cx).store);
         Mx::install(resolved, cx);
+        host.read(cx).terms.set_palette(Mx::get(cx).theme.terminal());
         Root {
             host,
             ui,
@@ -241,20 +242,23 @@ impl Render for Root {
             .cached(StyleRefinement::default().w(px(rail::WIDTH + GAP)).h_full().flex_none());
         let sidebar = AnyView::from(self.sidebar.clone())
             .cached(StyleRefinement::default().w(px(width)).h_full().flex_none());
-        let panes = AnyView::from(self.panes.clone()).cached(StyleRefinement::default().size_full());
         let status = AnyView::from(self.status_bar.clone()).cached(
             StyleRefinement::default().w_full().h(px(status_bar::HEIGHT)).flex_none(),
         );
         let host = self.host.clone();
-        let mut owners = vec![self.panes.entity_id()];
-        if !hidden {
-            owners.push(self.sidebar.entity_id());
-        }
+        let (panes_view, sidebar_view) = (self.panes.clone(), (!hidden).then(|| self.sidebar.entity_id()));
+        let owners = move |cx: &App| {
+            let mut ids = panes_view.read(cx).header_views();
+            ids.push(panes_view.entity_id());
+            ids.extend(sidebar_view);
+            ids
+        };
 
         let stage = div()
             .flex_1()
+            .min_w_0()
             .relative()
-            .child(panes)
+            .child(self.panes.clone())
             .child(slots::layer(owners))
             .child(deferred(self.notices(banner_text, top, cx)).with_priority(NOTICES_ABOVE_PLUGIN_LAYERS));
 
@@ -298,7 +302,8 @@ impl Render for Root {
                     .when(sessions_open, |d| {
                         let view = AnyView::from(self.sessions.clone())
                             .cached(StyleRefinement::default().absolute().inset_0());
-                        d.child(view).child(slots::layer(vec![self.sessions.entity_id()]))
+                        let id = self.sessions.entity_id();
+                        d.child(view).child(slots::layer(move |_| vec![id]))
                     }),
             )
             .when(!top, |d| d.child(status))

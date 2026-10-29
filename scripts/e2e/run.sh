@@ -74,7 +74,7 @@ start_app() {
       DISPLAY="$E2E_DISPLAY" XDG_RUNTIME_DIR="$E2E_TMP/run" XDG_CONFIG_HOME="$HOME/.config" \
       SHELL=/bin/bash LANG=C.UTF-8 RUST_LOG="${RUST_LOG:-info}" RUST_BACKTRACE=1 \
       VK_DRIVER_FILES="$LVP_ICD" VK_ICD_FILENAMES="$LVP_ICD" LIBGL_ALWAYS_SOFTWARE=1 \
-      MAESTRIA_REDUCE_MOTION=1 \
+      MAESTRIA_REDUCE_MOTION=1 ${E2E_APP_ENV[@]+"${E2E_APP_ENV[@]}"} \
       nice -n 10 dbus-run-session -- "$BIN"
   ) >"$log" 2>&1 &
   APP_PID=$!
@@ -106,6 +106,8 @@ run_scenario() {
   (
     E2E_FAILS=0
     SEED=
+    E2E_APP_ENV=()
+    E2E_EXPECT_EXIT=0
     trap 'stop_app; [[ -n ${E2E_TMP:-} ]] && rm -rf "$E2E_TMP"' EXIT
     unset -f scenario prepare
     # shellcheck disable=SC1090
@@ -114,8 +116,10 @@ run_scenario() {
     if declare -F prepare >/dev/null; then prepare; fi
     if start_app; then
       scenario
-      kill -0 "$APP_PID" 2>/dev/null || fail "app exited during the scenario (log: $E2E_OUT/$E2E_SCENARIO.app.log)"
-      shot end >/dev/null
+      if [[ $E2E_EXPECT_EXIT != 1 ]]; then
+        kill -0 "$APP_PID" 2>/dev/null || fail "app exited during the scenario (log: $E2E_OUT/$E2E_SCENARIO.app.log)"
+        shot end >/dev/null
+      fi
     fi
     cp "$MAESTRIA_HOME/config.json" "$E2E_OUT/$E2E_SCENARIO.config.json" 2>/dev/null
     stop_app

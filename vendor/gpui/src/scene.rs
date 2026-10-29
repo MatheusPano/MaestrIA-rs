@@ -53,7 +53,10 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        let order = self.primitive_bounds.insert(bounds);
+        let order = match self.layer_stack.last() {
+            Some(outer) => *outer,
+            None => self.primitive_bounds.insert(bounds),
+        };
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
@@ -65,7 +68,7 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
-        let mut primitive = primitive.into();
+        let primitive = primitive.into();
         let clipped_bounds = primitive
             .bounds()
             .intersect(&primitive.content_mask().bounds);
@@ -79,6 +82,10 @@ impl Scene {
             .last()
             .copied()
             .unwrap_or_else(|| self.primitive_bounds.insert(clipped_bounds));
+        self.push_ordered(primitive, order);
+    }
+
+    fn push_ordered(&mut self, mut primitive: Primitive, order: DrawOrder) {
         match &mut primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;
@@ -115,7 +122,11 @@ impl Scene {
     }
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
-        for operation in &prev_scene.paint_operations[range] {
+        let operations = &prev_scene.paint_operations[range];
+        if self.layer_stack.is_empty() && self.replay_shifted(operations) {
+            return;
+        }
+        for operation in operations {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
@@ -124,15 +135,61 @@ impl Scene {
         }
     }
 
+    fn replay_shifted(&mut self, operations: &[PaintOperation]) -> bool {
+        let mut lowest = u32::MAX;
+        let mut highest = 0;
+        let mut union: Option<Bounds<ScaledPixels>> = None;
+        for operation in operations {
+            if let PaintOperation::Primitive(primitive) = operation {
+                lowest = lowest.min(primitive.order());
+                highest = highest.max(primitive.order());
+                let bounds = primitive.bounds().intersect(&primitive.content_mask().bounds);
+                union = Some(union.map_or(bounds, |u| u.union(&bounds)));
+            }
+        }
+        let Some(union) = union else {
+            return false;
+        };
+        let base = self.primitive_bounds.insert_span(union, highest - lowest);
+        for operation in operations {
+            let PaintOperation::Primitive(primitive) = operation else {
+                self.paint_operations.push(match operation {
+                    PaintOperation::StartLayer(bounds) => PaintOperation::StartLayer(*bounds),
+                    _ => PaintOperation::EndLayer,
+                });
+                continue;
+            };
+            self.push_ordered(primitive.clone(), base + (primitive.order() - lowest));
+        }
+        true
+    }
+
+    pub(crate) fn primitives_since(&self, start: usize) -> Option<Vec<Primitive>> {
+        let mut out = Vec::new();
+        for operation in &self.paint_operations[start..] {
+            let PaintOperation::Primitive(primitive) = operation else {
+                continue;
+            };
+            match primitive {
+                Primitive::Quad(_) | Primitive::Underline(_) => {}
+                Primitive::MonochromeSprite(sprite) if sprite.transformation == TransformationMatrix::unit() => {}
+                Primitive::PolychromeSprite(_) => {}
+                _ => return None,
+            }
+            out.push(primitive.clone());
+        }
+        Some(out)
+    }
+
     pub fn finish(&mut self) {
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
         self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_unstable_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_unstable_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.surfaces.sort_by_key(|surface| surface.order);
     }
 
@@ -189,6 +246,14 @@ pub(crate) enum PrimitiveKind {
     Surface,
 }
 
+/// Primitives painted once and replayed at another origin without shaping or rasterizing again.
+pub struct PaintRecording {
+    pub(crate) origin: Point<ScaledPixels>,
+    pub(crate) size: Size<ScaledPixels>,
+    pub(crate) scale_factor: f32,
+    pub(crate) primitives: Vec<Primitive>,
+}
+
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
     StartLayer(Bounds<ScaledPixels>),
@@ -216,6 +281,34 @@ impl Primitive {
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::Surface(surface) => &surface.bounds,
+        }
+    }
+
+    pub(crate) fn shifted(&self, delta: Point<ScaledPixels>, mask: &ContentMask<ScaledPixels>) -> Primitive {
+        let mut primitive = self.clone();
+        let (bounds, content_mask) = match &mut primitive {
+            Primitive::Shadow(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::Quad(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::Path(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::Underline(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::MonochromeSprite(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::PolychromeSprite(p) => (&mut p.bounds, &mut p.content_mask),
+            Primitive::Surface(p) => (&mut p.bounds, &mut p.content_mask),
+        };
+        bounds.origin = bounds.origin + delta;
+        *content_mask = mask.clone();
+        primitive
+    }
+
+    fn order(&self) -> DrawOrder {
+        match self {
+            Primitive::Shadow(shadow) => shadow.order,
+            Primitive::Quad(quad) => quad.order,
+            Primitive::Path(path) => path.order,
+            Primitive::Underline(underline) => underline.order,
+            Primitive::MonochromeSprite(sprite) => sprite.order,
+            Primitive::PolychromeSprite(sprite) => sprite.order,
+            Primitive::Surface(surface) => surface.order,
         }
     }
 

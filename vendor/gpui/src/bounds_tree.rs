@@ -33,9 +33,12 @@ where
     }
 
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
-        // If the tree is empty, make the root the new leaf.
+        self.insert_span(new_bounds, 0)
+    }
+
+    pub fn insert_span(&mut self, new_bounds: Bounds<U>, span: u32) -> u32 {
         if self.root.is_none() {
-            let new_node = self.push_leaf(new_bounds, 1);
+            let new_node = self.push_leaf(new_bounds, 1 + span);
             self.root = Some(new_node);
             return 1;
         }
@@ -91,7 +94,8 @@ where
             max_intersecting_ordering = cmp::max(max_intersecting_ordering, *sibling_ordering);
         }
 
-        let ordering = max_intersecting_ordering + 1;
+        let first = max_intersecting_ordering + 1;
+        let ordering = first + span;
         let new_node = self.push_leaf(new_bounds, ordering);
         let new_parent = self.push_internal(sibling, new_node);
 
@@ -125,7 +129,7 @@ where
             *max_ordering = ordering;
         }
 
-        ordering
+        first
     }
 
     fn find_max_ordering(&self, index: usize, bounds: &Bounds<U>, mut max_ordering: u32) -> u32 {

@@ -18,6 +18,7 @@ pub mod settings;
 pub mod theme;
 pub mod tooltip;
 pub mod ui;
+pub mod update_confirm;
 
 use std::borrow::Cow;
 
@@ -45,6 +46,7 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
             rt.block_on(async move {
                 let _ = tokio::time::timeout(QUIT_GRACE, done).await;
             });
+            h.store.on_quit();
         });
         std::future::ready(())
     })

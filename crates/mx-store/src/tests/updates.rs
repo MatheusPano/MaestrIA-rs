@@ -34,7 +34,10 @@ fn the_app_auto_update_toggle_is_saved_only_when_on() {
 }
 
 #[test]
-fn this_build_never_enables_the_app_updater() {
+fn a_dev_build_never_enables_the_app_updater() {
+    if !crate::APP_VERSION.is_empty() || std::env::var_os(mx_sys::updater::ENABLED_ENV).is_some() {
+        return;
+    }
     let mut rig = Rig::new();
     rig.s.set_auto_update(true);
     assert!(!rig.s.app_updater().enabled());

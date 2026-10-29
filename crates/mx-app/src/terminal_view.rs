@@ -30,7 +30,7 @@ pub enum TerminalViewEvent {
 }
 
 const OUTPUT_FRAME_MS: u64 = 50;
-const STREAMING_GAP: Duration = Duration::from_millis(100);
+const BACKGROUND_FRAME_MS: u64 = 100;
 
 pub struct TerminalView {
     pub(crate) session: TerminalSession,
@@ -125,6 +125,10 @@ impl TerminalView {
         &self.render
     }
 
+    pub fn painted_with_stale_focus(&self, window: &Window) -> bool {
+        self.render.borrow().painted_focused != self.focus.is_focused(window)
+    }
+
     pub fn set_claude(&mut self, claude: bool) {
         self.claude = claude;
     }
@@ -133,14 +137,16 @@ impl TerminalView {
         self.cwd = cwd;
     }
 
-    pub fn set_typography(&mut self, size: f32, line: f32, cx: &mut Context<Self>) {
+    pub fn set_typography(&mut self, size: f32, line: f32, cx: &mut Context<Self>) -> bool {
         let t = Typography { size: size.clamp(9.0, 24.0), line: line.clamp(1.0, 1.8) };
         let mut st = self.render.borrow_mut();
-        if st.typography != t {
-            st.typography = t;
-            drop(st);
-            cx.notify();
+        if st.typography == t {
+            return false;
         }
+        st.typography = t;
+        drop(st);
+        cx.notify();
+        true
     }
 
     pub fn set_palette(&mut self, palette: &TerminalPalette, cx: &mut Context<Self>) {
@@ -179,13 +185,14 @@ impl TerminalView {
         }
         st.painted = false;
         let now = cx.background_executor().now();
-        let streaming = st.painted_at.is_some_and(|at| now.saturating_duration_since(at) < STREAMING_GAP);
+        let step = if st.window_active { OUTPUT_FRAME_MS } else { BACKGROUND_FRAME_MS };
+        let streaming = st.painted_at.is_some_and(|at| now.saturating_duration_since(at) < Duration::from_millis(2 * step));
         drop(st);
         if !streaming {
             cx.notify();
             return;
         }
-        let wait = Duration::from_millis(clock::until_next(OUTPUT_FRAME_MS, clock::ms_at(now)));
+        let wait = Duration::from_millis(clock::until_next(step, clock::ms_at(now)));
         self.redraw = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(wait).await;
             this.update(cx, |_, cx| cx.notify()).ok();
@@ -255,7 +262,8 @@ impl Focusable for TerminalView {
 }
 
 impl Render for TerminalView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.render.borrow_mut().painted_focused = self.focus.is_focused(window);
         let terminal = div()
             .id("terminal")
             .key_context("Terminal")

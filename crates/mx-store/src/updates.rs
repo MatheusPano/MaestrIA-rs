@@ -6,7 +6,10 @@ use mx_sys::updater::Updater;
 use crate::changes::Areas;
 use crate::store::Store;
 
-pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const APP_VERSION: &str = match option_env!("MAESTRIA_VERSION") {
+    Some(v) => v,
+    None => "",
+};
 
 pub(crate) struct Updates {
     pub app: Updater,
@@ -54,7 +57,6 @@ impl Store {
         self.run_install(staged)
     }
 
-    #[cfg(feature = "self-update")]
     fn run_install(&mut self, staged: std::path::PathBuf) -> Option<tokio::sync::oneshot::Receiver<Result<(), String>>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let sender = self.sender();
@@ -72,25 +74,12 @@ impl Store {
         Some(rx)
     }
 
-    #[cfg(not(feature = "self-update"))]
-    fn run_install(&mut self, _staged: std::path::PathBuf) -> Option<tokio::sync::oneshot::Receiver<Result<(), String>>> {
-        let _ = self.updates.app.installed(Err(String::new()));
-        None
-    }
-
-    #[cfg(feature = "self-update")]
-    pub fn after_quit(&self) {
-        if self.updates.app.relaunches_on_quit()
-            && let Ok(exe) = std::env::current_exe().and_then(|e| e.canonicalize())
-        {
-            mx_sys::updater::install::relaunch_on_quit(self.opts.pid, &exe);
+    pub fn on_quit(&self) {
+        if let Some(plan) = self.updates.app.quit_plan() {
+            mx_sys::updater::install::on_quit(self.opts.pid, &plan);
         }
     }
 
-    #[cfg(not(feature = "self-update"))]
-    pub fn after_quit(&self) {}
-
-    #[cfg(feature = "self-update")]
     fn schedule_app_check(&mut self, delay: std::time::Duration) {
         self.updates.generation += 1;
         let generation = self.updates.generation;
@@ -101,10 +90,6 @@ impl Store {
         });
     }
 
-    #[cfg(not(feature = "self-update"))]
-    fn schedule_app_check(&mut self, _delay: std::time::Duration) {}
-
-    #[cfg(feature = "self-update")]
     fn app_check_due(&mut self, generation: u64) {
         use mx_sys::updater::fetch::{Latest, fetch, latest, latest_url};
         if generation != self.updates.generation {
@@ -117,6 +102,7 @@ impl Store {
         let current = self.updates.app.current().to_owned();
         let etag = self.updates.app.etag().map(str::to_owned);
         let dir = self.updates.app.dir().to_path_buf();
+        let bundle = self.updates.app.target().map(std::path::Path::to_path_buf);
         let sender = self.sender();
         self.p.rt.spawn(async move {
             let found = latest(&latest_url(), &current, etag.as_deref()).await;
@@ -128,7 +114,7 @@ impl Store {
                 let _ = tx.send(s.updates.app.begin_fetch(wanted.as_ref()));
             })));
             let (Ok(true), Some(release)) = (rx.await, release) else { return };
-            let staged = fetch(&current, &release, &dir).await;
+            let staged = fetch(&current, &release, &dir, bundle.as_deref()).await;
             sender.send(crate::msg::StoreMsg::Run(Box::new(move |s: &mut Store| {
                 let _ = s.updates.app.fetched(release, staged);
                 s.mark(Areas::PREFS);

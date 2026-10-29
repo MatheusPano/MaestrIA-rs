@@ -10,16 +10,18 @@ pub enum Section {
     Programs,
     Plugins,
     Sessions,
+    Updates,
     Account,
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const ALL: [Section; 7] = [
         Section::Appearance,
         Section::Shortcuts,
         Section::Programs,
         Section::Plugins,
         Section::Sessions,
+        Section::Updates,
         Section::Account,
     ];
 
@@ -30,6 +32,7 @@ impl Section {
             Section::Programs => "Programas",
             Section::Plugins => "Plugins",
             Section::Sessions => "Sessões",
+            Section::Updates => "Atualizações",
             Section::Account => "Conta & uso",
         }
     }
@@ -146,6 +149,14 @@ pub fn update_status(p: &PluginRow) -> Option<(String, crate::chrome::menu::Tone
     Some(if u.asks_more { (format!("{} pede permissão nova", u.to), Tone::Yellow) } else { (format!("{} disponível", u.to), Tone::Purple) })
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AppUpdates {
+    pub current: String,
+    pub enabled: bool,
+    pub active: bool,
+    pub installs_on_quit: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct UsageWindow {
     pub label: String,
@@ -182,6 +193,7 @@ pub struct SettingsData {
     pub plugins: Vec<PluginRow>,
     pub plugin_auto: PluginAuto,
     pub hibernate_minutes: u32,
+    pub app_updates: AppUpdates,
     pub account: Account,
 }
 
@@ -218,6 +230,7 @@ pub enum SettingsAction {
     SetPluginEnabled(String, bool),
     LoadDevPlugin,
     SetHibernateMinutes(u32),
+    SetAutoUpdate(bool),
     ReloadUsage,
     Close,
 }

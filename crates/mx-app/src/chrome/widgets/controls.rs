@@ -111,6 +111,13 @@ impl Toggle {
         self.subtitle = Some(text.into());
         self
     }
+
+    pub fn disabled(mut self, off: bool) -> Self {
+        if off {
+            self.on_toggle = None;
+        }
+        self
+    }
 }
 
 impl RenderOnce for Toggle {
