@@ -179,7 +179,8 @@ Settings card color: running green; crashed/invalid red; starting yellow; disabl
 description, then facts:
 `Roda um programa seu, com as suas permissões: <main joined by space>` or
 `Só declarações — nenhum programa roda`; per permission `Pode <label>`;
-`Comandos: <title> (<key label>), …`; `Um tema` / `<n> temas`; each warning.
+`Comandos: <title> (<key label>), …`;
+`Ferramentas para o Claude, liberadas em toda sessão: <tool name>, …`; `Um tema` / `<n> temas`; each warning.
 Dialog title `Instalar plugin` / `Instalar <name>?` / `Atualizar <name>?`; buttons `Cancelar`,
 `Continuar`, `Voltar`, `Confio, instalar` / `Confio, atualizar`. Banners after install:
 `<name> <version> instalado` / `<name> atualizado de <old> pra <new>`.

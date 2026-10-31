@@ -304,12 +304,15 @@ impl PluginTools for Design {
 
     fn call(&self, tab_id: String, name: String, args: Value) -> BoxFuture<'_, Option<Value>> {
         Box::pin(async move {
-            (name == "design_open").then(|| {
-                json!({"content": [
+            match name.as_str() {
+                "design_open" => Some(json!({"content": [
                     {"type": "text", "text": format!("aberto em {tab_id} com {args}")},
                     {"type": "image", "data": SHOT, "mimeType": "image/png"}
-                ]})
-            })
+                ]})),
+                "design_text" => Some(json!("pronto")),
+                "design_bare" => Some(json!({"content": "pronto"})),
+                _ => None,
+            }
         })
     }
 }
@@ -342,6 +345,19 @@ async fn a_plugin_tool_call_returns_the_plugin_result_verbatim() {
         r["error"],
         json!({"code": -32602, "message": "unknown tool: design_nada"})
     );
+}
+
+#[tokio::test]
+async fn a_plugin_result_without_a_content_list_becomes_a_tool_error() {
+    for name in ["design_text", "design_bare"] {
+        let r = mcp::handle_with(&call(name, json!({})), "tab1", &NoSink, &Design)
+            .await
+            .unwrap();
+        assert_eq!(
+            r["result"],
+            json!({"content": [{"type": "text", "text": "o plugin respondeu num formato inválido"}], "isError": true})
+        );
+    }
 }
 
 #[tokio::test]

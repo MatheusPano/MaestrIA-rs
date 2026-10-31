@@ -2,7 +2,7 @@ use serde_json::{Map, Value, json};
 
 use super::plugin_tools::{NoTools, PluginTools};
 use super::sink::SuggestionSink;
-use super::tools::{INSTRUCTIONS, dismiss, suggest, tools_json};
+use super::tools::{INSTRUCTIONS, dismiss, suggest, tool_error, tools_json};
 use super::{DISMISS_TOOL, PROTOCOL_VERSION, SERVER_NAME, SUGGEST_TOOL};
 
 pub fn parse_error() -> Value {
@@ -124,14 +124,14 @@ async fn call(
         Some(Value::String(name)) => {
             let args = Value::Object(args.clone());
             match tools.call(tab_id.to_owned(), name.clone(), args).await {
-                Some(answer) => result(id, answer),
+                Some(answer) if answer.get("content").is_some_and(Value::is_array) => result(id, answer),
+                Some(_) => result(id, tool_error("o plugin respondeu num formato inválido".into())),
                 None => error(id, -32602, &format!("unknown tool: {name}")),
             }
         }
         name => {
             let shown = match name {
                 None | Some(Value::Null) => "null".to_owned(),
-                Some(Value::String(s)) => s.clone(),
                 Some(other) => other.to_string(),
             };
             error(id, -32602, &format!("unknown tool: {shown}"))

@@ -293,3 +293,21 @@ fn trust_texts_describe_what_the_plugin_does() {
     assert_eq!(mx_plugins::registry::installed_banner("X", "2", Some("1")), "X atualizado de 1 pra 2");
     assert_eq!(mx_plugins::registry::installed_banner("X", "2", None), "X 2 instalado");
 }
+
+#[test]
+fn trust_texts_list_the_tools_the_plugin_gives_claude() {
+    let tool = |n: &str| json!({"name": n, "description": "d", "inputSchema": {"type": "object"}});
+    let m = mx_plugins::PluginManifest::parse_for(
+        &common::obj(json!({"id": "x.design", "version": "1", "main": ["node", "m.js"],
+            "contributes": {"tools": [tool("design_open"), tool("design_board")]}})),
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        mx_plugins::registry::trust_facts(&m, true),
+        [
+            "Roda um programa seu, com as suas permissões: node m.js",
+            "Ferramentas para o Claude, liberadas em toda sessão: design_open, design_board",
+        ]
+    );
+}

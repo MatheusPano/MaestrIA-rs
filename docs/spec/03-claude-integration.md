@@ -428,7 +428,8 @@ This session runs inside Maestria, a desktop cockpit for Claude Code sessions. W
 
 `name = params.name`, `args = params.arguments` if object else `{}`.
 A string name other than the two built-ins goes to `pluginTools.call(tabId, name, arguments)` (§2.7); its
-`Some(result)` is the JSON-RPC result verbatim.
+`Some(result)` is the JSON-RPC result verbatim when it is an object with a `content` array; anything else
+becomes the error result `o plugin respondeu num formato inválido`.
 Unknown name (`None` from the plugin tools too) → JSON-RPC error `{"code": -32602, "message": "unknown tool: <name>"}` (`null` printed for a
 missing name). Known tools always return a JSON-RPC **result** (tool errors are `isError: true` results):
 

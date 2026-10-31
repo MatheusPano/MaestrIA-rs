@@ -277,6 +277,10 @@ pub fn trust_facts(m: &PluginManifest, linux: bool) -> Vec<String> {
             .collect();
         facts.push(format!("Comandos: {}", list.join(", ")));
     }
+    if !m.tools.is_empty() {
+        let names: Vec<&str> = m.tools.iter().map(|t| t.name.as_str()).collect();
+        facts.push(format!("Ferramentas para o Claude, liberadas em toda sessão: {}", names.join(", ")));
+    }
     match m.themes.len() {
         0 => {}
         1 => facts.push("Um tema".into()),
