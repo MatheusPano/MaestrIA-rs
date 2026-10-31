@@ -29,6 +29,7 @@ pub struct RfwView {
     content: DynamicContent,
     theme: Arc<Theme>,
     dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
     sink: ActionSink,
     background: Option<gpui::Hsla>,
     pub(super) menu: Option<OpenMenu>,
@@ -56,6 +57,7 @@ impl RfwView {
             content,
             theme,
             dir,
+            data_dir: None,
             sink,
             background: None,
             menu: None,
@@ -111,6 +113,10 @@ impl RfwView {
         self.dir = dir;
     }
 
+    pub fn set_data_dir(&mut self, dir: Option<PathBuf>) {
+        self.data_dir = dir;
+    }
+
     pub(super) fn code_pane(&self, doc: &str) -> Option<gpui::Entity<super::code_pane::CodePane>> {
         self.editors.pane(doc).cloned()
     }
@@ -158,6 +164,7 @@ impl Render for RfwView {
         let mut ctx = Ctx {
             palette: &self.theme,
             dir: self.dir.as_deref(),
+            data_dir: self.data_dir.as_deref(),
             sink: self.sink.clone(),
             view: cx.weak_entity(),
             ids: 0,

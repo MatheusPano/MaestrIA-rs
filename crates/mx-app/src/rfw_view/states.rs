@@ -33,6 +33,15 @@ impl<T: Default> Slots<T> {
         items[i].clone()
     }
 
+    pub fn peek(&self) -> Rc<RefCell<T>> {
+        let i = self.used.get();
+        let mut items = self.items.borrow_mut();
+        if items.len() <= i {
+            items.push(Rc::new(RefCell::new(T::default())));
+        }
+        items[i].clone()
+    }
+
     fn settle(&self) {
         self.items.borrow_mut().truncate(self.used.get());
         self.used.set(0);

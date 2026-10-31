@@ -16,6 +16,7 @@ mod icons;
 mod layout;
 mod menu;
 mod paint;
+mod picture;
 mod style;
 mod text_input;
 mod tooltip;

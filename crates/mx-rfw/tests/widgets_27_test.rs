@@ -7,8 +7,8 @@ use mx_rfw::widgets::maestria::{MARKDOWN_BASE_SIZE, anchor_key};
 use mx_rfw::widgets::sprite::{Sprite, plugin_file_of, sprite_frame};
 use mx_rfw::widgets::text_input::{ClearSeen, completed};
 use mx_rfw::widgets::zoom_view::{
-    BoxFit, Transform, ZoomView, clamp_translation, command_transform, fitted_scale, should_report, wheel_factor,
-    zoom_around, zoom_target,
+    BoxFit, Transform, ZoomView, clamp_translation, command_transform, fitted_placement, fitted_scale, focus_in_placement,
+    focus_transform, should_report, wheel_factor, zoom_around, zoom_target,
 };
 use mx_rfw::widgets::{Local, decode};
 use mx_rfw::{DynamicContent, LocalLibrary, Node, Value, Widget, evaluate, parse_library_file};
@@ -338,4 +338,53 @@ fn every_escritorio_library_parses() {
     for name in ["chat.rfwtxt", "escritorio.rfwtxt", "sidebar.rfwtxt"] {
         parse_library_file(&escritorio(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
+}
+
+#[test]
+fn focus_on_whole_child_is_identity() {
+    assert_eq!(focus_transform((1000.0, 800.0), (0.0, 0.0, 1.0, 1.0), 6.0), Transform::IDENTITY);
+}
+
+#[test]
+fn focus_on_quarter_centers_it() {
+    let size = (1000.0, 800.0);
+    let m = focus_transform(size, (0.5, 0.5, 0.25, 0.25), 6.0);
+    assert!((m.scale - 3.6).abs() < 1e-9, "{m:?}");
+    let c = (0.625 * size.0 * m.scale + m.x, 0.625 * size.1 * m.scale + m.y);
+    assert!((c.0 - 500.0).abs() < 0.5 && (c.1 - 400.0).abs() < 0.5, "{m:?} {c:?}");
+}
+
+#[test]
+fn focus_respects_max_scale() {
+    assert_eq!(focus_transform((1000.0, 800.0), (0.4, 0.4, 0.01, 0.01), 6.0).scale, 6.0);
+}
+
+#[test]
+fn focus_is_not_a_zoom_target_and_its_rect_is_parsed() {
+    assert_eq!(zoom_target(Some("focus"), 1.0, 6.0), None);
+    let t = tree(
+        r#"widget root = ZoomView(command: "focus", focus: {x: 0.5, y: 0.25, w: 0.25, h: 0.5}, onMove: event "m" {}, child: Text(text: "x"));"#,
+        "{}",
+    );
+    let Local::ZoomView(z) = decode(root(&t)) else { panic!() };
+    assert_eq!(z.focus, Some((0.5, 0.25, 0.25, 0.5)));
+    assert_eq!(z.on_move.len(), 1);
+    let t = tree("widget root = ZoomView();", "{}");
+    let Local::ZoomView(z) = decode(root(&t)) else { panic!() };
+    assert_eq!(z.focus, None);
+}
+
+#[test]
+fn focus_is_relative_to_the_fitted_content_not_the_viewport() {
+    let view = (1000.0, 800.0);
+    let placed = fitted_placement(BoxFit::Contain, (0.0, 0.0), (2000.0, 500.0), view);
+    assert_eq!(placed, (0.0, 0.34375, 1.0, 0.3125));
+    let rect = focus_in_placement((0.5, 0.0, 0.5, 1.0), placed);
+    let m = focus_transform(view, rect, 6.0);
+    assert!((m.scale - 1.8).abs() < 1e-9, "{m:?}");
+    assert!((400.0 * m.scale + m.y - 400.0).abs() < 0.5, "{m:?}");
+    let (left, right) = (500.0 * m.scale + m.x, 1000.0 * m.scale + m.x);
+    assert!(left >= -0.5 && right <= 1000.5, "{m:?} {left} {right}");
+    let q = focus_transform(view, focus_in_placement((0.375, 0.0, 0.25, 1.0), placed), 6.0);
+    assert!(((500.0 * q.scale + q.x) - 500.0).abs() < 0.5 && ((400.0 * q.scale + q.y) - 400.0).abs() < 0.5, "{q:?}");
 }

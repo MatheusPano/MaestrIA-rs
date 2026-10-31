@@ -68,7 +68,7 @@ fn tool_text(text: String) -> Value {
     json!({"content": [{"type": "text", "text": text}]})
 }
 
-fn tool_error(text: String) -> Value {
+pub fn tool_error(text: String) -> Value {
     json!({"content": [{"type": "text", "text": text}], "isError": true})
 }
 

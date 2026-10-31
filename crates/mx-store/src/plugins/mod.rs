@@ -3,6 +3,7 @@ mod host;
 mod screen;
 mod session_api;
 mod sessions;
+mod tools;
 mod views;
 
 use std::collections::{HashMap, VecDeque};

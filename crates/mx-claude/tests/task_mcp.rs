@@ -3,7 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use common::{Desk, post, start};
-use mx_claude::mcp::{self, NoSink, SuggestionSink, is_task_id, new_task_id};
+use mx_claude::mcp::{self, BoxFuture, NoSink, PluginTools, SuggestionSink, is_task_id, new_task_id};
 use serde_json::{Value, json};
 
 fn call(tool: &str, args: Value) -> Value {
@@ -291,4 +291,90 @@ async fn request_with_an_id_but_no_string_method_is_an_invalid_request_for_that_
             json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32600, "message": "invalid request"}})
         );
     }
+}
+
+struct Design;
+
+const SHOT: &str = "iVBORw0KGgo=";
+
+impl PluginTools for Design {
+    fn list(&self) -> Vec<Value> {
+        vec![json!({"name": "design_open", "description": "abre o canvas", "inputSchema": {"type": "object"}})]
+    }
+
+    fn call(&self, tab_id: String, name: String, args: Value) -> BoxFuture<'_, Option<Value>> {
+        Box::pin(async move {
+            match name.as_str() {
+                "design_open" => Some(json!({"content": [
+                    {"type": "text", "text": format!("aberto em {tab_id} com {args}")},
+                    {"type": "image", "data": SHOT, "mimeType": "image/png"}
+                ]})),
+                "design_text" => Some(json!("pronto")),
+                "design_bare" => Some(json!({"content": "pronto"})),
+                _ => None,
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn plugin_tools_are_listed_after_the_built_in_ones() {
+    let body = json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"});
+    let r = mcp::handle_with(&body, "tab1", &NoSink, &Design).await.unwrap();
+    let tools = r["result"]["tools"].as_array().unwrap();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["suggest_task", "dismiss_task", "design_open"]);
+    assert_eq!(tools[2]["inputSchema"], json!({"type": "object"}));
+}
+
+#[tokio::test]
+async fn a_plugin_tool_call_returns_the_plugin_result_verbatim() {
+    let body = call("design_open", json!({"dir": "/d"}));
+    let r = mcp::handle_with(&body, "tab1", &NoSink, &Design).await.unwrap();
+    assert_eq!(
+        r,
+        json!({"jsonrpc": "2.0", "id": 1, "result": {"content": [
+            {"type": "text", "text": "aberto em tab1 com {\"dir\":\"/d\"}"},
+            {"type": "image", "data": SHOT, "mimeType": "image/png"}
+        ]}})
+    );
+    let r = mcp::handle_with(&call("design_nada", json!({})), "tab1", &NoSink, &Design)
+        .await
+        .unwrap();
+    assert_eq!(
+        r["error"],
+        json!({"code": -32602, "message": "unknown tool: design_nada"})
+    );
+}
+
+#[tokio::test]
+async fn a_plugin_result_without_a_content_list_becomes_a_tool_error() {
+    for name in ["design_text", "design_bare"] {
+        let r = mcp::handle_with(&call(name, json!({})), "tab1", &NoSink, &Design)
+            .await
+            .unwrap();
+        assert_eq!(
+            r["result"],
+            json!({"content": [{"type": "text", "text": "o plugin respondeu num formato inválido"}], "isError": true})
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_server_offers_the_plugin_tools_and_allows_them_in_the_settings() {
+    let state = tempfile::tempdir().unwrap();
+    let (server, _rx) = start(state.path()).await;
+    server.set_plugin_tools(Arc::new(Design));
+    let body = json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}).to_string();
+    let (_, text) = post(server.port(), "/mcp/tab1", &body).await;
+    let answer: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(answer["result"]["tools"][2]["name"], "design_open");
+    let (_, text) = post(server.port(), "/mcp/tab1", &call("design_open", json!({})).to_string()).await;
+    let answer: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(answer["result"]["content"][1]["type"], "image");
+    let settings: Value = serde_json::from_str(&server.settings_for("tab1", None, None)).unwrap();
+    assert_eq!(
+        settings["permissions"]["allow"],
+        json!(["mcp__maestria__suggest_task", "mcp__maestria__dismiss_task", "mcp__maestria__design_open"])
+    );
 }

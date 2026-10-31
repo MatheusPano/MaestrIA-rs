@@ -10,7 +10,7 @@ use crate::{BLOCKS_VERSION, PLUGIN_API};
 
 pub const MAESTRIA_COMPAT: &str = "2.7.0";
 
-pub const CAPABILITIES: [(&str, i64, bool); 21] = [
+pub const CAPABILITIES: [(&str, i64, bool); 23] = [
     ("rfw", 2, true),
     ("floats", 1, true),
     ("input", 1, true),
@@ -32,10 +32,14 @@ pub const CAPABILITIES: [(&str, i64, bool); 21] = [
     ("modalFrom", 1, true),
     ("selectable", 1, true),
     ("rename", 1, true),
+    ("picture", 1, true),
+    ("zoomFocus", 1, true),
 ];
 
 pub const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// `tool.call` may render on a cold start (headless browser, bundler), so it waits longer.
+pub const TOOL_TIMEOUT: Duration = Duration::from_secs(120);
 
 impl Plugins {
     pub fn startup(&self) {

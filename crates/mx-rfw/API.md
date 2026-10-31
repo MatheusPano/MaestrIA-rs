@@ -11,16 +11,14 @@ No UI dependency; the renderer (mx-app) matches on `widgets::Local` and draws.
 - `ParseError { kind: Syntax|Unsupported|TooDeep, message, line, column }`; `Display` = `"<msg> at line L column C."`.
   `Unsupported`: stateful widgets, `state.*`, `set state`, widget builders. `TooDeep`: >200 nested values.
 - `parse_error_text(&ParseError) -> String` — the host surface text `"a interface do plugin não leu:\n<e>"`.
-- `lexer::{Lexer, Tok, Token}` — `Lexer::tokenize(&str)` (exposed for tests/tools).
-- `ast::{Library, Import, WidgetDecl, Expr, Item, Switch, Part}` — the parsed tree.
+- `lexer::{Lexer, Tok, Token}` (`tokenize`, for tests); `ast::{Library, Import, WidgetDecl, Expr, Item, Switch, Part}`.
 
 ## Data
 - `Value` = `Missing | Null | Bool | Int(i64) | Double(f64) | String | List | Map | Widget(Box<Widget>) | Event(Box<Event>)`.
   Getters are strict like rfw `v<T>`: `as_int()` is `None` for a double and vice versa. `get(key)`, `at(i)` never
   panic (yield `Missing`). `Value::from_json` keeps JSON int vs double; `to_json()` drops `Missing`/widgets/events.
-- `Map` = `IndexMap<String, Value>` (insertion order).
-- `DynamicContent` — the `data` root. `merge_plugin_data(&serde_json::Map)` replaces per top-level key and skips
-  `theme`; `set_theme(Value)` injects `data.theme` (ARGB ints + `dark` + `mono`); `update`, `update_all`, `lookup`.
+- `Map` = `IndexMap<String, Value>` (insertion order). `DynamicContent` = the `data` root: `merge_plugin_data(&Map)`
+  per top-level key, skips `theme`; `set_theme` → `data.theme` (ARGB + `dark` + `mono`); `update(_all)`, `lookup`.
 
 ## Evaluate
 - `evaluate(&Library, root: &str, &DynamicContent) -> Widget` — resolves `data.*`, `args.*` (lazily, in the caller's
@@ -68,11 +66,15 @@ No UI dependency; the renderer (mx-app) matches on `widgets::Local` and draws.
   2.7 maestria: Sprite (`sprite::Sprite`, `motion()`, `frame_at(elapsed)`, `cell(frame)`), ZoomView (`zoom_view::ZoomView`),
   TextInput (`text_input::TextInput`: `submitted(text)`, `arrow(key, text)`, `matches(text, dismissed)` ≤ 8,
   `shown_hint()`, `lines()`), Anchor (`key(plugin)` = `"{plugin}/{id}"`), Selectable / SelectionLines
-  (`maestria::SelectionArea`), Markdown (`maestria::Markdown`, default size 13.5); core FittedBox (`zoom_view::FittedBox`);
-  anything else → `Local::Unsupported(&Node)`.
-- `maestria::menu_extra(choice)` → `{action: choice}` for `onMenu`.
-- `sprite::{sprite_frame, plugin_file_of}` — Dart `spriteFrame` / `pluginFileOf` (no `..`, must stay under the plugin dir).
+  (`maestria::SelectionArea`), Markdown (`maestria::Markdown`, default size 13.5), Picture
+  (`Local::Picture(Box<picture::Picture>)`: path, width, height, fit default `Contain`); core FittedBox
+  (`zoom_view::FittedBox`); anything else → `Local::Unsupported(&Node)`.
+- `maestria::menu_extra(choice)` → `{action: choice}` for `onMenu`. `sprite::{sprite_frame, plugin_file_of}` — Dart
+  `spriteFrame` / `pluginFileOf` (no `..`, stays under the plugin dir); `plugin_or_data_file_of(rel, plugin_dir,
+  data_dir)` tries the plugin dir, then the plugin data dir.
 - `zoom_view::{Transform, zoom_target, command_transform, zoom_around, wheel_factor, pan, clamp_translation,
   should_report, zoom_extra, fitted_scale, ease_out_cubic, ease_in_cubic}` — the InteractiveViewer math (step 1.5,
   scaleFactor 200, 220 ms command animation, onZoom 200 ms after settling when |Δscale| ≥ 0.005).
+  `ZoomView.focus` ({x,y,w,h} child fractions) → `focus_transform(size, rect, max)` (10% margin), mapped through
+  `fitted_placement` + `focus_in_placement` under a FittedBox; `on_move` gets `move_extra(m)` = `{scale, x, y}`.
 - `text_input::{ClearSeen, completed}` — `clear` empties a field only when it changes after the first sight.

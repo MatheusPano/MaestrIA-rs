@@ -54,7 +54,7 @@ Top-level fields:
 | `permissions` | string[] | no | each must be a known id else `permissão desconhecida: "<p>" — as que existem são hooks, terminal.write, sessions.create, notifications` (a non-string prints via Dart toString) |
 | `contributes` | object | no | see below; non-map → treated as `{}` |
 
-`contributes` keys: `commands`, `themes`, `settings`, `sidebar`, `screen`, `suggestions`.
+`contributes` keys: `commands`, `themes`, `settings`, `sidebar`, `screen`, `suggestions`, `tools`.
 Any other key → warning `"contributes.<k>" não existe nesta versão — ignorado` (not fatal).
 
 #### `contributes.commands[]`
@@ -113,8 +113,23 @@ other → `"contributes.screen" é true ou um objeto com "home": {"home": "quadr
 `{ "label": non-blank string }` (trimmed) else `"contributes.suggestions" é um objeto com "label": {"label": "criar a task no …"}`;
 without `main` → `"contributes.suggestions" precisa de "main": quem recebe a sugestão é o processo`.
 
+#### `contributes.tools[]` (Rust port only)
+MCP tools the plugin offers to the Claude sessions through the per-tab `maestria` MCP server
+(03-claude-integration §2.7). `null`/absent → none.
+
+| field | rule |
+|---|---|
+| (list) | must be a list of objects, else `"contributes.tools" é uma lista: [{"name": "x_abrir", "description": "…", "inputSchema": {"type": "object"}}]` |
+| `main` | a non-empty list needs `main`, else `"contributes.tools" precisa de "main": quem responde a ferramenta é o processo` |
+| `name` | matches `^[a-z][a-z0-9_]{0,47}$` else `nome de ferramenta inválido: "<name>" — minúsculas, dígitos e sublinhado, começando por letra, até 48 caracteres`; `suggest_task`/`dismiss_task` → `"<name>" é uma ferramenta da MaestrIA — escolha outro nome`; must start with `<last "."-segment of the plugin id>_` (`maestria.design` → `design_`) else `a ferramenta "<name>" tem que começar com "design_"`; duplicate → `ferramenta repetida: "<name>"` |
+| `description` | string, trimmed, default `""` |
+| `inputSchema` | object with `"type": "object"` (kept verbatim), else `a ferramenta "<name>" precisa de "inputSchema" com "type": "object"` |
+
+Checks run per item in that order (name, reserved, prefix, duplicate, schema). A plugin id with a `-`
+in its last segment cannot declare tools (the prefix can never match the name pattern).
+
 Parse order matters only for which error wins: id → maestria → main → permissions →
-activation → commands → themes → settings → sidebar → screen → suggestions → unknown keys → version.
+activation → commands → themes → settings → sidebar → screen → suggestions → tools → unknown keys → version.
 **NOTE**: `version` is checked last (inside the constructor call), so a manifest missing both
 `version` and having a bad command reports the command error.
 
@@ -164,7 +179,8 @@ Settings card color: running green; crashed/invalid red; starting yellow; disabl
 description, then facts:
 `Roda um programa seu, com as suas permissões: <main joined by space>` or
 `Só declarações — nenhum programa roda`; per permission `Pode <label>`;
-`Comandos: <title> (<key label>), …`; `Um tema` / `<n> temas`; each warning.
+`Comandos: <title> (<key label>), …`;
+`Ferramentas para o Claude, liberadas em toda sessão: <tool name>, …`; `Um tema` / `<n> temas`; each warning.
 Dialog title `Instalar plugin` / `Instalar <name>?` / `Atualizar <name>?`; buttons `Cancelar`,
 `Continuar`, `Voltar`, `Confio, instalar` / `Confio, atualizar`. Banners after install:
 `<name> <version> instalado` / `<name> atualizado de <old> pra <new>`.
@@ -209,6 +225,7 @@ If the active theme belonged to the plugin, fall back to the default theme.
 | `onHook:<Name>`, `onHook:*` | hook event with that name (requires `hooks` permission to be delivered at all) |
 | `onSession` | `session.opened/closed/exited/status` |
 | `onSuggestion` | **NOTE**: not consulted; `suggestion.start` is a request that always starts the process |
+| `onTool:<name>` | declarative, like `onCommand:`: a `tool.call` for one of the plugin's tools always starts the process |
 | `sidebar.shown` | not an activation event; the sidebar tab calls `wake()` directly |
 
 Event delivery (`emit(type, data, activations, needs)`): for each active plugin with a process,
@@ -309,6 +326,7 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
 | `initialize` | request | 10 s | see below |
 | `command.invoke` | request | 30 s | `{ command: "<commandId>", context: { cwd, folder, sessionId, title, pluginDir, tabId? } }` |
 | `suggestion.start` | request | 30 s | `{ suggestion: { id, title, tldr, prompt }, choice: "worktree"\|"local"\|"here", origin: { tabId, cwd, root, folder, isRepo, branch } }` (`origin.folder` = folder *name*, `root` = folder root path) |
+| `tool.call` | request | 120 s | `{ tool: "<name>", args: { ... }, tabId: "<tab of the calling session>", cwd: "<tab cwd>"\|null }` (Rust port only) |
 | `event` | notification | — | `{ type, ... }` (§2.5) |
 | `view.action` | notification | — | `{ viewId, action, values }` |
 | `settings.changed` | notification | — | `{ settings: { <id>: <resolved value> } }` (all settings), only if ready |
@@ -318,10 +336,16 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
 ```json
 {
   "apiVersion": 1, "blocks": 2, "rfw": 2, "floats": 1, "input": 1, "form": 1, "modal": 1, "editor": 1,
+  "sprites": 1, "zoom": 1, "textInput": 1, "openInBackground": 1, "markdown": 1, "pasteImage": 1, "keys": 1,
+  "arrows": 1, "wake": 1, "hibernate": 1, "portrait": 1, "closeSessions": 1, "modalFrom": 1, "selectable": 1,
+  "rename": 1, "picture": 1, "zoomFocus": 1,
   "pluginId": "<id>", "pluginDir": "<dir>", "dataDir": "~/.maestria/plugin-data/<id> (absolute)",
   "permissions": ["hooks", ...], "settings": { ... resolved ... }
 }
 ```
+Capability flags come from `CAPABILITIES` (`mx-plugins/src/registry/lifecycle.rs`), in that wire order.
+`picture: 1` (Rust port only) means the `maestria.Picture` widget (§3.4 C.3) is available.
+`zoomFocus: 1` (Rust port only) means `maestria.ZoomView` accepts `command: "focus"` and `onMove` (§3.4 C.3).
 The result is ignored (any value). Errors → crash `o initialize falhou: <message>`.
 Timeout message: `"initialize" ficou sem resposta por 10s` (generic: `"<method>" ficou sem resposta por <n>s`, code -32002).
 
@@ -331,6 +355,15 @@ when a tab is in focus / the menu was opened on one. Result ignored. Errors beco
 `<command title>: <message>` and log `comando <id> falhou: <msg>`. If the plugin cannot start:
 `-32002` with crash reason or `o plugin não subiu`; disabled: `o plugin não está ligado`.
 `invoke` clears `crash` first (explicit user action revives crashed plugins).
+
+`tool.call` (Rust port only, `Plugins::call_tool(tabId, cwd, name, args)`): sent to the first enabled
+plugin whose `contributes.tools` declares `name`; none → `o plugin não está ligado`. Two enabled plugins
+declaring the same name: `tools()` lists it once (first plugin wins, same order as `call_tool`) and the
+shadowed plugin logs `ferramenta <name> ignorada: o plugin "<first id>" já tem uma com esse nome` once. Like `invoke` it
+clears `crash`, logs `ferramenta <name>`, starts the process if needed and waits up to 120 s (cold-start
+rendering). The result must be an MCP tool result (`{content: [...], isError?}`; `content` items may be
+`{"type":"image","data":<base64>,"mimeType":"image/png"}`) and is handed to the session unchanged. An
+error logs `ferramenta <name> falhou: <msg>` and reaches the session as `{"content":[{"type":"text","text":<msg>}],"isError":true}`.
 
 `view.action` values: for block views, every field (`input` text, `checkbox` bool, `select`
 value/null, `calendar` string or `{from,to}`) of the whole view (§3.5). For RFW views,
@@ -434,6 +467,7 @@ Only for plugins with `contributes.sidebar`.
 |---|---|
 | `initialize` | 10 s |
 | any other host request (`command.invoke`, `suggestion.start`) | 30 s |
+| `tool.call` (`TOOL_TIMEOUT`) | 120 s |
 | shutdown grace, then SIGTERM grace | 0.8 s + 0.8 s, then SIGKILL |
 | plugin → host requests | no host-side timeout (the UI ones wait for the user) |
 
@@ -1036,6 +1070,20 @@ Notation: `name: decoder = default`. "USED" lists what the real files pass.
   - While hovered over, a `hint` pill is drawn at bottom 14 px: accent background, text 12 px w600.
   - The child is inside a `Stack`.
 - USED (wiboor): `id`, `hint`, `radius: 12.0`, `onDrop: event "drop" {}`, `child`.
+
+**Picture** (Rust port only; capability `picture: 1`)
+- Reads: `path: v<String>`, `width: v<double>`, `height: v<double>` (ints accepted), `fit: BoxFit` string (`fill`, `contain`, `cover`, `fitWidth`, `fitHeight`, `none`, `scaleDown`; default `contain`).
+- Named `Picture`, not `Image`, because `core.widgets` already has `Image` and both libraries are usually imported together.
+- `path` is relative. It is looked up first in the plugin dir, then in the plugin data dir (`<state>/plugin-data/<id>`, the `dataDir` sent in `initialize`). Rejected: `..` anywhere, absolute paths, empty, files that do not exist.
+- Decoded with the `image` crate (PNG and the other formats it reads). Decoded images are cached by `(path, mtime, len)`, at most 64 (the oldest is dropped), so a file rewritten in place shows the new image on the next render.
+- Size: `width`/`height` when given, otherwise the image's natural size (one missing side follows the aspect ratio). The image is drawn centered in that box per `fit` and clipped to it. A missing or unreadable file renders an empty box of `width`×`height`.
+
+**ZoomView additions** (Rust port only; capability `zoomFocus: 1`; the base widget is in `06-delta-2.4-to-2.7.md`)
+- `command: "focus"` with `focus: {x, y, w, h}` (numbers, fractions 0..1 of the child box) and `commandRev`. Runs only when `commandRev` changes after mount, animated like `in`/`out`/`fit`. Without a valid `focus` map it does nothing.
+- Target: scale = clamp(min(1/w, 1/h) × 0.9, 1.0, `maxScale`); the rect centre is moved to the view centre, then the translation is clamped so nothing outside the child shows. Focusing `(0,0,1,1)` gives the identity transform.
+- When the ZoomView's direct child is a `FittedBox`, `focus` fractions are relative to the fitted content, not the viewport: the rect is first mapped through the content's placed rect (same fit/alignment as the FittedBox, using its measured natural size; before it is measured, or for any other child, the fractions apply to the whole view). The final translation is still clamped, so a rect touching the content edge cannot be centred and is just fully visible.
+- A programmatic command that starts an animation discards a pending (not yet reported) user move, so `onMove` never fires at the end of it.
+- `onMove`: fired after a user pan (drag, trackpad scroll) or wheel zoom settles (same 200 ms as `onZoom`), with extra `{scale, x, y}` (the transform: `x`/`y` are the layer translation in logical px). Programmatic commands never fire it. `onZoom` is unchanged.
 
 ##### C.4 Decoders reachable from the used widgets and arguments
 

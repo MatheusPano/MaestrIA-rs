@@ -19,6 +19,7 @@ pub struct Preview {
     widget: Option<Widget>,
     theme: Arc<Theme>,
     dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
     width: f32,
     view: WeakEntity<RfwView>,
 }
@@ -28,6 +29,7 @@ impl Render for Preview {
         let mut cx = Ctx {
             palette: &self.theme,
             dir: self.dir.as_deref(),
+            data_dir: self.data_dir.as_deref(),
             sink: Rc::new(|_, _, _| {}),
             view: self.view.clone(),
             ids: 1 << 40,
@@ -64,6 +66,7 @@ pub fn draggable(cx: &mut Ctx, d: &Draggable, fit: Fit, theme: Arc<Theme>) -> El
     let feedback = d.feedback.or(d.child).cloned();
     let view = cx.view.clone();
     let dir = cx.dir.map(|p| p.to_path_buf());
+    let data_dir = cx.data_dir.map(|p| p.to_path_buf());
     let el = pass(cx.el(), child).cursor(CursorStyle::OpenHand);
     let el = if lifted { el.opacity(0.3) } else { el };
     el.on_drag(now, move |now, _, _, app| {
@@ -73,7 +76,8 @@ pub fn draggable(cx: &mut Ctx, d: &Draggable, fit: Fit, theme: Arc<Theme>) -> El
         })
         .ok();
         let (widget, theme, dir, view) = (feedback.clone(), theme.clone(), dir.clone(), view.clone());
-        app.new(|_| Preview { widget, theme, dir, width, view })
+        let data_dir = data_dir.clone();
+        app.new(|_| Preview { widget, theme, dir, data_dir, width, view })
     })
 }
 

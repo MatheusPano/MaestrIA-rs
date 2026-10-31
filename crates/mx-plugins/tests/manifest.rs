@@ -365,3 +365,81 @@ fn short_titles_drop_the_plugin_name_prefix() {
     assert_eq!(m.commands[0].short_title(&m.name), "hot reload");
     assert_eq!(m.commands[1].short_title(&m.name), "git: outro prefixo");
 }
+
+fn design(tools: Value) -> Value {
+    json!({"id": "maestria.design", "version": "1", "main": ["node", "main.js"],
+        "contributes": {"tools": tools}})
+}
+
+fn tool(name: &str) -> Value {
+    json!({"name": name, "description": "abre o canvas",
+        "inputSchema": {"type": "object", "properties": {"dir": {"type": "string"}}}})
+}
+
+#[test]
+fn tools_keep_name_description_and_schema() {
+    let m = parse(design(json!([tool("design_open"), tool("design_shot")]))).unwrap();
+    assert!(m.warnings.is_empty());
+    let names: Vec<&str> = m.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["design_open", "design_shot"]);
+    assert_eq!(m.tools[0].description, "abre o canvas");
+    assert_eq!(
+        m.tools[0].input_schema,
+        json!({"type": "object", "properties": {"dir": {"type": "string"}}})
+    );
+    assert!(parse(base(json!({}))).unwrap().tools.is_empty());
+}
+
+#[test]
+fn tools_need_a_main() {
+    let mut no_main = design(json!([tool("design_open")]));
+    no_main["main"] = Value::Null;
+    assert_eq!(
+        error_of(no_main),
+        "\"contributes.tools\" precisa de \"main\": quem responde a ferramenta é o processo"
+    );
+}
+
+#[test]
+fn a_tool_name_starts_with_the_last_segment_of_the_plugin_id() {
+    assert_eq!(
+        error_of(design(json!([tool("open")]))),
+        "a ferramenta \"open\" tem que começar com \"design_\""
+    );
+    assert_eq!(
+        error_of(design(json!([tool("designopen")]))),
+        "a ferramenta \"designopen\" tem que começar com \"design_\""
+    );
+}
+
+#[test]
+fn bad_tools_are_refused_with_the_verbatim_message() {
+    let bad_name = "nome de ferramenta inválido: \"Design_Open\" — minúsculas, dígitos e sublinhado, começando por letra, até 48 caracteres";
+    assert_eq!(error_of(design(json!([tool("Design_Open")]))), bad_name);
+    let long = format!("design_{}", "a".repeat(42));
+    assert!(error_of(design(json!([tool(&long)]))).starts_with("nome de ferramenta inválido:"));
+    assert!(parse(design(json!([tool(&long[..48])]))).is_ok());
+    assert_eq!(
+        error_of(design(json!([tool("design_open"), tool("design_open")]))),
+        "ferramenta repetida: \"design_open\""
+    );
+    let schema = "a ferramenta \"design_open\" precisa de \"inputSchema\" com \"type\": \"object\"";
+    assert_eq!(error_of(design(json!([{"name": "design_open"}]))), schema);
+    assert_eq!(error_of(design(json!([{"name": "design_open", "inputSchema": {"type": "string"}}]))), schema);
+    assert_eq!(error_of(design(json!([{"name": "design_open", "inputSchema": []}]))), schema);
+    let shape = "\"contributes.tools\" é uma lista: [{\"name\": \"x_abrir\", \"description\": \"…\", \"inputSchema\": {\"type\": \"object\"}}]";
+    assert_eq!(error_of(design(json!({"name": "design_open"}))), shape);
+    assert_eq!(error_of(design(json!(["design_open"]))), shape);
+}
+
+#[test]
+fn the_maestria_tools_cannot_be_redeclared() {
+    for reserved in ["suggest_task", "dismiss_task"] {
+        let m = json!({"id": reserved.split('_').next().unwrap(), "version": "1", "main": ["x"],
+            "contributes": {"tools": [tool(reserved)]}});
+        assert_eq!(
+            error_of(m),
+            format!("\"{reserved}\" é uma ferramenta da MaestrIA — escolha outro nome")
+        );
+    }
+}

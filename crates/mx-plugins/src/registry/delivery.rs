@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use mx_core::json::Obj;
 use mx_core::ports::{BoxFuture, PluginBus};
 use serde_json::{Map, Value};
 
 use super::Plugins;
-use super::lifecycle::REQUEST_TIMEOUT;
-use crate::manifest::PluginCommand;
+use super::lifecycle::{REQUEST_TIMEOUT, TOOL_TIMEOUT};
+use crate::manifest::{PluginCommand, PluginTool};
 use crate::permission::Permission;
 use crate::rpc::RpcError;
 
@@ -128,6 +130,17 @@ impl Plugins {
     }
 
     async fn request_revived(&self, id: &str, log: String, method: &str, params: Value) -> Result<Value, RpcError> {
+        self.request_revived_within(id, log, method, params, REQUEST_TIMEOUT).await
+    }
+
+    async fn request_revived_within(
+        &self,
+        id: &str,
+        log: String,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, RpcError> {
         {
             let mut reg = self.reg();
             if let Some(e) = reg.entry_mut(id) {
@@ -140,7 +153,7 @@ impl Plugins {
             let crash = self.get(id).and_then(|p| p.crash);
             return Err(RpcError::unavailable(crash.unwrap_or_else(|| "o plugin não subiu".into())));
         };
-        conn.request(method, Some(params), REQUEST_TIMEOUT).await
+        conn.request(method, Some(params), timeout).await
     }
 
     pub async fn invoke(&self, command: &PluginCommand, context: Obj) -> Result<Value, RpcError> {
@@ -167,6 +180,54 @@ impl Plugins {
         let sid = params.get("suggestion").map(|s| text_of(s.get("id")));
         let log = format!("sugestão {}", sid.filter(|s| !s.is_empty()).unwrap_or_else(|| "null".into()));
         self.request_revived(id, log, "suggestion.start", params).await.map(|_| ())
+    }
+
+    pub fn tools(&self) -> Vec<PluginTool> {
+        let mut out: Vec<(String, PluginTool)> = Vec::new();
+        let mut shadowed: Vec<(String, String)> = Vec::new();
+        {
+            let reg = self.reg();
+            for e in reg.all.iter().filter(|e| e.active()) {
+                for t in e.manifest.as_ref().map(|m| m.tools.as_slice()).unwrap_or_default() {
+                    match out.iter().find(|(_, o)| o.name == t.name) {
+                        Some((first, _)) => shadowed.push((
+                            e.id(),
+                            format!("ferramenta {} ignorada: o plugin \"{first}\" já tem uma com esse nome", t.name),
+                        )),
+                        None => out.push((e.id(), t.clone())),
+                    }
+                }
+            }
+        }
+        for (id, line) in shadowed {
+            if !self.log_of(&id).iter().any(|l| l.ends_with(&line)) {
+                self.note(&id, &line);
+            }
+        }
+        out.into_iter().map(|(_, t)| t).collect()
+    }
+
+    pub async fn call_tool(&self, tab_id: &str, cwd: Option<&str>, name: &str, args: Value) -> Result<Value, RpcError> {
+        let owner = self
+            .reg()
+            .all
+            .iter()
+            .find(|e| e.active() && e.manifest.as_ref().is_some_and(|m| m.tools.iter().any(|t| t.name == name)))
+            .map(|e| e.id());
+        let Some(id) = owner else {
+            return Err(RpcError::not_enabled());
+        };
+        let mut params = Map::new();
+        params.insert("tool".into(), Value::from(name));
+        params.insert("args".into(), args);
+        params.insert("tabId".into(), Value::from(tab_id));
+        params.insert("cwd".into(), cwd.map_or(Value::Null, Value::from));
+        let log = format!("ferramenta {name}");
+        let out = self.request_revived_within(&id, log, "tool.call", Value::Object(params), TOOL_TIMEOUT).await;
+        if let Err(e) = &out {
+            self.note(&id, &format!("ferramenta {name} falhou: {}", e.message));
+        }
+        out
     }
 
 }

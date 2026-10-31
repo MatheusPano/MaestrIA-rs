@@ -67,7 +67,8 @@ Group(idx of 4)} chosen_tint_of reading() last_import() matches(t) hits() has_hi
   clear_notices set_window_active see_focused`.
 - Ingest: `apply(StoreMsg)`, `apply_hook apply_status apply_agents`.
 - Flows: `queue start_flow hold_for pump_flows advance descends_from`; free `shell_label handoff_text`.
-- Suggestions: `sink() -> Arc<dyn SuggestionSink>` (hand to `HookServer::set_sink`), `suggest withdraw
+- Suggestions: `sink() -> Arc<dyn SuggestionSink>` (hand to `HookServer::set_sink`),
+  `plugin_tools(Plugins) -> Arc<dyn PluginTools>` (hand to `HookServer::set_plugin_tools`), `suggest withdraw
   pending_suggestion settled_as suggestion_of dismiss_suggestion run_suggestion_here start_suggestion_here
   track_suggestion untrack_suggestion start_suggestion_in_plugin suggestion_taker`.
 

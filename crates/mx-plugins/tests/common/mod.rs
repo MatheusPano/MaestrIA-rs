@@ -20,6 +20,7 @@ pub const MORRE: &str = include_str!("../fixtures/sh/morre.sh");
 pub const ECHO_ENV: &str = include_str!("../fixtures/sh/echo_env.sh");
 pub const DEAF: &str = include_str!("../fixtures/sh/deaf.sh");
 pub const SILENT: &str = include_str!("../fixtures/sh/silent.sh");
+pub const TOOL_ECHO: &str = include_str!("../fixtures/sh/tool_echo.sh");
 pub const AURORA: &str = include_str!("../fixtures/tema-e-atalhos/themes/aurora.json");
 
 pub fn fixtures() -> PathBuf {

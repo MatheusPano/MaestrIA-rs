@@ -111,3 +111,11 @@ pub fn plugin_file_of(rel: Option<&str>, dir: Option<&Path>) -> Option<PathBuf> 
     }
     file.is_file().then_some(file)
 }
+
+pub fn plugin_or_data_file_of(
+    rel: Option<&str>,
+    plugin_dir: Option<&Path>,
+    data_dir: Option<&Path>,
+) -> Option<PathBuf> {
+    plugin_file_of(rel, plugin_dir).or_else(|| plugin_file_of(rel, data_dir))
+}

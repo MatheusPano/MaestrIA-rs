@@ -41,6 +41,7 @@ pub fn render(cx: &mut Ctx, local: Local, fit: Fit, turns: f64) -> El {
         Local::DropTarget(d) => drop_target(cx, &d, fit),
         Local::CodeEditor(e) => super::code_editor::render(cx, &e),
         Local::Sprite(s) => super::sprite::render(cx, &s),
+        Local::Picture(p) => super::picture::render(cx, &p),
         Local::ZoomView(z) => super::zoom_view::render(cx, &z, fit),
         Local::FittedBox(f) => super::zoom_view::fitted(cx, &f, fit),
         Local::TextInput(t) => super::text_input_widget::render(cx, &t),

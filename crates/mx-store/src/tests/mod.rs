@@ -9,6 +9,7 @@ mod notices;
 mod pin;
 mod plugin_live;
 mod plugin_screen;
+mod plugin_tools;
 mod plugins;
 mod readers;
 mod replace_pane;
