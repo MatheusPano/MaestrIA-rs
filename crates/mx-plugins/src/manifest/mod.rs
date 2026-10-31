@@ -1,6 +1,7 @@
 mod commands;
 mod contributes;
 mod settings;
+mod tools;
 
 use std::fmt;
 use std::path::Path;
@@ -12,6 +13,7 @@ use serde_json::Value;
 
 pub use commands::{CommandTarget, PluginCommand};
 pub use settings::{PluginSetting, SettingOption, SettingType};
+pub use tools::{PluginTool, RESERVED_TOOLS};
 
 use crate::permission::Permission;
 use crate::{MANIFEST_NAME, PLUGIN_API};
@@ -53,6 +55,7 @@ pub struct PluginManifest {
     pub screen: bool,
     pub screen_home: Option<String>,
     pub suggestions: Option<String>,
+    pub tools: Vec<PluginTool>,
 }
 
 static PLUGIN_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9._-]*$").unwrap());
@@ -89,6 +92,7 @@ impl PluginManifest {
             || self.sidebar
             || self.screen
             || self.suggestions.is_some()
+            || !self.tools.is_empty()
         {
             out.insert(PluginKind::Feature);
         }
@@ -139,7 +143,7 @@ impl PluginManifest {
         let contributes = j.get("contributes").and_then(Value::as_object).unwrap_or(&empty);
         let commands =
             commands::parse_commands(&id, contributes.get("commands"), main.is_some(), linux, &mut warnings)?;
-        let c = contributes::parse(contributes, &commands, main.is_some(), &mut warnings)?;
+        let c = contributes::parse(contributes, &id, &commands, main.is_some(), &mut warnings)?;
         let name = match j.get("name") {
             Some(Value::String(n)) if !n.trim().is_empty() => n.trim().to_owned(),
             _ => id.clone(),
@@ -167,6 +171,7 @@ impl PluginManifest {
             screen: c.screen,
             screen_home: c.screen_home,
             suggestions: c.suggestions,
+            tools: c.tools,
             id,
         })
     }

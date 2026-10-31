@@ -2,6 +2,7 @@ mod commands;
 mod host;
 mod screen;
 mod session_api;
+mod tools;
 mod sessions;
 mod views;
 

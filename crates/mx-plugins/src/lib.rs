@@ -14,7 +14,7 @@ pub mod state;
 pub mod suggestions;
 pub mod ui;
 
-pub use manifest::{CommandTarget, ManifestError, PluginCommand, PluginManifest, PluginSetting, SettingType};
+pub use manifest::{CommandTarget, ManifestError, PluginCommand, PluginManifest, PluginSetting, PluginTool, SettingType};
 pub use permission::Permission;
 pub use registry::{InstallError, MAX_SIDEBAR_COMMANDS, PluginListener, Plugins, StagedPlugin};
 pub use registry::{CAPABILITIES, MAESTRIA_COMPAT};

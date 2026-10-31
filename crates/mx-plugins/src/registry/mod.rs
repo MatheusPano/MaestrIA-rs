@@ -13,7 +13,7 @@ use serde_json::Value;
 use tokio::runtime::Handle;
 
 pub use install::{InstallError, StagedPlugin, installed_banner, trust_facts, trust_headline};
-pub use lifecycle::{CAPABILITIES, MAESTRIA_COMPAT};
+pub use lifecycle::{CAPABILITIES, MAESTRIA_COMPAT, TOOL_TIMEOUT};
 
 use crate::catalog::PluginOrigin;
 use crate::chord::KeyPress;

@@ -1,5 +1,6 @@
 use serde_json::{Map, Value, json};
 
+use super::plugin_tools::{NoTools, PluginTools};
 use super::sink::SuggestionSink;
 use super::tools::{INSTRUCTIONS, dismiss, suggest, tools_json};
 use super::{DISMISS_TOOL, PROTOCOL_VERSION, SERVER_NAME, SUGGEST_TOOL};
@@ -16,30 +17,49 @@ fn result(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
-pub async fn handle_body(body: &[u8], tab_id: &str, sink: &dyn SuggestionSink) -> Option<Value> {
+pub async fn handle_body(
+    body: &[u8],
+    tab_id: &str,
+    sink: &dyn SuggestionSink,
+    tools: &dyn PluginTools,
+) -> Option<Value> {
     let Ok(text) = std::str::from_utf8(body) else {
         return Some(parse_error());
     };
     match serde_json::from_str::<Value>(text) {
-        Ok(message) => handle(&message, tab_id, sink).await,
+        Ok(message) => handle_with(&message, tab_id, sink, tools).await,
         Err(_) => Some(parse_error()),
     }
 }
 
 pub async fn handle(body: &Value, tab_id: &str, sink: &dyn SuggestionSink) -> Option<Value> {
+    handle_with(body, tab_id, sink, &NoTools).await
+}
+
+pub async fn handle_with(
+    body: &Value,
+    tab_id: &str,
+    sink: &dyn SuggestionSink,
+    tools: &dyn PluginTools,
+) -> Option<Value> {
     if let Value::Array(batch) = body {
         let mut answers = Vec::new();
         for message in batch {
-            if let Some(answer) = one(message, tab_id, sink).await {
+            if let Some(answer) = one(message, tab_id, sink, tools).await {
                 answers.push(answer);
             }
         }
         return (!answers.is_empty()).then_some(Value::Array(answers));
     }
-    one(body, tab_id, sink).await
+    one(body, tab_id, sink, tools).await
 }
 
-async fn one(message: &Value, tab_id: &str, sink: &dyn SuggestionSink) -> Option<Value> {
+async fn one(
+    message: &Value,
+    tab_id: &str,
+    sink: &dyn SuggestionSink,
+    tools: &dyn PluginTools,
+) -> Option<Value> {
     let Value::Object(message) = message else {
         return Some(error(Value::Null, -32600, "invalid request"));
     };
@@ -67,10 +87,19 @@ async fn one(message: &Value, tab_id: &str, sink: &dyn SuggestionSink) -> Option
             }),
         ),
         "ping" => result(id, json!({})),
-        "tools/list" => result(id, json!({"tools": tools_json()})),
-        "tools/call" => call(id, params, tab_id, sink).await,
+        "tools/list" => result(id, json!({"tools": all_tools(tools)})),
+        "tools/call" => call(id, params, tab_id, sink, tools).await,
         other => error(id, -32601, &format!("method not found: {other}")),
     })
+}
+
+fn all_tools(plugins: &dyn PluginTools) -> Value {
+    let mut all = match tools_json() {
+        Value::Array(list) => list,
+        _ => Vec::new(),
+    };
+    all.extend(plugins.list());
+    Value::Array(all)
 }
 
 async fn call(
@@ -78,6 +107,7 @@ async fn call(
     params: &Map<String, Value>,
     tab_id: &str,
     sink: &dyn SuggestionSink,
+    tools: &dyn PluginTools,
 ) -> Value {
     let empty = Map::new();
     let args = params
@@ -90,6 +120,13 @@ async fn call(
         }
         Some(Value::String(name)) if name == DISMISS_TOOL => {
             result(id, dismiss(args, tab_id, sink).await)
+        }
+        Some(Value::String(name)) => {
+            let args = Value::Object(args.clone());
+            match tools.call(tab_id.to_owned(), name.clone(), args).await {
+                Some(answer) => result(id, answer),
+                None => error(id, -32602, &format!("unknown tool: {name}")),
+            }
         }
         name => {
             let shown = match name {

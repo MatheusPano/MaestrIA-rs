@@ -1,7 +1,7 @@
 use mx_core::json::Obj;
 use serde_json::Value;
 
-use super::{ManifestError, PluginCommand, PluginSetting};
+use super::{ManifestError, PluginCommand, PluginSetting, PluginTool};
 
 pub(super) struct Contributes {
     pub themes: Vec<String>,
@@ -10,9 +10,10 @@ pub(super) struct Contributes {
     pub screen: bool,
     pub screen_home: Option<String>,
     pub suggestions: Option<String>,
+    pub tools: Vec<PluginTool>,
 }
 
-const KNOWN: [&str; 6] = ["commands", "themes", "settings", "sidebar", "screen", "suggestions"];
+const KNOWN: [&str; 7] = ["commands", "themes", "settings", "sidebar", "screen", "suggestions", "tools"];
 
 fn err(message: impl Into<String>) -> ManifestError {
     ManifestError::new(message)
@@ -20,6 +21,7 @@ fn err(message: impl Into<String>) -> ManifestError {
 
 pub(super) fn parse(
     c: &Obj,
+    plugin_id: &str,
     commands: &[PluginCommand],
     has_main: bool,
     warnings: &mut Vec<String>,
@@ -92,10 +94,12 @@ pub(super) fn parse(
         }
     };
 
+    let tools = super::tools::parse(c.get("tools"), plugin_id, has_main)?;
+
     for k in c.keys() {
         if !KNOWN.contains(&k.as_str()) {
             warnings.push(format!("\"contributes.{k}\" não existe nesta versão — ignorado"));
         }
     }
-    Ok(Contributes { themes, settings, sidebar, screen, screen_home, suggestions })
+    Ok(Contributes { themes, settings, sidebar, screen, screen_home, suggestions, tools })
 }

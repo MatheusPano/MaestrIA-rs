@@ -54,7 +54,7 @@ Top-level fields:
 | `permissions` | string[] | no | each must be a known id else `permissão desconhecida: "<p>" — as que existem são hooks, terminal.write, sessions.create, notifications` (a non-string prints via Dart toString) |
 | `contributes` | object | no | see below; non-map → treated as `{}` |
 
-`contributes` keys: `commands`, `themes`, `settings`, `sidebar`, `screen`, `suggestions`.
+`contributes` keys: `commands`, `themes`, `settings`, `sidebar`, `screen`, `suggestions`, `tools`.
 Any other key → warning `"contributes.<k>" não existe nesta versão — ignorado` (not fatal).
 
 #### `contributes.commands[]`
@@ -113,8 +113,23 @@ other → `"contributes.screen" é true ou um objeto com "home": {"home": "quadr
 `{ "label": non-blank string }` (trimmed) else `"contributes.suggestions" é um objeto com "label": {"label": "criar a task no …"}`;
 without `main` → `"contributes.suggestions" precisa de "main": quem recebe a sugestão é o processo`.
 
+#### `contributes.tools[]` (Rust port only)
+MCP tools the plugin offers to the Claude sessions through the per-tab `maestria` MCP server
+(03-claude-integration §2.7). `null`/absent → none.
+
+| field | rule |
+|---|---|
+| (list) | must be a list of objects, else `"contributes.tools" é uma lista: [{"name": "x_abrir", "description": "…", "inputSchema": {"type": "object"}}]` |
+| `main` | a non-empty list needs `main`, else `"contributes.tools" precisa de "main": quem responde a ferramenta é o processo` |
+| `name` | matches `^[a-z][a-z0-9_]{0,47}$` else `nome de ferramenta inválido: "<name>" — minúsculas, dígitos e sublinhado, começando por letra, até 48 caracteres`; `suggest_task`/`dismiss_task` → `"<name>" é uma ferramenta da MaestrIA — escolha outro nome`; must start with `<last "."-segment of the plugin id>_` (`maestria.design` → `design_`) else `a ferramenta "<name>" tem que começar com "design_"`; duplicate → `ferramenta repetida: "<name>"` |
+| `description` | string, trimmed, default `""` |
+| `inputSchema` | object with `"type": "object"` (kept verbatim), else `a ferramenta "<name>" precisa de "inputSchema" com "type": "object"` |
+
+Checks run per item in that order (name, reserved, prefix, duplicate, schema). A plugin id with a `-`
+in its last segment cannot declare tools (the prefix can never match the name pattern).
+
 Parse order matters only for which error wins: id → maestria → main → permissions →
-activation → commands → themes → settings → sidebar → screen → suggestions → unknown keys → version.
+activation → commands → themes → settings → sidebar → screen → suggestions → tools → unknown keys → version.
 **NOTE**: `version` is checked last (inside the constructor call), so a manifest missing both
 `version` and having a bad command reports the command error.
 
@@ -209,6 +224,7 @@ If the active theme belonged to the plugin, fall back to the default theme.
 | `onHook:<Name>`, `onHook:*` | hook event with that name (requires `hooks` permission to be delivered at all) |
 | `onSession` | `session.opened/closed/exited/status` |
 | `onSuggestion` | **NOTE**: not consulted; `suggestion.start` is a request that always starts the process |
+| `onTool:<name>` | declarative, like `onCommand:`: a `tool.call` for one of the plugin's tools always starts the process |
 | `sidebar.shown` | not an activation event; the sidebar tab calls `wake()` directly |
 
 Event delivery (`emit(type, data, activations, needs)`): for each active plugin with a process,
@@ -309,6 +325,7 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
 | `initialize` | request | 10 s | see below |
 | `command.invoke` | request | 30 s | `{ command: "<commandId>", context: { cwd, folder, sessionId, title, pluginDir, tabId? } }` |
 | `suggestion.start` | request | 30 s | `{ suggestion: { id, title, tldr, prompt }, choice: "worktree"\|"local"\|"here", origin: { tabId, cwd, root, folder, isRepo, branch } }` (`origin.folder` = folder *name*, `root` = folder root path) |
+| `tool.call` | request | 120 s | `{ tool: "<name>", args: { ... }, tabId: "<tab of the calling session>", cwd: "<tab cwd>"\|null }` (Rust port only) |
 | `event` | notification | — | `{ type, ... }` (§2.5) |
 | `view.action` | notification | — | `{ viewId, action, values }` |
 | `settings.changed` | notification | — | `{ settings: { <id>: <resolved value> } }` (all settings), only if ready |
@@ -337,6 +354,13 @@ when a tab is in focus / the menu was opened on one. Result ignored. Errors beco
 `<command title>: <message>` and log `comando <id> falhou: <msg>`. If the plugin cannot start:
 `-32002` with crash reason or `o plugin não subiu`; disabled: `o plugin não está ligado`.
 `invoke` clears `crash` first (explicit user action revives crashed plugins).
+
+`tool.call` (Rust port only, `Plugins::call_tool(tabId, cwd, name, args)`): sent to the first enabled
+plugin whose `contributes.tools` declares `name`; none → `o plugin não está ligado`. Like `invoke` it
+clears `crash`, logs `ferramenta <name>`, starts the process if needed and waits up to 120 s (cold-start
+rendering). The result must be an MCP tool result (`{content: [...], isError?}`; `content` items may be
+`{"type":"image","data":<base64>,"mimeType":"image/png"}`) and is handed to the session unchanged. An
+error logs `ferramenta <name> falhou: <msg>` and reaches the session as `{"content":[{"type":"text","text":<msg>}],"isError":true}`.
 
 `view.action` values: for block views, every field (`input` text, `checkbox` bool, `select`
 value/null, `calendar` string or `{from,to}`) of the whole view (§3.5). For RFW views,
@@ -440,6 +464,7 @@ Only for plugins with `contributes.sidebar`.
 |---|---|
 | `initialize` | 10 s |
 | any other host request (`command.invoke`, `suggestion.start`) | 30 s |
+| `tool.call` (`TOOL_TIMEOUT`) | 120 s |
 | shutdown grace, then SIGTERM grace | 0.8 s + 0.8 s, then SIGKILL |
 | plugin → host requests | no host-side timeout (the UI ones wait for the user) |
 

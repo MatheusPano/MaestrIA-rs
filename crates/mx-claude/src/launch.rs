@@ -4,7 +4,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::{Map, Value, json};
 
-use crate::mcp::{SERVER_NAME, tool_names};
+use crate::mcp::{SERVER_NAME, tool_name, tool_names};
 use crate::sh::sh_quote;
 
 const HOOK_EVENTS: [(&str, bool); 12] = [
@@ -28,6 +28,18 @@ pub fn settings_for(
     tab_id: &str,
     cwd: Option<&str>,
     home: Option<&str>,
+) -> String {
+    settings_with_tools(port, status_line_file, tab_id, cwd, home, &[])
+}
+
+/// [`settings_for`] that also allows `mcp__maestria__<tool>` for each plugin tool.
+pub fn settings_with_tools(
+    port: u16,
+    status_line_file: &Path,
+    tab_id: &str,
+    cwd: Option<&str>,
+    home: Option<&str>,
+    plugin_tools: &[String],
 ) -> String {
     let url = format!("http://127.0.0.1:{port}/hook/{tab_id}");
     let user = user_status_line(cwd, home);
@@ -73,8 +85,10 @@ pub fn settings_for(
         status_line.insert("padding".into(), padding.clone());
     }
 
+    let mut allow: Vec<String> = tool_names().into();
+    allow.extend(plugin_tools.iter().map(|t| tool_name(t)));
     json!({
-        "permissions": {"allow": tool_names()},
+        "permissions": {"allow": allow},
         "hooks": hooks,
         "statusLine": status_line,
     })

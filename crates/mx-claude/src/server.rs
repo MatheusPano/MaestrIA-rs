@@ -13,8 +13,8 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 
-use crate::launch::{mcp_config_for, settings_for};
-use crate::mcp::{self, NoSink, SuggestionSink};
+use crate::launch::{mcp_config_for, settings_with_tools};
+use crate::mcp::{self, NoSink, NoTools, PluginTools, SuggestionSink};
 
 pub const STATUS_LINE_SCRIPT: &str = include_str!("statusline.sh");
 
@@ -42,18 +42,21 @@ pub fn status_line_file(state_dir: &Path) -> PathBuf {
 }
 
 type SharedSink = Arc<RwLock<Arc<dyn SuggestionSink>>>;
+type SharedTools = Arc<RwLock<Arc<dyn PluginTools>>>;
 
 #[derive(Clone)]
 struct Shared {
     port: u16,
     events: UnboundedSender<ServerEvent>,
     sink: SharedSink,
+    tools: SharedTools,
 }
 
 pub struct HookServer {
     port: u16,
     state_dir: PathBuf,
     sink: SharedSink,
+    tools: SharedTools,
     task: Option<JoinHandle<()>>,
 }
 
@@ -65,10 +68,12 @@ impl HookServer {
         write_status_line(state_dir);
 
         let sink: SharedSink = Arc::new(RwLock::new(Arc::new(NoSink)));
+        let tools: SharedTools = Arc::new(RwLock::new(Arc::new(NoTools)));
         let shared = Shared {
             port,
             events,
             sink: sink.clone(),
+            tools: tools.clone(),
         };
         let app = Router::new()
             .fallback(route)
@@ -81,6 +86,7 @@ impl HookServer {
             port,
             state_dir: state_dir.to_owned(),
             sink,
+            tools,
             task: Some(task),
         })
     }
@@ -97,6 +103,14 @@ impl HookServer {
         *self.sink.write().unwrap_or_else(|e| e.into_inner()) = sink;
     }
 
+    pub fn set_plugin_tools(&self, tools: Arc<dyn PluginTools>) {
+        *self.tools.write().unwrap_or_else(|e| e.into_inner()) = tools;
+    }
+
+    fn plugin_tools(&self) -> Arc<dyn PluginTools> {
+        self.tools.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
     pub async fn stop(&mut self) {
         if let Some(task) = self.task.take() {
             task.abort();
@@ -110,7 +124,13 @@ impl HookServer {
     }
 
     pub fn settings_for(&self, tab_id: &str, cwd: Option<&str>, home: Option<&str>) -> String {
-        settings_for(self.port, &self.status_line_file(), tab_id, cwd, home)
+        let extra: Vec<String> = self
+            .plugin_tools()
+            .list()
+            .iter()
+            .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_owned))
+            .collect();
+        settings_with_tools(self.port, &self.status_line_file(), tab_id, cwd, home, &extra)
     }
 
     pub fn mcp_config_for(&self, tab_id: &str) -> String {
@@ -249,7 +269,12 @@ async fn mcp_route(shared: &Shared, method: &Method, tab_id: &str, body: &[u8]) 
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    match mcp::handle_body(body, tab_id, sink.as_ref()).await {
+    let tools = shared
+        .tools
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    match mcp::handle_body(body, tab_id, sink.as_ref(), tools.as_ref()).await {
         None => empty(StatusCode::ACCEPTED),
         Some(answer) => json_response(StatusCode::OK, answer.to_string()),
     }

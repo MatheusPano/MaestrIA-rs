@@ -63,6 +63,7 @@ impl StoreHost {
         }));
         if let Some(server) = &hooks.server {
             server.set_sink(store.sink());
+            server.set_plugin_tools(store.plugin_tools(plugins.clone()));
         }
         let sender = store.sender();
         let exits = sender.clone();

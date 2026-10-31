@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{
-    BOARD, DEAF, ECHO_ENV, MORRE, Recorder, SH_PLUGIN, SILENT, TAKER, obj, plugins_in, until, write_plugin,
+    BOARD, DEAF, ECHO_ENV, MORRE, Recorder, SH_PLUGIN, SILENT, TAKER, TOOL_ECHO, obj, plugins_in, until, write_plugin,
 };
 use mx_plugins::process::{ConnHandlers, Connection};
 use mx_plugins::{Permission, PluginState, Plugins, RpcError};
@@ -274,6 +274,45 @@ async fn a_disabled_plugin_refuses_commands() {
     plugins.set_enabled("sh", false).await;
     let e = plugins.invoke(&cmd, obj(json!({}))).await.unwrap_err();
     assert_eq!(e, RpcError::unavailable("o plugin não está ligado"));
+}
+
+fn fx_setup(tmp: &Path) -> Plugins {
+    write_plugin(
+        &tmp.join("plugins"),
+        "fx",
+        json!({"id": "fx", "version": "1", "main": ["./plugin.sh"], "activationEvents": ["onTool:fx_echo"],
+            "contributes": {"tools": [{"name": "fx_echo", "description": "eco", "inputSchema": {"type": "object"}}]}}),
+        &[("plugin.sh", TOOL_ECHO)],
+    );
+    let plugins = plugins_in(tmp);
+    plugins.scan();
+    plugins
+}
+
+#[tokio::test]
+async fn a_tool_call_starts_the_declaring_plugin_on_demand_and_returns_its_answer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugins = fx_setup(tmp.path());
+    let names: Vec<String> = plugins.tools().into_iter().map(|t| t.name).collect();
+    assert_eq!(names, ["fx_echo"]);
+    assert_eq!(state(&plugins, "fx"), PluginState::Idle);
+    let out = plugins.call_tool("tab1", None, "fx_echo", json!({})).await.unwrap();
+    assert_eq!(out, json!({"content": [{"type": "text", "text": "ok tab1"}]}));
+    assert_eq!(state(&plugins, "fx"), PluginState::Running);
+    assert!(plugins.log_of("fx").iter().any(|l| l.contains("ferramenta fx_echo")));
+    plugins.stop_all().await;
+}
+
+#[tokio::test]
+async fn a_disabled_plugin_refuses_tool_calls_and_lists_no_tools() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugins = fx_setup(tmp.path());
+    plugins.set_enabled("fx", false).await;
+    assert!(plugins.tools().is_empty());
+    let e = plugins.call_tool("tab1", None, "fx_echo", json!({})).await.unwrap_err();
+    assert_eq!(e, RpcError::not_enabled());
+    let e = plugins.call_tool("tab1", None, "fx_nada", json!({})).await.unwrap_err();
+    assert_eq!(e, RpcError::not_enabled());
 }
 
 fn quiet_handlers() -> ConnHandlers {

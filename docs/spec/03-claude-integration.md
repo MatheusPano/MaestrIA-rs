@@ -350,7 +350,9 @@ server at `POST /mcp/<tabId>`.
 - If `desk` is not set yet, a no-op desk is used: `suggest → null`, `withdraw → (withdrawn:false, already:null)`.
 
 Server name `maestria` ⇒ tool names as the session sees them: `mcp__maestria__suggest_task`,
-`mcp__maestria__dismiss_task` (also pre-allowed in `--settings`).
+`mcp__maestria__dismiss_task` (also pre-allowed in `--settings`), followed by `mcp__maestria__<tool>` for
+every tool of every enabled plugin (§2.7) at the moment the session is launched.
+- If the plugin tools are not set yet, none are offered (`NoTools`).
 
 Constants: `server = "maestria"`, `suggestTool = "suggest_task"`, `dismissTool = "dismiss_task"`,
 `maxPrompt = 32000`, `protocolVersion = "2025-06-18"`, task id regex `^task_[0-9a-f]{8}$`.
@@ -373,7 +375,7 @@ Constants: `server = "maestria"`, `suggestTool = "suggest_task"`, `dismissTool =
    "instructions": "<INSTRUCTIONS>"}
   ```
 - `ping` → result `{}`.
-- `tools/list` → result `{"tools": TOOLS}`.
+- `tools/list` → result `{"tools": TOOLS ++ pluginTools.list()}` (built-ins first, then plugin tools, §2.7).
 - `tools/call` → §2.4.
 - other → `error {"code": -32601, "message": "method not found: <method>"}`.
 
@@ -425,7 +427,9 @@ This session runs inside Maestria, a desktop cockpit for Claude Code sessions. W
 ### 2.4 `tools/call`
 
 `name = params.name`, `args = params.arguments` if object else `{}`.
-Unknown name → JSON-RPC error `{"code": -32602, "message": "unknown tool: <name>"}` (`null` printed for a
+A string name other than the two built-ins goes to `pluginTools.call(tabId, name, arguments)` (§2.7); its
+`Some(result)` is the JSON-RPC result verbatim.
+Unknown name (`None` from the plugin tools too) → JSON-RPC error `{"code": -32602, "message": "unknown tool: <name>"}` (`null` printed for a
 missing name). Known tools always return a JSON-RPC **result** (tool errors are `isError: true` results):
 
 - text result: `{"content":[{"type":"text","text":T}]}`
@@ -509,6 +513,19 @@ Details dialog: title `tarefa sugerida por <tab.title>`, close `fechar`, body ti
 `avulsos não têm repositório pra tirar uma worktree`).
 
 ---
+
+### 2.7 Plugin tools (Rust port only)
+
+`HookServer::set_plugin_tools(Arc<dyn PluginTools>)` (default `NoTools`; `mx-app` sets it right after
+`set_sink`). `PluginTools { list() -> [descriptor]; call(tabId, name, args) -> Option<result> }`:
+
+- `list()` = `{name, description, inputSchema}` of each tool of each enabled plugin
+  (04-plugins §1.1 `contributes.tools`), read on every `tools/list` and every `settings_for`.
+- `call` (store bridge, `mx-store/src/plugins/tools.rs`): `None` when no enabled plugin declares `name`;
+  else looks up the tab's `cwd` and sends `tool.call` (04-plugins §2.3, 120 s). The plugin's result goes
+  back unchanged (image items included); an error → `{"content":[{"type":"text","text":<message>}],"isError":true}`.
+- `capabilities.tools.listChanged` stays `false`: the session reads the list (and its `--settings`
+  allow-list is built) when it starts, so a plugin enabled later needs a new session to be offered.
 
 ## 3. Usage and context tracking
 
