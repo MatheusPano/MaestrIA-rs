@@ -372,7 +372,8 @@ fn design(tools: Value) -> Value {
 }
 
 fn tool(name: &str) -> Value {
-    json!({"name": name, "description": "abre o canvas", "inputSchema": {"type": "object", "properties": {"dir": {"type": "string"}}}})
+    json!({"name": name, "description": "abre o canvas",
+        "inputSchema": {"type": "object", "properties": {"dir": {"type": "string"}}}})
 }
 
 #[test]

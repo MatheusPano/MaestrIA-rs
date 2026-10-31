@@ -24,7 +24,9 @@ fn plugin(root: &str, id: &str, main: &str) {
     let dir = Path::new(root).join(id);
     std::fs::create_dir_all(&dir).unwrap();
     let manifest = json!({"id": id, "version": "1", "main": [main],
-        "contributes": {"tools": [{"name": format!("{id}_eco"), "description": "eco", "inputSchema": {"type": "object"}}]}});
+        "contributes": {"tools": [
+            {"name": format!("{id}_eco"), "description": "eco", "inputSchema": {"type": "object"}}
+        ]}});
     std::fs::write(dir.join(mx_plugins::MANIFEST_NAME), manifest.to_string()).unwrap();
     std::fs::write(dir.join("p.sh"), ECHO_CWD).unwrap();
     std::fs::set_permissions(dir.join("p.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();

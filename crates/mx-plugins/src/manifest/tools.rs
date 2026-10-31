@@ -16,8 +16,8 @@ pub struct PluginTool {
 
 static TOOL_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_]{0,47}$").unwrap());
 
-const SHAPE: &str =
-    "\"contributes.tools\" é uma lista: [{\"name\": \"x_abrir\", \"description\": \"…\", \"inputSchema\": {\"type\": \"object\"}}]";
+const SHAPE: &str = "\"contributes.tools\" é uma lista: \
+    [{\"name\": \"x_abrir\", \"description\": \"…\", \"inputSchema\": {\"type\": \"object\"}}]";
 
 fn err(message: impl Into<String>) -> ManifestError {
     ManifestError::new(message)
@@ -39,7 +39,8 @@ pub(super) fn parse(raw: Option<&Value>, plugin_id: &str, has_main: bool) -> Res
         let name = m.get("name").map(show).unwrap_or_default();
         if !TOOL_NAME.is_match(&name) {
             return Err(err(format!(
-                "nome de ferramenta inválido: \"{name}\" — minúsculas, dígitos e sublinhado, começando por letra, até 48 caracteres"
+                "nome de ferramenta inválido: \"{name}\" — minúsculas, dígitos e sublinhado, \
+                 começando por letra, até 48 caracteres"
             )));
         }
         if RESERVED_TOOLS.contains(&name.as_str()) {

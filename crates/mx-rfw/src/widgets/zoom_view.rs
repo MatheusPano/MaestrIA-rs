@@ -103,7 +103,6 @@ pub fn command_transform(current: Transform, size: (f64, f64), to: f64) -> Trans
     clamp_translation(Transform { scale: to, x: center.0 - focal.0 * to, y: center.1 - focal.1 * to }, size)
 }
 
-/// Transform that centers `rect` (fractions 0..1 of the child box) in the view, with 10% margin.
 pub fn focus_transform(size: (f64, f64), rect: (f64, f64, f64, f64), max_scale: f64) -> Transform {
     let fit = (1.0 / rect.2).min(1.0 / rect.3) * 0.9;
     let scale = if fit.is_finite() { fit.clamp(1.0, max_scale) } else { 1.0 };
@@ -114,8 +113,6 @@ pub fn focus_transform(size: (f64, f64), rect: (f64, f64, f64, f64), max_scale: 
     )
 }
 
-/// Where a fitted child sits inside its box, as fractions of that box: `(x, y, w, h)`.
-/// `align` is the alignment axes in -1..1, as the FittedBox places it.
 pub fn fitted_placement(
     fit: BoxFit,
     align: (f64, f64),
@@ -131,7 +128,6 @@ pub fn fitted_placement(
     (x / outer.0, y / outer.1, w / outer.0, h / outer.1)
 }
 
-/// Maps a rect in fractions of the content onto fractions of the box the content was placed in.
 pub fn focus_in_placement(
     rect: (f64, f64, f64, f64),
     placed: (f64, f64, f64, f64),

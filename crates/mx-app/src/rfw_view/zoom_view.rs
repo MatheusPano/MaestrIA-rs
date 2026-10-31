@@ -7,11 +7,12 @@ use gpui::{
     ScrollDelta, Styled, Task, WeakEntity, Window, canvas, px, relative,
 };
 use mx_rfw::Event;
-use mx_rfw::widgets::{Local, decode};
 use mx_rfw::widgets::zoom_view::{
-    ANIMATION_MS, BoxFit, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_scale,
-    focus_in_placement, focus_transform, fitted_placement, move_extra, pan, should_report, wheel_factor, zoom_around, zoom_extra, zoom_target,
+    ANIMATION_MS, BoxFit, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_placement,
+    fitted_scale, focus_in_placement, focus_transform, move_extra, pan, should_report, wheel_factor, zoom_around,
+    zoom_extra, zoom_target,
 };
+use mx_rfw::widgets::{Local, decode};
 
 use super::ActionSink;
 use super::layout::{Ctx, El, Fit, fire, owned, stretch_self};
@@ -50,13 +51,22 @@ pub struct ZoomState {
     settle: Option<Task<()>>,
     grab: Option<Point<Pixels>>,
     moved: bool,
-    /// Set when the direct child is a FittedBox: its slot, fit and alignment axes.
     content: Option<(FitSlot, BoxFit, (f64, f64))>,
 }
 
 impl Default for ZoomState {
     fn default() -> Self {
-        Self { matrix: Transform::IDENTITY, bounds: None, rev: None, anim: None, reported: 1.0, settle: None, grab: None, moved: false, content: None }
+        Self {
+            matrix: Transform::IDENTITY,
+            bounds: None,
+            rev: None,
+            anim: None,
+            reported: 1.0,
+            settle: None,
+            grab: None,
+            moved: false,
+            content: None,
+        }
     }
 }
 
@@ -154,7 +164,6 @@ impl ZoomState {
         Some(s)
     }
 
-    /// The transform to report through `onMove`, once a user pan or wheel has settled.
     pub fn settled_move(&mut self) -> Option<Transform> {
         if self.anim.is_some() || !std::mem::take(&mut self.moved) {
             return None;
@@ -232,7 +241,13 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
     if let Some(i) = inner {
         layer = layer.child(super::layout::grow(i, 1.0));
     }
-    let reporter = Rc::new(Reporter { slot: slot.clone(), sink: cx.sink.clone(), events: owned(&z.on_zoom), move_events: owned(&z.on_move), view: cx.view.clone() });
+    let reporter = Rc::new(Reporter {
+        slot: slot.clone(),
+        sink: cx.sink.clone(),
+        events: owned(&z.on_zoom),
+        move_events: owned(&z.on_move),
+        view: cx.view.clone(),
+    });
     let max = z.max_scale;
     let probe_slot = slot.clone();
     let probe_reporter = reporter.clone();

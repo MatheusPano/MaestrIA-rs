@@ -33,7 +33,6 @@ impl<T: Default> Slots<T> {
         items[i].clone()
     }
 
-    /// The slot the next `next()` call will return, without taking it.
     pub fn peek(&self) -> Rc<RefCell<T>> {
         let i = self.used.get();
         let mut items = self.items.borrow_mut();

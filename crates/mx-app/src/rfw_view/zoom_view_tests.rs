@@ -69,7 +69,8 @@ fn wheel_zoom_scales_a_fitted_child_on_both_axes_around_the_pointer(cx: &mut Tes
 #[test]
 fn focus_command_animates_once_per_rev_and_never_counts_as_a_user_move() {
     use std::time::{Duration, Instant};
-    let mut st = super::ZoomState { bounds: Some(Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)))), ..Default::default() };
+    let bounds = Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)));
+    let mut st = super::ZoomState { bounds: Some(bounds), ..Default::default() };
     let t0 = Instant::now();
     let rect = Some((0.5, 0.5, 0.25, 0.25));
     st.command(Some("focus"), rect, 0, 6.0, t0);
@@ -91,7 +92,8 @@ fn focus_command_animates_once_per_rev_and_never_counts_as_a_user_move() {
 #[test]
 fn a_programmatic_command_discards_a_pending_user_move() {
     use std::time::{Duration, Instant};
-    let mut st = super::ZoomState { bounds: Some(Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)))), ..Default::default() };
+    let bounds = Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)));
+    let mut st = super::ZoomState { bounds: Some(bounds), ..Default::default() };
     let t0 = Instant::now();
     st.command(Some("focus"), None, 0, 6.0, t0);
     st.wheel(point(px(500.), px(400.)), -100.0, 6.0);

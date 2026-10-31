@@ -47,7 +47,12 @@ fn picture_parses_args() {
     let Local::Picture(p) = decode(t.as_node().unwrap()) else { panic!("not a Picture") };
     assert_eq!(
         *p,
-        Picture { path: Some("png/home.light.png".into()), width: Some(320.0), height: Some(200.5), fit: BoxFit::Contain }
+        Picture {
+            path: Some("png/home.light.png".into()),
+            width: Some(320.0),
+            height: Some(200.5),
+            fit: BoxFit::Contain,
+        }
     );
 }
 

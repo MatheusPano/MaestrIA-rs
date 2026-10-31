@@ -7,8 +7,8 @@ use mx_rfw::widgets::maestria::{MARKDOWN_BASE_SIZE, anchor_key};
 use mx_rfw::widgets::sprite::{Sprite, plugin_file_of, sprite_frame};
 use mx_rfw::widgets::text_input::{ClearSeen, completed};
 use mx_rfw::widgets::zoom_view::{
-    BoxFit, Transform, ZoomView, clamp_translation, command_transform, fitted_scale, fitted_placement, focus_in_placement, focus_transform, should_report,
-    wheel_factor, zoom_around, zoom_target,
+    BoxFit, Transform, ZoomView, clamp_translation, command_transform, fitted_placement, fitted_scale, focus_in_placement,
+    focus_transform, should_report, wheel_factor, zoom_around, zoom_target,
 };
 use mx_rfw::widgets::{Local, decode};
 use mx_rfw::{DynamicContent, LocalLibrary, Node, Value, Widget, evaluate, parse_library_file};
@@ -381,13 +381,10 @@ fn focus_is_relative_to_the_fitted_content_not_the_viewport() {
     assert_eq!(placed, (0.0, 0.34375, 1.0, 0.3125));
     let rect = focus_in_placement((0.5, 0.0, 0.5, 1.0), placed);
     let m = focus_transform(view, rect, 6.0);
-    // The content's right half spans x 500..1000, y 275..525 in the viewport (centre y 400).
-    // At the right edge the x translation clamps, so the half is fully visible but not centred in x.
     assert!((m.scale - 1.8).abs() < 1e-9, "{m:?}");
     assert!((400.0 * m.scale + m.y - 400.0).abs() < 0.5, "{m:?}");
     let (left, right) = (500.0 * m.scale + m.x, 1000.0 * m.scale + m.x);
     assert!(left >= -0.5 && right <= 1000.5, "{m:?} {left} {right}");
-    // A rect that can be centred is: the left quarter of the content.
     let q = focus_transform(view, focus_in_placement((0.375, 0.0, 0.25, 1.0), placed), 6.0);
     assert!(((500.0 * q.scale + q.x) - 500.0).abs() < 0.5 && ((400.0 * q.scale + q.y) - 400.0).abs() < 0.5, "{q:?}");
 }
