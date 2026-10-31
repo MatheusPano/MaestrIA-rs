@@ -49,6 +49,7 @@ impl DragNow {
 pub struct Ctx<'a> {
     pub palette: &'a Arc<Theme>,
     pub dir: Option<&'a Path>,
+    pub data_dir: Option<&'a Path>,
     pub sink: ActionSink,
     pub view: WeakEntity<RfwView>,
     pub ids: u64,

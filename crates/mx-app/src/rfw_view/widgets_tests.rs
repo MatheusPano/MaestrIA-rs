@@ -53,3 +53,39 @@ fn in1_the_plugin_clears_the_field_by_changing_clear(cx: &mut TestAppContext) {
     update(&view, cx, json!({ "sent": 1 }));
     assert_eq!(field_text(&view, cx), "");
 }
+
+fn write_png(path: &std::path::Path, w: u32, h: u32) {
+    image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 255])).save(path).unwrap();
+}
+
+#[test]
+fn a_picture_rewritten_with_a_different_png_loads_the_new_image() {
+    let tmp = std::env::temp_dir().join(format!("mx-app-picture-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let file = tmp.join("home.light.png");
+    write_png(&file, 4, 3);
+    let first = super::picture::load(&file).expect("first png");
+    assert_eq!(first.size, (4, 3));
+    let again = super::picture::load(&file).unwrap();
+    assert!(std::sync::Arc::ptr_eq(&first.image, &again.image));
+    write_png(&file, 7, 5);
+    let second = super::picture::load(&file).expect("rewritten png");
+    assert_eq!(second.size, (7, 5));
+    assert!(!std::sync::Arc::ptr_eq(&first.image, &second.image));
+    std::fs::remove_file(&file).unwrap();
+    assert!(super::picture::load(&file).is_none());
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn the_picture_cache_keeps_at_most_64_images() {
+    let tmp = std::env::temp_dir().join(format!("mx-app-picture-lru-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    for i in 0..70 {
+        let file = tmp.join(format!("{i}.png"));
+        write_png(&file, 1, 1);
+        super::picture::load(&file).unwrap();
+    }
+    assert_eq!(super::picture::cached(), 64);
+    std::fs::remove_dir_all(&tmp).ok();
+}

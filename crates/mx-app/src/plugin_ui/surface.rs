@@ -32,6 +32,10 @@ impl SurfaceEnv {
         let store = &self.host.read(cx).store;
         store.plugins()?.get(plugin).map(|p| p.dir)
     }
+
+    pub fn data_dir_of(&self, plugin: &str, cx: &App) -> Option<PathBuf> {
+        Some(self.host.read(cx).store.plugins()?.data_dir(plugin))
+    }
 }
 
 pub fn sink_for(host: &Entity<StoreHost>, tab: &str) -> ActionSink {
@@ -115,9 +119,11 @@ impl Surface {
                 let overlaid = self.overlaid;
                 let follow = follow_for(&env.host, &self.tab);
                 let plugin = view.plugin_id.clone();
+                let data_dir = env.data_dir_of(&plugin, cx);
                 let e = cx.new(|_| {
                     let mut v = RfwView::new(theme, &typo, dir, sink);
                     v.set_plugin(&plugin, Some(follow));
+                    v.set_data_dir(data_dir);
                     if overlaid {
                         v.hoist_menu();
                     }
