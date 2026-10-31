@@ -11,7 +11,8 @@ use mx_rfw::widgets::zoom_view::{BoxFit, fitted_scale};
 use super::layout::{Ctx, El};
 use super::style::pxf;
 
-const MAX_PICTURES: usize = 64;
+const BUDGET_BYTES: usize = 256 << 20;
+const MAX_ENTRIES: usize = 1024;
 
 type Key = (PathBuf, Option<SystemTime>, u64);
 
@@ -21,17 +22,93 @@ pub struct Loaded {
     pub size: (u32, u32),
 }
 
-#[derive(Default)]
+impl Loaded {
+    fn bytes(&self) -> usize {
+        self.size.0 as usize * self.size.1 as usize * 4
+    }
+}
+
+struct Entry {
+    key: Key,
+    loaded: Option<Loaded>,
+    used: u64,
+}
+
+impl Entry {
+    fn bytes(&self) -> usize {
+        self.loaded.as_ref().map_or(0, Loaded::bytes)
+    }
+}
+
 struct Cache {
-    entries: Vec<(Key, Option<Loaded>)>,
+    entries: Vec<Entry>,
     stale: Vec<Arc<RenderImage>>,
+    generation: u64,
+    painted: bool,
+    bytes: usize,
+    budget: usize,
+    decodes: usize,
+}
+
+impl Default for Cache {
+    fn default() -> Self {
+        Cache {
+            entries: Vec::new(),
+            stale: Vec::new(),
+            generation: 0,
+            painted: false,
+            bytes: 0,
+            budget: BUDGET_BYTES,
+            decodes: 0,
+        }
+    }
 }
 
 impl Cache {
-    fn retire(&mut self, entry: (Key, Option<Loaded>)) {
-        if let Some(l) = entry.1 {
+    fn remove(&mut self, i: usize) {
+        let old = self.entries.remove(i);
+        self.bytes -= old.bytes();
+        if let Some(l) = old.loaded {
             self.stale.push(l.image);
         }
+    }
+
+    fn forget(&mut self, path: &Path) {
+        while let Some(i) = self.entries.iter().position(|e| e.key.0 == path) {
+            self.remove(i);
+        }
+    }
+
+    fn trim(&mut self) {
+        while self.bytes > self.budget || self.entries.len() > MAX_ENTRIES {
+            let Some(i) = self.entries.iter().position(|e| e.used < self.generation) else { break };
+            self.remove(i);
+        }
+    }
+
+    fn get(&mut self, path: &Path) -> Option<Loaded> {
+        if std::mem::take(&mut self.painted) {
+            self.generation += 1;
+        }
+        let Some(key) = key(path) else {
+            self.forget(path);
+            return None;
+        };
+        if let Some(i) = self.entries.iter().position(|e| e.key == key) {
+            let mut hit = self.entries.remove(i);
+            hit.used = self.generation;
+            let loaded = hit.loaded.clone();
+            self.entries.push(hit);
+            return loaded;
+        }
+        self.forget(path);
+        self.decodes += 1;
+        let loaded = decode(path);
+        let entry = Entry { key, loaded: loaded.clone(), used: self.generation };
+        self.bytes += entry.bytes();
+        self.entries.push(entry);
+        self.trim();
+        loaded
     }
 }
 
@@ -54,35 +131,36 @@ fn decode(path: &Path) -> Option<Loaded> {
 }
 
 pub fn load(path: &Path) -> Option<Loaded> {
-    let key = key(path)?;
-    CACHE.with(|c| {
-        let mut c = c.borrow_mut();
-        if let Some(i) = c.entries.iter().position(|(k, _)| *k == key) {
-            let hit = c.entries.remove(i);
-            let loaded = hit.1.clone();
-            c.entries.push(hit);
-            return loaded;
-        }
-        let loaded = decode(path);
-        while let Some(i) = c.entries.iter().position(|(k, _)| k.0 == key.0) {
-            let old = c.entries.remove(i);
-            c.retire(old);
-        }
-        while c.entries.len() >= MAX_PICTURES {
-            let old = c.entries.remove(0);
-            c.retire(old);
-        }
-        c.entries.push((key, loaded.clone()));
-        loaded
-    })
+    CACHE.with(|c| c.borrow_mut().get(path))
+}
+
+pub fn frame_painted() {
+    CACHE.with(|c| c.borrow_mut().painted = true);
 }
 
 pub fn cached() -> usize {
     CACHE.with(|c| c.borrow().entries.len())
 }
 
+pub fn cached_bytes() -> usize {
+    CACHE.with(|c| c.borrow().bytes)
+}
+
+pub fn decoded() -> usize {
+    CACHE.with(|c| c.borrow().decodes)
+}
+
+#[cfg(test)]
+pub fn set_budget(bytes: usize) {
+    CACHE.with(|c| c.borrow_mut().budget = bytes);
+}
+
 fn take_stale() -> Vec<Arc<RenderImage>> {
-    CACHE.with(|c| std::mem::take(&mut c.borrow_mut().stale))
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        c.painted = true;
+        std::mem::take(&mut c.stale)
+    })
 }
 
 pub fn box_size(width: Option<f64>, height: Option<f64>, natural: Option<(f64, f64)>) -> (f64, f64) {
@@ -130,3 +208,4 @@ pub fn render(cx: &mut Ctx, p: &Picture) -> El {
         .size_full(),
     )
 }
+
