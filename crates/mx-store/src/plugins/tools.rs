@@ -8,8 +8,6 @@ use tokio::sync::oneshot;
 use crate::msg::{StoreMsg, StoreSender};
 use crate::store::Store;
 
-/// Offers the tools of the enabled plugins on the `maestria` MCP server: the tab of the session
-/// that calls gives the plugin its working folder.
 pub(crate) struct StoreTools {
     sender: StoreSender,
     plugins: Plugins,

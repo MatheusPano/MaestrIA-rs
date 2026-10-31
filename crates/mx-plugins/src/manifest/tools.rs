@@ -5,10 +5,8 @@ use serde_json::Value;
 
 use super::{ManifestError, show};
 
-/// Tools the `maestria` MCP server already answers; a plugin cannot shadow them.
 pub const RESERVED_TOOLS: [&str; 2] = ["suggest_task", "dismiss_task"];
 
-/// An MCP tool a plugin offers to the Claude sessions (`contributes.tools`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PluginTool {
     pub name: String,

@@ -16,6 +16,8 @@ de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, 
   `full_id()`, `short_title(plugin_name)`. `CommandTarget { Plugin, Terminal, Background, Session }`.
 - `PluginSetting { id, title, kind: SettingType, description, default, options, group }`, `resolve(saved)`;
   `SettingType::Folders` = lista de `root`s (`[]` quando o salvo não é lista de textos).
+- `PluginTool { name, description, input_schema }` (`contributes.tools`, nome `<último segmento do id>_…`);
+  `RESERVED_TOOLS = ["suggest_task", "dismiss_task"]`.
 - `Permission { Hooks, TerminalWrite, SessionsCreate, SessionsClose, Notifications }`: `id()`, `label()`, `by_id()`.
 
 ## Teclas (`chord`)
@@ -36,7 +38,9 @@ de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, 
 - Processo: `startup()`, `start(id).await`, `stop(id)`, `stop_all()`, `kill_all()`, `restart(id)`,
   `set_enabled(id, on)`, `wake(id)`, `tell(id, type, data)`, `emit(type, data, activations, needs)`
   (também `mx_core::ports::PluginBus`), `view_action(plugin, view, action, values)`,
-  `invoke(&cmd, context) -> Result<Value, RpcError>`, `offer_suggestion(id, params)`.
+  `invoke(&cmd, context) -> Result<Value, RpcError>`, `offer_suggestion(id, params)`,
+  `tools() -> Vec<PluginTool>` (plugins ligados; nome repetido: vale o primeiro, o outro fica no log),
+  `call_tool(tab, cwd, name, args) -> Result<Value, RpcError>` (`tool.call`, `TOOL_TIMEOUT` = 120 s).
   Regras: só `onStartup`/enable/install/link sobem sozinhos; eventos nunca revivem um crash; comandos,
   `suggestion.start`, `wake` e `restart` revivem. Timeouts 10 s/30 s; shutdown 0,8 s + SIGTERM 0,8 s + SIGKILL.
   `view_closed(plugin, view)` = evento `view.closed` só pro dono, só se ele está rodando (também em

@@ -182,14 +182,29 @@ impl Plugins {
         self.request_revived(id, log, "suggestion.start", params).await.map(|_| ())
     }
 
-    /// The MCP tools of every enabled plugin, in plugin order.
     pub fn tools(&self) -> Vec<PluginTool> {
-        self.reg()
-            .all
-            .iter()
-            .filter(|e| e.active())
-            .flat_map(|e| e.manifest.as_ref().map(|m| m.tools.clone()).unwrap_or_default())
-            .collect()
+        let mut out: Vec<(String, PluginTool)> = Vec::new();
+        let mut shadowed: Vec<(String, String)> = Vec::new();
+        {
+            let reg = self.reg();
+            for e in reg.all.iter().filter(|e| e.active()) {
+                for t in e.manifest.as_ref().map(|m| m.tools.as_slice()).unwrap_or_default() {
+                    match out.iter().find(|(_, o)| o.name == t.name) {
+                        Some((first, _)) => shadowed.push((
+                            e.id(),
+                            format!("ferramenta {} ignorada: o plugin \"{first}\" já tem uma com esse nome", t.name),
+                        )),
+                        None => out.push((e.id(), t.clone())),
+                    }
+                }
+            }
+        }
+        for (id, line) in shadowed {
+            if !self.log_of(&id).iter().any(|l| l.ends_with(&line)) {
+                self.note(&id, &line);
+            }
+        }
+        out.into_iter().map(|(_, t)| t).collect()
     }
 
     pub async fn call_tool(&self, tab_id: &str, cwd: Option<&str>, name: &str, args: Value) -> Result<Value, RpcError> {

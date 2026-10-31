@@ -10,13 +10,15 @@ Spec: `docs/spec/03-claude-integration.md`. State dir is always a parameter (nev
   `Host` other than `127.0.0.1:<port>`/`localhost:<port>`, gets `403`; bodies capped at `MAX_BODY_BYTES`.
 - `.port()`, `.running()`, `.stop().await` (abort; also on drop), `.status_line_file()`,
   `.settings_for(tab, cwd, home)`, `.mcp_config_for(tab)`, `.set_sink(Arc<dyn SuggestionSink>)`
-  (before it is set, `NoSink` answers "no panel").
+  (before it is set, `NoSink` answers "no panel"), `.set_plugin_tools(Arc<dyn PluginTools>)` (default
+  `NoTools`; its names also go into `.settings_for`'s allow-list).
 - `ServerEvent::Hook { tab_id, name, payload }` (raw payload for mx-core's reducer) and
   `ServerEvent::Status { tab_id, payload }` (feed to `ContextUsage::from_status_line`).
 - `STATUS_LINE_SCRIPT` (byte-identical), `port_file(dir)`, `status_line_file(dir)`.
 
 ## Launch (`launch`, `sh`)
 - `settings_for(port, status_line_file, tab, cwd, home) -> String` — exact `--settings` JSON.
+- `settings_with_tools(.., plugin_tools: &[String])` — same, plus `mcp__maestria__<tool>` per plugin tool.
 - `mcp_config_for(port, tab) -> String` — exact `--mcp-config` JSON.
 - `user_status_line(cwd, home) -> Option<Map>` — local > project > home precedence.
 - `ClaudeLaunch { port, mcp_config, settings, name, brief, project, resume_id, prompt }`
@@ -30,10 +32,14 @@ Spec: `docs/spec/03-claude-integration.md`. State dir is always a parameter (nev
 - `SuggestionQueued { task: TaskRef, pending: Vec<TaskRef>, evicted: Vec<TaskRef> }`,
   `TaskRef { id, title }`, `Withdrawal { withdrawn, already: Option<SuggestionEnd> }`,
   `SuggestionEnd::{Started, Dismissed}`, `NoSink`.
+- `trait PluginTools: Send + Sync` — `list() -> Vec<Value>` (MCP descriptors), `call(tab, name, args)
+  -> BoxFuture<Option<Value>>` (None ⇒ `-32602 unknown tool`); `NoTools`.
 - `new_task_id()` (`task_` + 8 hex, CSPRNG), `is_task_id`, `MAX_PENDING = 20`,
-  `MAX_PROMPT = 32000` (UTF-16), `PROTOCOL_VERSION`, `SERVER_NAME`, `tool_names()`.
-- `handle(&Value, tab, sink) -> Option<Value>` (None ⇒ HTTP 202), `handle_body(&[u8], ..)`,
-  `parse_error()`, `tools_json()`, `INSTRUCTIONS`.
+  `MAX_PROMPT = 32000` (UTF-16), `PROTOCOL_VERSION`, `SERVER_NAME`, `tool_names()`,
+  `tool_name(tool)` (`mcp__maestria__<tool>`).
+- `handle(&Value, tab, sink) -> Option<Value>` (None ⇒ HTTP 202), `handle_with(&Value, tab, sink, tools)`
+  (built-ins then plugin tools), `handle_body(&[u8], tab, sink, tools)`,
+  `parse_error()`, `tools_json()`, `tool_error(text)` (`isError` result), `INSTRUCTIONS`.
 
 ## Context (`context`)
 - `ContextUsage { percent, tokens, window }::from_status_line(&Value) -> Option<_>`;

@@ -315,6 +315,31 @@ async fn a_disabled_plugin_refuses_tool_calls_and_lists_no_tools() {
     assert_eq!(e, RpcError::not_enabled());
 }
 
+#[tokio::test]
+async fn two_plugins_with_the_same_tool_name_list_it_once_and_the_first_answers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let manifest = |id: &str| {
+        json!({"id": id, "version": "1", "main": ["./plugin.sh"],
+            "contributes": {"tools": [{"name": "fx_echo", "inputSchema": {"type": "object"}}]}})
+    };
+    write_plugin(&tmp.path().join("plugins"), "fx", manifest("fx"), &[("plugin.sh", TOOL_ECHO)]);
+    write_plugin(&tmp.path().join("plugins"), "tools.fx", manifest("tools.fx"), &[("plugin.sh", TOOL_ECHO)]);
+    let plugins = plugins_in(tmp.path());
+    plugins.scan();
+    let order: Vec<String> = plugins.all().into_iter().map(|p| p.id).collect();
+    let (first, second) = (order[0].clone(), order[1].clone());
+    let names: Vec<String> = plugins.tools().into_iter().map(|t| t.name).collect();
+    assert_eq!(names, ["fx_echo"]);
+    plugins.tools();
+    let shadow = format!("ferramenta fx_echo ignorada: o plugin \"{first}\" já tem uma com esse nome");
+    assert_eq!(plugins.log_of(&second).iter().filter(|l| l.ends_with(&shadow)).count(), 1);
+    let out = plugins.call_tool("tab1", None, "fx_echo", json!({})).await.unwrap();
+    assert_eq!(out, json!({"content": [{"type": "text", "text": "ok tab1"}]}));
+    assert_eq!(state(&plugins, &first), PluginState::Running);
+    assert_eq!(state(&plugins, &second), PluginState::Idle);
+    plugins.stop_all().await;
+}
+
 fn quiet_handlers() -> ConnHandlers {
     ConnHandlers {
         on_request: Arc::new(|_, _| Box::pin(async { Ok(Value::Null) })),

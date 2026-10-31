@@ -38,7 +38,7 @@ pub const CAPABILITIES: [(&str, i64, bool); 23] = [
 
 pub const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// `tool.call` may render on a cold start (headless browser, bundler), so it waits longer.
+// `tool.call` may render on a cold start (headless browser, bundler), so it waits longer.
 pub const TOOL_TIMEOUT: Duration = Duration::from_secs(120);
 
 impl Plugins {

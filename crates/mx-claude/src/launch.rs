@@ -32,7 +32,6 @@ pub fn settings_for(
     settings_with_tools(port, status_line_file, tab_id, cwd, home, &[])
 }
 
-/// [`settings_for`] that also allows `mcp__maestria__<tool>` for each plugin tool.
 pub fn settings_with_tools(
     port: u16,
     status_line_file: &Path,

@@ -21,7 +21,6 @@ pub fn tool_names() -> [String; 2] {
     [tool_name(SUGGEST_TOOL), tool_name(DISMISS_TOOL)]
 }
 
-/// The name a session sees for one of this server's tools: `mcp__maestria__<tool>`.
 pub fn tool_name(tool: &str) -> String {
     format!("mcp__{SERVER_NAME}__{tool}")
 }

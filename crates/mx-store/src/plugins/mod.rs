@@ -2,8 +2,8 @@ mod commands;
 mod host;
 mod screen;
 mod session_api;
-mod tools;
 mod sessions;
+mod tools;
 mod views;
 
 use std::collections::{HashMap, VecDeque};

@@ -356,7 +356,9 @@ when a tab is in focus / the menu was opened on one. Result ignored. Errors beco
 `invoke` clears `crash` first (explicit user action revives crashed plugins).
 
 `tool.call` (Rust port only, `Plugins::call_tool(tabId, cwd, name, args)`): sent to the first enabled
-plugin whose `contributes.tools` declares `name`; none → `o plugin não está ligado`. Like `invoke` it
+plugin whose `contributes.tools` declares `name`; none → `o plugin não está ligado`. Two enabled plugins
+declaring the same name: `tools()` lists it once (first plugin wins, same order as `call_tool`) and the
+shadowed plugin logs `ferramenta <name> ignorada: o plugin "<first id>" já tem uma com esse nome` once. Like `invoke` it
 clears `crash`, logs `ferramenta <name>`, starts the process if needed and waits up to 120 s (cold-start
 rendering). The result must be an MCP tool result (`{content: [...], isError?}`; `content` items may be
 `{"type":"image","data":<base64>,"mimeType":"image/png"}`) and is handed to the session unchanged. An
