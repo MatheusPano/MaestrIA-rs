@@ -1,7 +1,6 @@
 # mx-plugins — API pública
 
-Host de plugins sem UI (spec 04 §0–§7). Tokio. RFW não é interpretado aqui: `rfw_library`/`rfw_data`
-ficam opacos em `PluginView` e a UI os entrega ao `mx-rfw`.
+Host de plugins sem UI (spec 04 §0–§7). Tokio. RFW fica opaco em `PluginView`; a UI o entrega ao `mx-rfw`.
 
 ## Constantes (raiz)
 `PLUGIN_API=1`, `BLOCKS_VERSION=2`, `MANIFEST_NAME`, `SIDEBAR_VIEW_ID="sidebar"`, `LOG_CAP=400`,
@@ -16,8 +15,8 @@ de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, 
   `full_id()`, `short_title(plugin_name)`. `CommandTarget { Plugin, Terminal, Background, Session }`.
 - `PluginSetting { id, title, kind: SettingType, description, default, options, group }`, `resolve(saved)`;
   `SettingType::Folders` = lista de `root`s (`[]` quando o salvo não é lista de textos).
-- `PluginTool { name, description, input_schema }` (`contributes.tools`, nome `<último segmento do id>_…`);
-  `RESERVED_TOOLS = ["suggest_task", "dismiss_task"]`.
+- `PluginTool { name, description, input_schema }` (`contributes.tools`, nome `<último segmento do id>_…`,
+  fora de `RESERVED_TOOLS = ["suggest_task", "dismiss_task"]`); `trust_facts` lista as ferramentas.
 - `Permission { Hooks, TerminalWrite, SessionsCreate, SessionsClose, Notifications }`: `id()`, `label()`, `by_id()`.
 
 ## Teclas (`chord`)
@@ -29,7 +28,7 @@ de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, 
 - `Plugins::new(state_dir)` → `<state_dir>/plugins` e `<state_dir>/plugin-data/<id>`; `with_dirs(root, data)`.
   `set_calls(Arc<dyn PluginCalls>)` (normalmente `HostDispatcher`), `set_listener(Arc<dyn PluginListener>)`
   (`changed`, `ready(id)` — mande `sidebar.shown` daí —, `logged(id)`), `set_env(vars)` (PATH aumentado),
-  `set_runtime(Handle)` quando criado fora do tokio.
+  `set_runtime(Handle)` fora do tokio.
 - Leitura: `scan()`, `all()/get(id) -> PluginInfo`, `log_of(id)`, `note(id, line)`, `themes() -> mx_theme::Themes`,
   `commands()`, `sidebar_commands()`, `command_by_id(full)`, `command_for(&KeyPress, app_keymap_hit)`,
   `busy()/plugin_busy(id)/set_busy`, `suggestion_takers()`, `is_up(id)`, `disabled()`.
@@ -47,8 +46,7 @@ de compatibilidade, ex. o mínimo do catálogo). `CAPABILITIES: [(chave, valor, 
   `PluginBus::view_closed`, que é o que a store chama ao fechar o modal).
 - Instalação: `stage(src) -> StagedPlugin`, `commit(&staged)`, `discard(&staged)`, `link(path)`, `uninstall(id)`;
   `InstallError(String)`; textos `registry::{trust_headline, trust_facts, installed_banner}`.
-- `PluginInfo { id, dir, data_dir, manifest, problem, linked, enabled, crash, state, palettes }`,
-  `PluginState` (+`label()`).
+- `PluginInfo { id, dir, data_dir, manifest, problem, linked, enabled, crash, state, palettes }`, `PluginState`.
 
 ## RPC (`rpc`)
 - `RpcError { code, message }` com construtores das mensagens verbatim (`no_tab`, `no_focused_tab`,
