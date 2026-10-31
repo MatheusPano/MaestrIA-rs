@@ -8,8 +8,8 @@ use gpui::{
 };
 use mx_rfw::Event;
 use mx_rfw::widgets::zoom_view::{
-    ANIMATION_MS, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_scale, pan,
-    should_report, wheel_factor, zoom_around, zoom_extra, zoom_target,
+    ANIMATION_MS, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_scale,
+    focus_transform, move_extra, pan, should_report, wheel_factor, zoom_around, zoom_extra, zoom_target,
 };
 
 use super::ActionSink;
@@ -48,11 +48,12 @@ pub struct ZoomState {
     reported: f64,
     settle: Option<Task<()>>,
     grab: Option<Point<Pixels>>,
+    moved: bool,
 }
 
 impl Default for ZoomState {
     fn default() -> Self {
-        Self { matrix: Transform::IDENTITY, bounds: None, rev: None, anim: None, reported: 1.0, settle: None, grab: None }
+        Self { matrix: Transform::IDENTITY, bounds: None, rev: None, anim: None, reported: 1.0, settle: None, grab: None, moved: false }
     }
 }
 
@@ -63,7 +64,14 @@ impl ZoomState {
         self.bounds.map_or((0.0, 0.0), |b| (f64::from(f32::from(b.size.width)), f64::from(f32::from(b.size.height))))
     }
 
-    pub fn command(&mut self, command: Option<&str>, rev: i64, max_scale: f64, now: Instant) {
+    pub fn command(
+        &mut self,
+        command: Option<&str>,
+        focus: Option<(f64, f64, f64, f64)>,
+        rev: i64,
+        max_scale: f64,
+        now: Instant,
+    ) {
         if self.rev.is_none() {
             self.rev = Some(rev);
             return;
@@ -73,7 +81,9 @@ impl ZoomState {
         }
         self.rev = Some(rev);
         let current = self.current(now);
-        if let Some(to) = zoom_target(command, current.scale, max_scale) {
+        if let (Some("focus"), Some(rect)) = (command, focus) {
+            self.anim = Some((now, current, focus_transform(self.size(), rect, max_scale)));
+        } else if let Some(to) = zoom_target(command, current.scale, max_scale) {
             self.anim = Some((now, current, command_transform(current, self.size(), to)));
         }
     }
@@ -96,8 +106,12 @@ impl ZoomState {
     }
 
     fn interact(&mut self, m: Transform) {
+        let changed = m != self.matrix;
         self.anim = None;
         self.matrix = m;
+        if changed {
+            self.moved = true;
+        }
     }
 
     pub fn wheel(&mut self, at: Point<Pixels>, delta_y: f64, max_scale: f64) -> bool {
@@ -126,25 +140,43 @@ impl ZoomState {
         self.reported = s;
         Some(s)
     }
+
+    /// The transform to report through `onMove`, once a user pan or wheel has settled.
+    pub fn settled_move(&mut self) -> Option<Transform> {
+        if self.anim.is_some() || !std::mem::take(&mut self.moved) {
+            return None;
+        }
+        Some(self.matrix)
+    }
 }
 
 struct Reporter {
     slot: ZoomSlot,
     sink: ActionSink,
     events: Vec<Event>,
+    move_events: Vec<Event>,
     view: WeakEntity<RfwView>,
 }
 
 impl Reporter {
     fn changed(&self, window: AnyWindowHandle, cx: &mut App) {
-        let (slot, sink, events) = (self.slot.clone(), self.sink.clone(), self.events.clone());
+        let (slot, sink) = (self.slot.clone(), self.sink.clone());
+        let (events, move_events) = (self.events.clone(), self.move_events.clone());
         let task = cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(SETTLE_MS)).await;
-            let Some(scale) = slot.borrow_mut().settled() else { return };
-            if events.is_empty() {
-                return;
-            }
-            cx.update_window(window, |_, window, cx| fire(&sink, &events, &zoom_extra(scale), window, cx)).ok();
+            let (scale, moved) = {
+                let mut st = slot.borrow_mut();
+                (st.settled(), st.settled_move())
+            };
+            cx.update_window(window, |_, window, cx| {
+                if let Some(scale) = scale.filter(|_| !events.is_empty()) {
+                    fire(&sink, &events, &zoom_extra(scale), window, cx);
+                }
+                if let Some(m) = moved.filter(|_| !move_events.is_empty()) {
+                    fire(&sink, &move_events, &move_extra(m), window, cx);
+                }
+            })
+            .ok();
         });
         self.slot.borrow_mut().settle = Some(task);
         self.view.update(cx, |_, cx| cx.notify()).ok();
@@ -172,7 +204,7 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
     let now = Instant::now();
     let m = {
         let mut st = slot.borrow_mut();
-        st.command(z.command.as_deref(), z.command_rev, z.max_scale, now);
+        st.command(z.command.as_deref(), z.focus, z.command_rev, z.max_scale, now);
         st.current(now)
     };
     let s = m.scale as f32;
@@ -182,7 +214,7 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
     if let Some(i) = inner {
         layer = layer.child(super::layout::grow(i, 1.0));
     }
-    let reporter = Rc::new(Reporter { slot: slot.clone(), sink: cx.sink.clone(), events: owned(&z.on_zoom), view: cx.view.clone() });
+    let reporter = Rc::new(Reporter { slot: slot.clone(), sink: cx.sink.clone(), events: owned(&z.on_zoom), move_events: owned(&z.on_move), view: cx.view.clone() });
     let max = z.max_scale;
     let probe_slot = slot.clone();
     let probe_reporter = reporter.clone();

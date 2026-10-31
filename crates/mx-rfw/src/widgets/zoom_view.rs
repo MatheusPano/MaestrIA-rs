@@ -14,7 +14,9 @@ pub struct ZoomView<'a> {
     pub max_scale: f64,
     pub command: Option<String>,
     pub command_rev: i64,
+    pub focus: Option<(f64, f64, f64, f64)>,
     pub on_zoom: Vec<&'a Event>,
+    pub on_move: Vec<&'a Event>,
 }
 
 impl<'a> ZoomView<'a> {
@@ -24,9 +26,23 @@ impl<'a> ZoomView<'a> {
             max_scale: number(n.arg("maxScale")).unwrap_or(6.0).max(1.0),
             command: n.arg("command").as_str().map(str::to_owned),
             command_rev: rounded(n.arg("commandRev")).unwrap_or(0),
+            focus: focus_rect(n.arg("focus")),
             on_zoom: n.handlers("onZoom"),
+            on_move: n.handlers("onMove"),
         }
     }
+}
+
+fn focus_rect(v: &Value) -> Option<(f64, f64, f64, f64)> {
+    Some((number(v.get("x"))?, number(v.get("y"))?, number(v.get("w"))?, number(v.get("h"))?))
+}
+
+pub fn move_extra(m: Transform) -> Map {
+    Map::from_iter([
+        ("scale".to_owned(), Value::Double(m.scale)),
+        ("x".to_owned(), Value::Double(m.x)),
+        ("y".to_owned(), Value::Double(m.y)),
+    ])
 }
 
 pub fn zoom_extra(scale: f64) -> Map {
@@ -85,6 +101,17 @@ pub fn command_transform(current: Transform, size: (f64, f64), to: f64) -> Trans
     let center = (size.0 / 2.0, size.1 / 2.0);
     let focal = current.to_scene(center);
     clamp_translation(Transform { scale: to, x: center.0 - focal.0 * to, y: center.1 - focal.1 * to }, size)
+}
+
+/// Transform that centers `rect` (fractions 0..1 of the child box) in the view, with 10% margin.
+pub fn focus_transform(size: (f64, f64), rect: (f64, f64, f64, f64), max_scale: f64) -> Transform {
+    let fit = (1.0 / rect.2).min(1.0 / rect.3) * 0.9;
+    let scale = if fit.is_finite() { fit.clamp(1.0, max_scale) } else { 1.0 };
+    let center = ((rect.0 + rect.2 / 2.0) * size.0, (rect.1 + rect.3 / 2.0) * size.1);
+    clamp_translation(
+        Transform { scale, x: size.0 / 2.0 - center.0 * scale, y: size.1 / 2.0 - center.1 * scale },
+        size,
+    )
 }
 
 pub fn zoom_around(current: Transform, focal: (f64, f64), factor: f64, max_scale: f64, size: (f64, f64)) -> Transform {

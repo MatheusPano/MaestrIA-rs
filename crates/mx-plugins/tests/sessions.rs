@@ -169,14 +169,14 @@ fn session_json_context_is_null_until_reported() {
 }
 
 #[test]
-fn the_capability_list_is_the_2_7_one_plus_picture_in_wire_order() {
+fn the_capability_list_is_the_2_7_one_plus_picture_and_zoom_focus_in_wire_order() {
     let keys: Vec<&str> = mx_plugins::CAPABILITIES.iter().map(|(k, _, _)| *k).collect();
     assert_eq!(
         keys,
         [
             "rfw", "floats", "input", "form", "modal", "editor", "sprites", "zoom", "textInput", "openInBackground",
             "markdown", "pasteImage", "keys", "arrows", "wake", "hibernate", "portrait", "closeSessions", "modalFrom",
-            "selectable", "rename", "picture"
+            "selectable", "rename", "picture", "zoomFocus"
         ]
     );
     assert!(mx_plugins::CAPABILITIES.iter().all(|c| c.2));

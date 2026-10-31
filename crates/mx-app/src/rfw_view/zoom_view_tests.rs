@@ -65,3 +65,25 @@ fn wheel_zoom_scales_a_fitted_child_on_both_axes_around_the_pointer(cx: &mut Tes
     assert!((width(back) - width(fit)).abs() < 1.0, "{fit:?} -> {back:?}");
     assert!((back.origin.x - fit.origin.x).abs() < px(1.0), "{fit:?} -> {back:?}");
 }
+
+#[test]
+fn focus_command_animates_once_per_rev_and_never_counts_as_a_user_move() {
+    use std::time::{Duration, Instant};
+    let mut st = super::ZoomState { bounds: Some(Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)))), ..Default::default() };
+    let t0 = Instant::now();
+    let rect = Some((0.5, 0.5, 0.25, 0.25));
+    st.command(Some("focus"), rect, 0, 6.0, t0);
+    assert!(!st.animating(), "the mount revision is ignored");
+    st.command(Some("focus"), rect, 1, 6.0, t0);
+    assert!(st.animating());
+    let end = st.current(t0 + Duration::from_secs(1));
+    assert!((end.scale - 3.6).abs() < 1e-9, "{end:?}");
+    assert_eq!(st.settled_move(), None, "programmatic commands never report onMove");
+    st.command(Some("focus"), rect, 1, 6.0, t0);
+    assert!(!st.animating(), "same rev does nothing");
+    assert!(st.drag(point(px(0.), px(0.))) == false);
+    st.wheel(point(px(500.), px(400.)), -100.0, 6.0);
+    let m = st.settled_move().expect("a user wheel reports");
+    assert_eq!(m, st.matrix);
+    assert_eq!(st.settled_move(), None);
+}

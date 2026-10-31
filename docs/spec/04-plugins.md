@@ -320,13 +320,14 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
   "apiVersion": 1, "blocks": 2, "rfw": 2, "floats": 1, "input": 1, "form": 1, "modal": 1, "editor": 1,
   "sprites": 1, "zoom": 1, "textInput": 1, "openInBackground": 1, "markdown": 1, "pasteImage": 1, "keys": 1,
   "arrows": 1, "wake": 1, "hibernate": 1, "portrait": 1, "closeSessions": 1, "modalFrom": 1, "selectable": 1,
-  "rename": 1, "picture": 1,
+  "rename": 1, "picture": 1, "zoomFocus": 1,
   "pluginId": "<id>", "pluginDir": "<dir>", "dataDir": "~/.maestria/plugin-data/<id> (absolute)",
   "permissions": ["hooks", ...], "settings": { ... resolved ... }
 }
 ```
 Capability flags come from `CAPABILITIES` (`mx-plugins/src/registry/lifecycle.rs`), in that wire order.
 `picture: 1` (Rust port only) means the `maestria.Picture` widget (§3.4 C.3) is available.
+`zoomFocus: 1` (Rust port only) means `maestria.ZoomView` accepts `command: "focus"` and `onMove` (§3.4 C.3).
 The result is ignored (any value). Errors → crash `o initialize falhou: <message>`.
 Timeout message: `"initialize" ficou sem resposta por 10s` (generic: `"<method>" ficou sem resposta por <n>s`, code -32002).
 
@@ -1048,6 +1049,11 @@ Notation: `name: decoder = default`. "USED" lists what the real files pass.
 - `path` is relative. It is looked up first in the plugin dir, then in the plugin data dir (`<state>/plugin-data/<id>`, the `dataDir` sent in `initialize`). Rejected: `..` anywhere, absolute paths, empty, files that do not exist.
 - Decoded with the `image` crate (PNG and the other formats it reads). Decoded images are cached by `(path, mtime, len)`, at most 64 (the oldest is dropped), so a file rewritten in place shows the new image on the next render.
 - Size: `width`/`height` when given, otherwise the image's natural size (one missing side follows the aspect ratio). The image is drawn centered in that box per `fit` and clipped to it. A missing or unreadable file renders an empty box of `width`×`height`.
+
+**ZoomView additions** (Rust port only; capability `zoomFocus: 1`; the base widget is in `06-delta-2.4-to-2.7.md`)
+- `command: "focus"` with `focus: {x, y, w, h}` (numbers, fractions 0..1 of the child box) and `commandRev`. Runs only when `commandRev` changes after mount, animated like `in`/`out`/`fit`. Without a valid `focus` map it does nothing.
+- Target: scale = clamp(min(1/w, 1/h) × 0.9, 1.0, `maxScale`); the rect centre is moved to the view centre, then the translation is clamped so nothing outside the child shows. Focusing `(0,0,1,1)` gives the identity transform.
+- `onMove`: fired after a user pan (drag, trackpad scroll) or wheel zoom settles (same 200 ms as `onZoom`), with extra `{scale, x, y}` (the transform: `x`/`y` are the layer translation in logical px). Programmatic commands never fire it. `onZoom` is unchanged.
 
 ##### C.4 Decoders reachable from the used widgets and arguments
 
