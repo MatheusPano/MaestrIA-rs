@@ -1078,6 +1078,8 @@ Notation: `name: decoder = default`. "USED" lists what the real files pass.
 **ZoomView additions** (Rust port only; capability `zoomFocus: 1`; the base widget is in `06-delta-2.4-to-2.7.md`)
 - `command: "focus"` with `focus: {x, y, w, h}` (numbers, fractions 0..1 of the child box) and `commandRev`. Runs only when `commandRev` changes after mount, animated like `in`/`out`/`fit`. Without a valid `focus` map it does nothing.
 - Target: scale = clamp(min(1/w, 1/h) × 0.9, 1.0, `maxScale`); the rect centre is moved to the view centre, then the translation is clamped so nothing outside the child shows. Focusing `(0,0,1,1)` gives the identity transform.
+- When the ZoomView's direct child is a `FittedBox`, `focus` fractions are relative to the fitted content, not the viewport: the rect is first mapped through the content's placed rect (same fit/alignment as the FittedBox, using its measured natural size; before it is measured, or for any other child, the fractions apply to the whole view). The final translation is still clamped, so a rect touching the content edge cannot be centred and is just fully visible.
+- A programmatic command that starts an animation discards a pending (not yet reported) user move, so `onMove` never fires at the end of it.
 - `onMove`: fired after a user pan (drag, trackpad scroll) or wheel zoom settles (same 200 ms as `onZoom`), with extra `{scale, x, y}` (the transform: `x`/`y` are the layer translation in logical px). Programmatic commands never fire it. `onZoom` is unchanged.
 
 ##### C.4 Decoders reachable from the used widgets and arguments

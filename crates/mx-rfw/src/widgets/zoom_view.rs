@@ -114,6 +114,31 @@ pub fn focus_transform(size: (f64, f64), rect: (f64, f64, f64, f64), max_scale: 
     )
 }
 
+/// Where a fitted child sits inside its box, as fractions of that box: `(x, y, w, h)`.
+/// `align` is the alignment axes in -1..1, as the FittedBox places it.
+pub fn fitted_placement(
+    fit: BoxFit,
+    align: (f64, f64),
+    natural: (f64, f64),
+    outer: (f64, f64),
+) -> (f64, f64, f64, f64) {
+    if outer.0 <= 0.0 || outer.1 <= 0.0 {
+        return (0.0, 0.0, 1.0, 1.0);
+    }
+    let s = fitted_scale(fit, natural, outer);
+    let (w, h) = (natural.0 * s, natural.1 * s);
+    let (x, y) = ((outer.0 - w) * (align.0 + 1.0) / 2.0, (outer.1 - h) * (align.1 + 1.0) / 2.0);
+    (x / outer.0, y / outer.1, w / outer.0, h / outer.1)
+}
+
+/// Maps a rect in fractions of the content onto fractions of the box the content was placed in.
+pub fn focus_in_placement(
+    rect: (f64, f64, f64, f64),
+    placed: (f64, f64, f64, f64),
+) -> (f64, f64, f64, f64) {
+    (placed.0 + rect.0 * placed.2, placed.1 + rect.1 * placed.3, rect.2 * placed.2, rect.3 * placed.3)
+}
+
 pub fn zoom_around(current: Transform, focal: (f64, f64), factor: f64, max_scale: f64, size: (f64, f64)) -> Transform {
     let scale = (current.scale * factor).clamp(1.0, max_scale);
     let k = scale / current.scale;

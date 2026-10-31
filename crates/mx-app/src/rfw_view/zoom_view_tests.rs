@@ -81,9 +81,21 @@ fn focus_command_animates_once_per_rev_and_never_counts_as_a_user_move() {
     assert_eq!(st.settled_move(), None, "programmatic commands never report onMove");
     st.command(Some("focus"), rect, 1, 6.0, t0);
     assert!(!st.animating(), "same rev does nothing");
-    assert!(st.drag(point(px(0.), px(0.))) == false);
+    assert!(!st.drag(point(px(0.), px(0.))));
     st.wheel(point(px(500.), px(400.)), -100.0, 6.0);
     let m = st.settled_move().expect("a user wheel reports");
     assert_eq!(m, st.matrix);
+    assert_eq!(st.settled_move(), None);
+}
+
+#[test]
+fn a_programmatic_command_discards_a_pending_user_move() {
+    use std::time::{Duration, Instant};
+    let mut st = super::ZoomState { bounds: Some(Bounds::new(point(px(0.), px(0.)), size(px(1000.), px(800.)))), ..Default::default() };
+    let t0 = Instant::now();
+    st.command(Some("focus"), None, 0, 6.0, t0);
+    st.wheel(point(px(500.), px(400.)), -100.0, 6.0);
+    st.command(Some("focus"), Some((0.5, 0.5, 0.25, 0.25)), 1, 6.0, t0);
+    st.current(t0 + Duration::from_secs(1));
     assert_eq!(st.settled_move(), None);
 }

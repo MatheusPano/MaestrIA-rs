@@ -7,9 +7,10 @@ use gpui::{
     ScrollDelta, Styled, Task, WeakEntity, Window, canvas, px, relative,
 };
 use mx_rfw::Event;
+use mx_rfw::widgets::{Local, decode};
 use mx_rfw::widgets::zoom_view::{
-    ANIMATION_MS, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_scale,
-    focus_transform, move_extra, pan, should_report, wheel_factor, zoom_around, zoom_extra, zoom_target,
+    ANIMATION_MS, BoxFit, FittedBox, SETTLE_MS, Transform, ZoomView, command_transform, ease_out_cubic, fitted_scale,
+    focus_in_placement, focus_transform, fitted_placement, move_extra, pan, should_report, wheel_factor, zoom_around, zoom_extra, zoom_target,
 };
 
 use super::ActionSink;
@@ -49,11 +50,13 @@ pub struct ZoomState {
     settle: Option<Task<()>>,
     grab: Option<Point<Pixels>>,
     moved: bool,
+    /// Set when the direct child is a FittedBox: its slot, fit and alignment axes.
+    content: Option<(FitSlot, BoxFit, (f64, f64))>,
 }
 
 impl Default for ZoomState {
     fn default() -> Self {
-        Self { matrix: Transform::IDENTITY, bounds: None, rev: None, anim: None, reported: 1.0, settle: None, grab: None, moved: false }
+        Self { matrix: Transform::IDENTITY, bounds: None, rev: None, anim: None, reported: 1.0, settle: None, grab: None, moved: false, content: None }
     }
 }
 
@@ -82,10 +85,20 @@ impl ZoomState {
         self.rev = Some(rev);
         let current = self.current(now);
         if let (Some("focus"), Some(rect)) = (command, focus) {
+            let rect = self.content_placement().map_or(rect, |placed| focus_in_placement(rect, placed));
             self.anim = Some((now, current, focus_transform(self.size(), rect, max_scale)));
         } else if let Some(to) = zoom_target(command, current.scale, max_scale) {
             self.anim = Some((now, current, command_transform(current, self.size(), to)));
         }
+        if self.anim.is_some() {
+            self.moved = false;
+        }
+    }
+
+    fn content_placement(&self) -> Option<(f64, f64, f64, f64)> {
+        let (slot, fit, align) = self.content.as_ref()?;
+        let natural = slot.borrow().natural?;
+        Some(fitted_placement(*fit, *align, (f64::from(natural.0), f64::from(natural.1)), self.size()))
     }
 
     pub fn current(&mut self, now: Instant) -> Transform {
@@ -202,8 +215,13 @@ pub fn render(cx: &mut Ctx, z: &ZoomView, fit: Fit) -> El {
     let Some(states) = cx.widgets else { return stretch_self(optional(cx, z.child, fit).unwrap_or_else(|| cx.el())) };
     let slot = states.zooms.next();
     let now = Instant::now();
+    let content = z.child.and_then(|w| match decode(w.as_node()?) {
+        Local::FittedBox(f) => Some((states.fits.peek(), f.fit, super::style::align_axes(&f.alignment))),
+        _ => None,
+    });
     let m = {
         let mut st = slot.borrow_mut();
+        st.content = content;
         st.command(z.command.as_deref(), z.focus, z.command_rev, z.max_scale, now);
         st.current(now)
     };
