@@ -3672,7 +3672,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "mx-app"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -3698,7 +3698,7 @@ dependencies = [
 
 [[package]]
 name = "mx-claude"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "mx-core"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "proptest",
@@ -3728,7 +3728,7 @@ dependencies = [
 
 [[package]]
 name = "mx-plugins"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "mx-core",
@@ -3744,7 +3744,7 @@ dependencies = [
 
 [[package]]
 name = "mx-rfw"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "indexmap",
  "proptest",
@@ -3753,7 +3753,7 @@ dependencies = [
 
 [[package]]
 name = "mx-store"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "mx-claude",
@@ -3768,7 +3768,7 @@ dependencies = [
 
 [[package]]
 name = "mx-sys"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "mx-core",
@@ -3783,7 +3783,7 @@ dependencies = [
 
 [[package]]
 name = "mx-term"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3800,7 +3800,7 @@ dependencies = [
 
 [[package]]
 name = "mx-theme"
-version = "3.0.3"
+version = "3.1.0"
 dependencies = [
  "serde_json",
  "thiserror 2.0.21",
