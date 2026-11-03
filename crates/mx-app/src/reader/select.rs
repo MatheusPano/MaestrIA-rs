@@ -94,13 +94,21 @@ impl SelectionState {
         (a != h).then(|| if a <= h { (a, h) } else { (h, a) })
     }
 
-    pub fn range_of(&self, piece: usize, len: usize) -> Option<Range<usize>> {
+    pub fn clear(&mut self) {
+        self.anchor = None;
+        self.head = None;
+        self.dragging = false;
+    }
+
+    // Carets can outlive the text they were taken on, so an offset may land inside a multibyte
+    // char; StyledText::with_runs panics on a run that cuts one.
+    pub fn range_of(&self, piece: usize, text: &str) -> Option<Range<usize>> {
         let (start, end) = self.ordered()?;
         if piece < start.piece || piece > end.piece {
             return None;
         }
-        let from = if piece == start.piece { start.offset.min(len) } else { 0 };
-        let to = if piece == end.piece { end.offset.min(len) } else { len };
+        let from = if piece == start.piece { text.floor_char_boundary(start.offset) } else { 0 };
+        let to = if piece == end.piece { text.floor_char_boundary(end.offset) } else { text.len() };
         (to > from).then_some(from..to)
     }
 
@@ -110,7 +118,7 @@ impl SelectionState {
             .iter()
             .enumerate()
             .filter_map(|(i, p)| {
-                let range = self.range_of(i, p.text.len())?;
+                let range = self.range_of(i, &p.text)?;
                 let rect = p.bounds.get()?;
                 Some((p.text.get(range)?.to_owned(), rect))
             })
@@ -167,7 +175,7 @@ pub fn piece(slot: &SelectionSlot, text: impl Into<SharedString>, runs: Option<V
     let mut st = slot.borrow_mut();
     let index = st.building.len();
     let color = st.color.unwrap_or_else(|| gpui::blue().opacity(0.3));
-    let range = st.range_of(index, text.len());
+    let range = st.range_of(index, &text);
     let styled = match (runs, range) {
         (Some(runs), Some(r)) => StyledText::new(text.clone()).with_runs(highlighted_runs(&runs, &r, color)),
         (Some(runs), None) => StyledText::new(text.clone()).with_runs(runs),
@@ -281,12 +289,22 @@ mod tests {
     #[test]
     fn the_selected_range_spans_whole_middle_pieces_and_cuts_the_ends() {
         let mut st = SelectionState { anchor: Some(Caret { piece: 2, offset: 3 }), head: Some(Caret { piece: 0, offset: 5 }), ..Default::default() };
-        assert_eq!(st.range_of(0, 10), Some(5..10));
-        assert_eq!(st.range_of(1, 4), Some(0..4));
-        assert_eq!(st.range_of(2, 9), Some(0..3));
-        assert_eq!(st.range_of(3, 9), None);
+        assert_eq!(st.range_of(0, "0123456789"), Some(5..10));
+        assert_eq!(st.range_of(1, "0123"), Some(0..4));
+        assert_eq!(st.range_of(2, "012345678"), Some(0..3));
+        assert_eq!(st.range_of(3, "012345678"), None);
         st.head = st.anchor;
         assert!(!st.has_selection());
+    }
+
+    #[test]
+    fn a_stale_caret_inside_a_multibyte_char_snaps_back_to_its_start() {
+        // "ação": 'ç' is bytes 1..3 and 'ã' is 3..5, so offsets 2 and 4 cut a char in half.
+        let st = SelectionState { anchor: Some(Caret { piece: 0, offset: 2 }), head: Some(Caret { piece: 0, offset: 4 }), ..Default::default() };
+        let range = st.range_of(0, "ação").unwrap();
+        assert_eq!(range, 1..3);
+        let st = SelectionState { anchor: Some(Caret { piece: 0, offset: 0 }), head: Some(Caret { piece: 0, offset: 40 }), ..Default::default() };
+        assert_eq!(st.range_of(0, "ação"), Some(0..6));
     }
 
     #[test]

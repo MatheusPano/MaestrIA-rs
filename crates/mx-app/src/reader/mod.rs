@@ -115,6 +115,9 @@ impl ReaderView {
 
     pub fn set_doc(&mut self, doc: MxDoc, cx: &mut Context<Self>) {
         let identity = doc.identity();
+        if identity != self.showing || doc.text != self.doc.text {
+            self.selection.borrow_mut().clear();
+        }
         self.doc = doc;
         if identity != self.showing {
             self.showing = identity;
@@ -214,6 +217,7 @@ impl ReaderView {
 
     fn adopt_reloaded(&mut self, doc: MxDoc, cx: &mut Context<Self>) {
         if doc.identity() == self.showing && doc.text != self.doc.text {
+            self.selection.borrow_mut().clear();
             self.doc.text = doc.text;
             self.doc.at = doc.at;
             self.tree = Rc::new(parse_markdown(&self.doc.text));

@@ -11,6 +11,16 @@ use super::blocks_button::tone;
 use super::style::hsla;
 use super::view::mono_family;
 
+// The console is not virtualized: every line shown is laid out and painted on every frame, so a
+// long log or one huge line stalls the whole window.
+const SHOWN_LINES: usize = 1500;
+const SHOWN_BYTES: usize = 4000;
+
+fn clipped(text: &str) -> String {
+    let end = text.floor_char_boundary(SHOWN_BYTES);
+    if end == text.len() { text.to_owned() } else { format!("{} …", &text[..end]) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Span {
     pub bold: bool,
@@ -190,12 +200,16 @@ pub fn markdown(p: &Paint, text: &str) -> AnyElement {
 fn line(p: &Paint, l: &ConsoleLine) -> AnyElement {
     let base = if l.tone.is_none() { hsla(p.view.theme.fg) } else { tone(p, l.tone.as_deref()) };
     let el = div().text_color(base).whitespace_normal();
-    let Some(spans) = &l.spans else { return el.child(l.text.clone()).into_any_element() };
+    let Some(spans) = &l.spans else { return el.child(clipped(&l.text)).into_any_element() };
     let mut text = String::new();
     let mut marks = Vec::new();
     for sp in spans {
+        if text.len() >= SHOWN_BYTES {
+            text.push_str(" …");
+            break;
+        }
         let start = text.len();
-        text.push_str(&sp.text);
+        text.push_str(&clipped(&sp.text));
         let style = HighlightStyle {
             color: sp.tone.as_deref().map(|t| tone(p, Some(t))),
             font_weight: sp.bold.then_some(FontWeight::BOLD),
@@ -239,7 +253,11 @@ pub fn console(p: &Paint, id: &str, empty: &str) -> AnyElement {
     if let Some((handle, _)) = p.view.console_scroll.get(id) {
         list = list.track_scroll(handle);
     }
-    for l in lines {
+    let hidden = lines.len().saturating_sub(SHOWN_LINES);
+    if hidden > 0 {
+        list = list.child(div().text_color(hsla(th.fg_faint)).child(format!("… {hidden} linhas mais antigas fora da janela")));
+    }
+    for l in lines.iter().skip(hidden) {
         list = list.child(line(p, l));
     }
     frame.child(list).into_any_element()
@@ -248,6 +266,16 @@ pub fn console(p: &Paint, id: &str, empty: &str) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_huge_console_line_is_cut_on_a_char_boundary() {
+        let short = "ação";
+        assert_eq!(clipped(short), short);
+        let long = "ç".repeat(SHOWN_BYTES);
+        let shown = clipped(&long);
+        assert!(shown.ends_with(" …"));
+        assert!(shown.len() <= SHOWN_BYTES + " …".len());
+    }
 
     fn spans(text: &str) -> (String, Vec<(String, Span)>) {
         let (out, marks) = parse_inline(text);

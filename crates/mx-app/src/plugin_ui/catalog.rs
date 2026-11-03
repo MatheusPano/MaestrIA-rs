@@ -2,10 +2,11 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, KeyDownEvent,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    AnyElement, App, AppContext, BoxShadow, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, point,
+    px,
 };
-use mx_plugins::catalog::{CatalogEntry, PluginCatalog, PluginUpdates, fetch_icon};
+use mx_plugins::catalog::{CatalogEntry, PluginCatalog, PluginKind, PluginUpdates, fetch_icon};
 use mx_plugins::{Permission, StagedPlugin};
 use mx_store::Areas;
 use mx_theme::Theme;
@@ -16,7 +17,8 @@ use super::widgets::{Close, barrier, card, text_button, title};
 use crate::app::host::{StoreChanged, StoreHost};
 use crate::chrome::anim::Spinner;
 use crate::chrome::dialog::frame::BARRIER;
-use crate::chrome::style::{MONO, hsla, theme};
+use crate::chrome::icon::{self, Icon as Glyph, icon};
+use crate::chrome::style::{MONO, alpha, hsla, theme};
 
 pub const CATALOG_TITLE: &str = "Catálogo de plugins";
 pub const FROM_URL: &str = "De uma URL, .zip ou pasta…";
@@ -29,6 +31,49 @@ pub enum EntryAction {
     Installed,
     Install,
     Update,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tab {
+    Plugins,
+    Themes,
+}
+
+impl Tab {
+    pub const ALL: [Tab; 2] = [Tab::Plugins, Tab::Themes];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Tab::Plugins => "Plugins",
+            Tab::Themes => "Temas",
+        }
+    }
+
+    fn kind(self) -> PluginKind {
+        match self {
+            Tab::Plugins => PluginKind::Feature,
+            Tab::Themes => PluginKind::Theme,
+        }
+    }
+
+    fn glyph(self) -> Glyph {
+        match self {
+            Tab::Plugins => icon::EXTENSION_OUTLINED,
+            Tab::Themes => icon::PALETTE_OUTLINED,
+        }
+    }
+
+    /// An entry that is both lands on both tabs; one that declares no kind is a plugin.
+    pub fn holds(self, e: &CatalogEntry) -> bool {
+        e.kinds.contains(&self.kind()) || (self == Tab::Plugins && e.kinds.is_empty())
+    }
+
+    fn empty(self) -> &'static str {
+        match self {
+            Tab::Plugins => "Nenhum plugin no catálogo",
+            Tab::Themes => "Nenhum tema no catálogo",
+        }
+    }
 }
 
 pub fn entry_action(e: &CatalogEntry, have: Option<(&str, bool)>, busy: bool) -> EntryAction {
@@ -78,6 +123,7 @@ pub struct CatalogDialog {
     open_install: Close,
     focus: FocusHandle,
     loading: bool,
+    tab: Tab,
     error: Option<String>,
     busy: BTreeSet<String>,
     errors: HashMap<String, String>,
@@ -103,6 +149,7 @@ impl CatalogDialog {
             open_install,
             focus: cx.focus_handle(),
             loading: false,
+            tab: Tab::Plugins,
             error: None,
             busy: BTreeSet::new(),
             errors: HashMap::new(),
@@ -243,7 +290,7 @@ impl CatalogDialog {
             .gap(px(8.))
             .child(div().text_size(px(12.5)).font_weight(FontWeight::SEMIBOLD).text_color(hsla(t.fg)).child(e.name.clone()))
             .child(div().font_family(MONO).text_size(px(11.)).text_color(hsla(t.fg_faint)).child(version_text(&e.version, have.as_ref().map(|(v, _)| v.as_str()))))
-            .children(e.kinds.iter().map(|k| kind_tag(*k, t)));
+            .children(e.kinds.iter().filter(|k| **k != self.tab.kind()).map(|k| kind_tag(*k, t)));
         if e.git.is_some() {
             head = head.child(div().text_size(px(11.)).text_color(hsla(t.fg_faint)).child("De fora"));
         }
@@ -297,6 +344,44 @@ impl CatalogDialog {
             .child(div().flex_none().child(trailing))
             .into_any_element()
     }
+
+    fn tabs(&self, catalog: Option<&PluginCatalog>, t: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let mut bar = div().p(px(3.)).flex().bg(alpha(t.bg_active, 0.7)).rounded(px(9.));
+        for tab in Tab::ALL {
+            let on = tab == self.tab;
+            let color = hsla(if on { t.fg } else { t.fg_dim });
+            let hover = hsla(t.fg);
+            let count = catalog.map(|c| c.plugins.iter().filter(|e| tab.holds(e)).count());
+            let mut chip = div()
+                .id(SharedString::from(format!("catalog-tab-{}", tab.label())))
+                .px(px(12.))
+                .py(px(5.))
+                .rounded(px(7.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .cursor_pointer()
+                .text_color(color)
+                .hover(move |s| s.text_color(hover))
+                .child(icon(tab.glyph(), 14., color))
+                .child(div().text_size(px(12.)).font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM }).child(tab.label()))
+                .children(count.map(|n| div().text_size(px(11.)).text_color(hsla(t.fg_faint)).child(n.to_string())))
+                .on_click(cx.listener(move |d, _, _, cx| {
+                    d.tab = tab;
+                    cx.notify();
+                }));
+            if on {
+                chip = chip.bg(hsla(t.bg)).shadow(vec![BoxShadow {
+                    color: gpui::hsla(0., 0., 0., 0.18),
+                    offset: point(px(0.), px(1.)),
+                    blur_radius: px(3.),
+                    spread_radius: px(0.),
+                }]);
+            }
+            bar = bar.child(chip);
+        }
+        bar.into_any_element()
+    }
 }
 
 fn seahash(s: &str) -> u64 {
@@ -316,8 +401,30 @@ impl Render for CatalogDialog {
         let updates = self.updates(cx);
         let content: AnyElement = match (&catalog, &updates) {
             (Some(c), Some(u)) => {
-                let rows: Vec<AnyElement> = c.plugins.clone().iter().map(|e| self.entry(e, u, &t, cx)).collect();
-                div().id("catalog-list").size_full().overflow_y_scroll().flex().flex_col().gap(px(8.)).children(rows).into_any_element()
+                let tab = self.tab;
+                let rows: Vec<AnyElement> = c.plugins.iter().filter(|e| tab.holds(e)).map(|e| self.entry(e, u, &t, cx)).collect();
+                if rows.is_empty() {
+                    div()
+                        .size_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(12.5))
+                        .text_color(hsla(t.fg_faint))
+                        .child(tab.empty())
+                        .into_any_element()
+                } else {
+                    div()
+                        .id(SharedString::from(format!("catalog-list-{}", tab.label())))
+                        .size_full()
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .pb(px(4.))
+                        .children(rows)
+                        .into_any_element()
+                }
             }
             _ => match self.error.clone() {
                 Some(e) => {
@@ -338,10 +445,11 @@ impl Render for CatalogDialog {
                 None => div().into_any_element(),
             },
         };
-        let mut head = div().flex().items_center().gap(px(10.)).child(title(&t, CATALOG_TITLE));
+        let mut heading = div().flex().items_center().gap(px(10.)).child(title(&t, CATALOG_TITLE));
         if self.loading {
-            head = head.child(Spinner::new(14., t.accent));
+            heading = heading.child(Spinner::new(14., t.accent));
         }
+        let head = div().flex().items_center().justify_between().gap(px(12.)).child(heading).child(self.tabs(catalog.as_ref(), &t, cx));
         let (close, from_url) = (self.close.clone(), self.open_install.clone());
         let buttons = vec![
             text_button("catalog-from-url", FROM_URL, hsla(t.accent), None, move |w, cx| from_url(w, cx)),
@@ -361,7 +469,7 @@ impl Render for CatalogDialog {
                 }))
                 .child(
                     card(&t, 608.)
-                        .child(div().px(px(24.)).pt(px(18.)).pb(px(10.)).child(head))
+                        .child(div().px(px(24.)).pt(px(18.)).pb(px(14.)).child(head))
                         .child(div().px(px(24.)).h(px(460.)).child(content))
                         .child(div().px(px(16.)).py(px(12.)).flex().justify_end().gap(px(4.)).children(buttons)),
                 ),
@@ -397,6 +505,16 @@ mod tests {
         assert_eq!(entry_action(&e, Some(("2.0.0", false)), false), EntryAction::Installed);
         let far = entry(serde_json::json!({"id": "a", "version": "1", "git": "https://x/a", "maestria": 99}));
         assert_eq!(entry_action(&far, None, false), EntryAction::TooNew);
+    }
+
+    #[test]
+    fn tabs_split_themes_from_plugins() {
+        let of = |kinds: serde_json::Value| entry(serde_json::json!({"id": "a", "version": "1", "git": "https://x/a", "kinds": kinds}));
+        let (theme, feature, both, none) = (of(serde_json::json!(["theme"])), of(serde_json::json!(["feature"])), of(serde_json::json!(["theme", "feature"])), of(serde_json::json!([])));
+        assert!(Tab::Themes.holds(&theme) && !Tab::Plugins.holds(&theme));
+        assert!(Tab::Plugins.holds(&feature) && !Tab::Themes.holds(&feature));
+        assert!(Tab::Plugins.holds(&both) && Tab::Themes.holds(&both));
+        assert!(Tab::Plugins.holds(&none) && !Tab::Themes.holds(&none));
     }
 
     #[test]

@@ -104,6 +104,7 @@ pub struct PluginRow {
     pub state: PluginState,
     pub dev: bool,
     pub description: String,
+    pub errors: Vec<String>,
     pub details: Vec<String>,
     pub commands: Vec<String>,
     pub themes: Vec<String>,
@@ -135,9 +136,9 @@ pub struct PluginAuto {
 
 pub fn checked_label(a: &PluginAuto) -> Option<String> {
     if a.checking {
-        return Some("Procurando…".into());
+        return Some("procurando…".into());
     }
-    a.checked_at.as_ref().map(|at| format!("Procurado às {at}"))
+    a.checked_at.as_ref().map(|at| format!("procurado às {at}"))
 }
 
 pub fn update_status(p: &PluginRow) -> Option<(String, crate::chrome::menu::Tone)> {

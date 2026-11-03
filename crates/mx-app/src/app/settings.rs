@@ -62,10 +62,12 @@ fn plugin_row(p: &PluginInfo, conflicts: usize, store: &mx_store::Store) -> Plug
     let registry = store.plugins();
     let updates = store.plugin_updates();
     let origin = registry.and_then(|r| r.origin_of(&p.id));
-    let details = [p.problem.clone(), p.crash.clone()]
+    let crashed = p.crash.clone().filter(|_| p.state == mx_plugins::PluginState::Crashed);
+    let errors = p.problem.clone().into_iter().chain(crashed).collect();
+    let details = m
+        .map(|m| m.warnings.clone())
+        .unwrap_or_default()
         .into_iter()
-        .flatten()
-        .chain(m.map(|m| m.warnings.clone()).unwrap_or_default())
         .chain(origin.as_ref().map(|o| o.describe()))
         .collect();
     PluginRow {
@@ -75,6 +77,7 @@ fn plugin_row(p: &PluginInfo, conflicts: usize, store: &mx_store::Store) -> Plug
         state: plugin_state(p.state),
         dev: p.linked,
         description: m.map(|m| m.description.clone()).unwrap_or_default(),
+        errors,
         details,
         commands: m.map(|m| m.commands.iter().map(|c| c.title.clone()).collect()).unwrap_or_default(),
         themes: p.palettes.clone(),

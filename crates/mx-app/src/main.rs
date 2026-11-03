@@ -2,6 +2,7 @@
 
 mod app;
 mod chrome;
+mod diagnostics;
 mod keymap;
 mod panes;
 mod plugin_ui;
@@ -37,7 +38,7 @@ const FONTS: [&[u8]; 4] = [
 const DEMO_TERMINAL: &str = "MAESTRIA_DEMO_TERMINAL";
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    diagnostics::install();
     Application::new().with_assets(app::assets::Assets).run(|cx: &mut App| {
         if let Err(err) = cx
             .text_system()

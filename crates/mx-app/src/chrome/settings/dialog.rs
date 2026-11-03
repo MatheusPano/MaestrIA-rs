@@ -3,12 +3,14 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight, InteractiveElement,
+    AnyElement, AnyView, App, AppContext, Context, FocusHandle, FontWeight, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
-use super::model::{ChordCheck, KeyPress, PluginMenuAction, Section, SettingsAction, SettingsData};
+use mx_plugins::catalog::PluginKind;
+
+use super::model::{ChordCheck, KeyPress, Section, SettingsAction, SettingsData};
 use crate::chrome::dialog::frame::{barrier, card};
 use crate::chrome::icon::{self, Icon, icon};
 use crate::chrome::menu::{ContextMenu, MenuEntry};
@@ -36,7 +38,8 @@ pub struct SettingsDialog {
     pub(super) validate: Validate,
     pub(super) recording: Option<Recording>,
     pub(super) expanded: HashSet<String>,
-    pub(super) menu: Option<Entity<ContextMenu<PluginMenuAction>>>,
+    pub(super) plugin_kind: PluginKind,
+    pub(super) menu: Option<AnyView>,
     pub(super) focus: FocusHandle,
     pub(crate) scroll: ScrollHandle,
     veil_from: f32,
@@ -70,6 +73,7 @@ impl SettingsDialog {
             validate,
             recording: None,
             expanded: HashSet::new(),
+            plugin_kind: PluginKind::Feature,
             menu: None,
             focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
@@ -174,25 +178,30 @@ impl SettingsDialog {
         cx.stop_propagation();
     }
 
-    pub(super) fn open_menu(&mut self, entries: Vec<MenuEntry<PluginMenuAction>>, at: Point<Pixels>, plugin: String, cx: &mut Context<Self>) {
+    pub(super) fn open_menu<A: Clone + 'static>(
+        &mut self,
+        entries: Vec<MenuEntry<A>>,
+        at: Point<Pixels>,
+        to_action: impl Fn(A) -> SettingsAction + 'static,
+        cx: &mut Context<Self>,
+    ) {
         let on_action = self.on_action.clone();
         let me = cx.entity().downgrade();
-        let me2 = me.clone();
-        self.menu = Some(cx.new(|_| {
+        let menu = cx.new(|_| {
             ContextMenu::new(
                 entries,
                 at,
-                move |a, w, cx| on_action(SettingsAction::Plugin(plugin.clone(), a), w, cx),
+                move |a, w, cx| on_action(to_action(a), w, cx),
                 move |_, cx| {
-                    me2.update(cx, |this, cx| {
+                    me.update(cx, |this, cx| {
                         this.menu = None;
                         cx.notify();
                     })
                     .ok();
                 },
             )
-        }));
-        let _ = me;
+        });
+        self.menu = Some(menu.into());
         cx.notify();
     }
 
