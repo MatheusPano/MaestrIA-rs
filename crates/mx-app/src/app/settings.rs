@@ -128,6 +128,7 @@ pub fn data(host: &Entity<StoreHost>, cx: &App) -> SettingsData {
         typography: theme_typography(&prefs.typography, &installed),
         faces: mx_theme::installed_faces(&installed),
         zoom_keys: keymap::zoom_keys(&map),
+        cursor_shape: prefs.cursor_shape,
         status_bar_top: prefs.status_bar_top,
         active_tray: prefs.active_tray,
         shortcuts: keymap::shortcut_rows(&map),
@@ -230,6 +231,7 @@ fn act(action: SettingsAction, window: &mut Window, cx: &mut App) {
     match action {
         S::SetTheme(id) => ui::act(cx, |s| s.set_theme(&id)),
         S::SetTypography(t) => ui::act(cx, |s| s.set_typography(store_typography(&t))),
+        S::SetCursorShape(shape) => ui::act(cx, |s| s.set_cursor_shape(shape)),
         S::SetStatusBarTop(top) => ui::act(cx, |s| s.set_status_bar_top(top)),
         S::SetActiveTray(on) => ui::act(cx, |s| s.set_active_tray(on)),
         S::ResetShortcuts(_) | S::Bind { .. } | S::Unbind { .. } => drop(ui::act(cx, |s| keymap::apply(s, &action))),

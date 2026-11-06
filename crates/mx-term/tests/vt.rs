@@ -240,3 +240,20 @@ fn clicking_a_bare_markdown_name_resolves_against_cwd() {
     assert_eq!(mx_term::follow_link(&href, dir.path().to_str()), mx_term::LinkFollow::Reader(want));
     assert_eq!(t.link_at(2, 0, dir.path().to_str()), None);
 }
+
+#[test]
+fn the_default_cursor_shape_yields_to_the_program() {
+    use mx_core::persist::CursorShape;
+    use mx_term::CursorKind;
+    let kind = |t: &TerminalSession| t.snapshot().cursor.map(|c| c.kind);
+    let t = term(80, 10, 100);
+    assert_eq!(kind(&t), Some(CursorKind::Block));
+    t.set_cursor_shape(CursorShape::Beam);
+    assert_eq!(kind(&t), Some(CursorKind::Beam));
+    t.feed(b"\x1b[2 q");
+    assert_eq!(kind(&t), Some(CursorKind::Block));
+    t.feed(b"\x1b[0 q");
+    assert_eq!(kind(&t), Some(CursorKind::Beam));
+    t.set_cursor_shape(CursorShape::Underline);
+    assert_eq!(kind(&t), Some(CursorKind::Underline));
+}

@@ -43,6 +43,7 @@ pub fn data() -> SettingsData {
         typography: Typography::standard(),
         faces: vec![HACK, mx_theme::FACES.iter().copied().find(|f| f.family == "DejaVu Sans Mono").unwrap_or(HACK)],
         zoom_keys: ("Ctrl+=".into(), "Ctrl+−".into()),
+        cursor_shape: mx_core::persist::CursorShape::Beam,
         status_bar_top: false,
         active_tray: false,
         shortcuts: shortcuts(),

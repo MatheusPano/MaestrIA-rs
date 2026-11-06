@@ -1,6 +1,6 @@
 use mx_core::json::Obj;
 use mx_core::persist::{
-    DEFAULT_HIBERNATE_MINUTES, DEFAULT_SIDEBAR_WIDTH, MAX_HIBERNATE_MINUTES, MAX_SIDEBAR_WIDTH,
+    CursorShape, DEFAULT_HIBERNATE_MINUTES, DEFAULT_SIDEBAR_WIDTH, MAX_HIBERNATE_MINUTES, MAX_SIDEBAR_WIDTH,
     MIN_SIDEBAR_WIDTH, Typography,
 };
 
@@ -11,6 +11,7 @@ use crate::store::Store;
 pub struct Prefs {
     pub theme: String,
     pub typography: Typography,
+    pub cursor_shape: CursorShape,
     pub sidebar_width: f64,
     pub sidebar_hidden: bool,
     pub status_bar_top: bool,
@@ -33,6 +34,7 @@ impl Default for Prefs {
         Prefs {
             theme: mx_theme::DEFAULT_THEME_ID.to_owned(),
             typography: Typography::default(),
+            cursor_shape: CursorShape::Block,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_hidden: false,
             status_bar_top: false,
@@ -76,6 +78,10 @@ impl Store {
         if self.set_pref(t, |p| &mut p.typography) {
             self.mark(Areas::PANES);
         }
+    }
+
+    pub fn set_cursor_shape(&mut self, shape: CursorShape) {
+        self.set_pref(shape, |p| &mut p.cursor_shape);
     }
 
     pub fn zoom_focused(&mut self, by: i64) {

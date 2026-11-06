@@ -11,6 +11,8 @@ use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::tty;
+use alacritty_terminal::vte::ansi;
+use mx_core::persist::CursorShape;
 use mx_theme::TerminalPalette;
 
 use crate::events::{Fanout, Subscriber};
@@ -131,6 +133,19 @@ pub struct TerminalSession {
     pub(crate) shared: Arc<Shared>,
 }
 
+fn term_config(scrollback: usize, shape: CursorShape) -> Config {
+    let shape = match shape {
+        CursorShape::Block => ansi::CursorShape::Block,
+        CursorShape::Beam => ansi::CursorShape::Beam,
+        CursorShape::Underline => ansi::CursorShape::Underline,
+    };
+    Config {
+        scrolling_history: scrollback,
+        default_cursor_style: ansi::CursorStyle { shape, blinking: false },
+        ..Config::default()
+    }
+}
+
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -145,7 +160,7 @@ impl TerminalSession {
             palette: Mutex::new(Arc::new(palette)),
             sticky: Arc::default(),
         });
-        let config = Config { scrolling_history: scrollback, ..Config::default() };
+        let config = term_config(scrollback, CursorShape::Block);
         let term = Arc::new(FairMutex::new(Term::new(config, &size, Proxy(port.clone()))));
         port.sticky.attach(&term, &port);
         let shared = Arc::new(Shared {
@@ -556,6 +571,12 @@ impl TerminalSession {
 
     pub fn set_palette(&self, palette: TerminalPalette) {
         *lock(&self.shared.port.palette) = Arc::new(palette);
+        self.shared.port.wake();
+    }
+
+    /// The shape the cursor takes while the program has not asked for one (`ESC [ n q`).
+    pub fn set_cursor_shape(&self, shape: CursorShape) {
+        self.shared.term.lock().set_options(term_config(self.shared.scrollback, shape));
         self.shared.port.wake();
     }
 

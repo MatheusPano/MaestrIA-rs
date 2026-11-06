@@ -31,6 +31,30 @@ pub fn resolve_theme(raw: Option<&str>, known: &dyn Fn(&str) -> bool) -> String 
         .into()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorShape {
+    #[default]
+    Block,
+    Beam,
+    Underline,
+}
+
+impl CursorShape {
+    pub const ALL: [CursorShape; 3] = [CursorShape::Block, CursorShape::Beam, CursorShape::Underline];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            CursorShape::Block => "block",
+            CursorShape::Beam => "beam",
+            CursorShape::Underline => "underline",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<CursorShape> {
+        Self::ALL.into_iter().find(|s| s.key() == key)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Typography {
     pub mono: String,
@@ -161,6 +185,7 @@ pub struct Config {
     pub auto_update: bool,
     pub theme: Option<String>,
     pub typography: Typography,
+    pub cursor_shape: CursorShape,
     pub shortcuts: Obj,
     pub plugins: Obj,
     pub layout: Option<Layout>,
@@ -191,6 +216,7 @@ impl Default for Config {
             auto_update: false,
             theme: None,
             typography: Typography::default(),
+            cursor_shape: CursorShape::Block,
             shortcuts: Obj::new(),
             plugins: Obj::new(),
             layout: None,
@@ -270,6 +296,9 @@ impl Config {
         let typography = self.typography.to_json();
         if !typography.is_empty() {
             m.insert("type".into(), Value::Object(typography));
+        }
+        if self.cursor_shape != CursorShape::Block {
+            m.insert("cursorShape".into(), json!(self.cursor_shape.key()));
         }
         if !self.shortcuts.is_empty() {
             m.insert("shortcuts".into(), Value::Object(self.shortcuts.clone()));

@@ -4,7 +4,7 @@ use crate::json::{Obj, get_bool, get_num, get_str, objects, strings};
 use crate::model::workspace::code_workspace_name;
 use crate::model::{FeatureOrHotfix, Folder, Launcher, PaneGroup, Workspace, new_workspace_id};
 use crate::persist::config::{
-    Config, DEFAULT_HIBERNATE_MINUTES, Layout, LegacySlots, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH,
+    Config, CursorShape, DEFAULT_HIBERNATE_MINUTES, Layout, LegacySlots, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH,
     Typography,
 };
 
@@ -181,6 +181,10 @@ impl Config {
             ),
             None => Typography::default(),
         };
+        c.cursor_shape = get_str(j, "cursorShape")
+            .lenient()
+            .and_then(CursorShape::from_key)
+            .unwrap_or_default();
         c.shortcuts = j
             .get("shortcuts")
             .and_then(Value::as_object)

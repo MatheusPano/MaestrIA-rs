@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
+use mx_core::persist::CursorShape;
 use mx_core::ports::{BoxFuture, Term, TermFactory};
 use mx_theme::TerminalPalette;
 
@@ -69,6 +70,7 @@ pub type TabExitHook = Arc<dyn Fn(&str, Option<i32>) + Send + Sync>;
 struct Registry {
     sessions: HashMap<String, Weak<Shared>>,
     palette: TerminalPalette,
+    cursor: CursorShape,
     on_exit: Option<TabExitHook>,
     ptyd: Option<Arc<Ptyd>>,
 }
@@ -84,6 +86,7 @@ impl TermRegistry {
             inner: Arc::new(Mutex::new(Registry {
                 sessions: HashMap::new(),
                 palette,
+                cursor: CursorShape::Block,
                 on_exit: None,
                 ptyd: None,
             })),
@@ -114,6 +117,20 @@ impl TermRegistry {
             }
         }
         r.palette = palette;
+    }
+
+    pub fn set_cursor_shape(&self, shape: CursorShape) {
+        let Ok(mut r) = self.inner.lock() else { return };
+        if r.cursor == shape {
+            return;
+        }
+        r.cursor = shape;
+        r.sessions.retain(|_, w| w.strong_count() > 0);
+        for weak in r.sessions.values() {
+            if let Some(s) = TerminalSession::upgrade(weak) {
+                s.set_cursor_shape(shape);
+            }
+        }
     }
 
     pub fn use_ptyd(&self, ptyd: Option<Ptyd>) {
@@ -154,11 +171,14 @@ impl TermRegistry {
     }
 
     pub fn create_session(&self, tab_id: &str) -> TerminalSession {
-        let (palette, hook, ptyd) = match self.inner.lock() {
-            Ok(r) => (r.palette.clone(), r.on_exit.clone(), r.ptyd.clone()),
-            Err(_) => (TerminalPalette::default(), None, None),
+        let (palette, cursor, hook, ptyd) = match self.inner.lock() {
+            Ok(r) => (r.palette.clone(), r.cursor, r.on_exit.clone(), r.ptyd.clone()),
+            Err(_) => (TerminalPalette::default(), CursorShape::Block, None, None),
         };
         let session = TerminalSession::with_palette(palette);
+        if cursor != CursorShape::Block {
+            session.set_cursor_shape(cursor);
+        }
         session.set_tab_id(tab_id);
         session.set_ptyd(ptyd);
         if let Some(hook) = hook {

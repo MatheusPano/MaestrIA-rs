@@ -565,3 +565,15 @@ fn versions_ignore_the_tag_v_and_missing_trailing_parts() {
     assert_eq!(compare_versions("1.2.0-beta", "1.2.0.0"), Equal);
     assert_eq!(compare_versions("2.5.0-1", "2.5.0"), Greater);
 }
+
+#[test]
+fn the_cursor_shape_round_trips_and_block_is_never_written() {
+    let beam = Config { cursor_shape: CursorShape::Beam, ..Config::default() };
+    let j = beam.to_json();
+    assert_eq!(j["cursorShape"], json!("beam"));
+    let (back, _) = Config::from_json(j.as_object().unwrap());
+    assert_eq!(back.cursor_shape, CursorShape::Beam);
+    assert!(Config::default().to_json().get("cursorShape").is_none());
+    let (odd, _) = Config::from_json(&obj(json!({"cursorShape": "triangle"})));
+    assert_eq!(odd.cursor_shape, CursorShape::Block);
+}

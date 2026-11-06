@@ -38,6 +38,7 @@ impl Store {
         self.prefs = Prefs {
             theme: c.theme.filter(|t| !t.is_empty()).unwrap_or_else(|| mx_theme::DEFAULT_THEME_ID.to_owned()),
             typography: c.typography,
+            cursor_shape: c.cursor_shape,
             sidebar_width: c.sidebar_width,
             sidebar_hidden: c.sidebar_hidden,
             status_bar_top: c.status_bar_top,

@@ -84,6 +84,7 @@ impl Root {
         let resolved = Mx::resolve(&host.read(cx).store);
         Mx::install(resolved, cx);
         host.read(cx).terms.set_palette(Mx::get(cx).theme.terminal());
+        host.read(cx).terms.set_cursor_shape(host.read(cx).store.prefs().cursor_shape);
         Root {
             host,
             ui,
@@ -115,7 +116,9 @@ impl Root {
                 }
             }
         }
-        let theme = self.host.read(cx).store.prefs().theme.clone();
+        let prefs = self.host.read(cx).store.prefs();
+        let theme = prefs.theme.clone();
+        self.host.read(cx).terms.set_cursor_shape(prefs.cursor_shape);
         if theme != self.theme {
             let resolved = Mx::resolve(&self.host.read(cx).store);
             Mx::install(resolved, cx);

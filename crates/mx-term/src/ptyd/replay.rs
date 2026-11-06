@@ -200,10 +200,12 @@ fn modes(mode: TermMode, out: &mut String) {
     }
 }
 
+/// A block is the daemon's default, so it is left out: the app's own default
+/// (which may be a beam or an underline) then shows until the program asks again.
 fn cursor_shape<T>(term: &Term<T>, out: &mut String) {
     let style = term.cursor_style();
     let steady = match style.shape {
-        CursorShape::Block => 2,
+        CursorShape::Block => return,
         CursorShape::Underline => 4,
         CursorShape::Beam => 6,
         CursorShape::HollowBlock | CursorShape::Hidden => return,
@@ -303,6 +305,19 @@ mod tests {
         assert_eq!(dump(&a), dump(&b));
         assert_eq!(a.grid().cursor.point, b.grid().cursor.point);
         assert_eq!(*a.mode(), *b.mode());
+    }
+
+    #[test]
+    fn only_a_cursor_shape_the_program_chose_is_replayed() {
+        let shape = |bytes: &[u8]| {
+            let mut out = String::new();
+            cursor_shape(&term_with(bytes), &mut out);
+            out
+        };
+        assert_eq!(shape(b""), "");
+        assert_eq!(shape(b"\x1b[1 q"), "");
+        assert_eq!(shape(b"\x1b[6 q"), "\x1b[6 q");
+        assert_eq!(shape(b"\x1b[3 q"), "\x1b[3 q");
     }
 
     #[test]

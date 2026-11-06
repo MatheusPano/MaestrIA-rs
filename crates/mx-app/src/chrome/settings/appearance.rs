@@ -1,4 +1,5 @@
 use gpui::{AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div, px};
+use mx_core::persist::CursorShape;
 use mx_theme::Typography;
 
 use super::dialog::{SettingsDialog, heading};
@@ -8,6 +9,45 @@ use crate::chrome::style::{hsla, theme};
 use crate::chrome::widgets::{Button, ButtonKind, Stepper, Toggle};
 
 const ALWAYS: fn(&str) -> bool = |_| true;
+
+fn cursor_label(shape: CursorShape) -> &'static str {
+    match shape {
+        CursorShape::Block => "Bloco",
+        CursorShape::Beam => "Linha",
+        CursorShape::Underline => "Sublinhado",
+    }
+}
+
+fn cursor_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
+    let t = theme(cx);
+    let term = t.terminal();
+    let current = d.data.cursor_shape;
+    let mono = SharedString::from(d.data.typography.mono().to_owned());
+    let options = CursorShape::ALL.into_iter().map(|shape| {
+        let on = shape == current;
+        let cursor = hsla(term.cursor.into());
+        let (w, h) = (px(8.), px(16.));
+        let glyph = match shape {
+            CursorShape::Block => div().w(w).h(h).bg(cursor),
+            CursorShape::Beam => div().w(w).h(h).child(div().w(px(2.)).h(h).bg(cursor)),
+            CursorShape::Underline => div().w(w).h(h).flex().flex_col().justify_end().child(div().w(w).h(px(2.)).bg(cursor)),
+        };
+        let preview = div().flex().items_center().gap(px(6.)).px(px(10.)).py(px(8.)).rounded(px(5.)).bg(hsla(term.background.into()))
+            .font_family(mono.clone()).text_size(px(13.)).line_height(px(16.)).text_color(hsla(term.foreground.into()))
+            .child("❯").child(glyph);
+        let send = d.send(SettingsAction::SetCursorShape(shape));
+        div().id(SharedString::from(format!("cursor-{}", shape.key()))).debug_selector(move || format!("cursor:{}", shape.key()))
+            .flex().flex_col().gap(px(6.)).p(px(6.)).rounded(px(8.)).cursor_pointer()
+            .border_1().border_color(hsla(if on { t.accent } else { t.border })).hover(|s| s.bg(hsla(t.bg_hover)))
+            .child(preview)
+            .child(div().px(px(2.)).text_size(px(12.)).text_color(hsla(t.fg)).child(cursor_label(shape)))
+            .on_click(move |_, w, cx| send(w, cx))
+    });
+    div().flex().flex_col().mb(px(28.))
+        .child(heading("Cursor", Some("A forma do cursor no pty. Vale enquanto o programa não pede outra — o vim, por exemplo, troca sozinho entre os modos."), false, None, cx))
+        .child(div().flex().gap(px(8.)).children(options))
+        .into_any_element()
+}
 
 fn typo(t: &Typography, mono: Option<&str>, size: Option<f64>, line: Option<f64>) -> SettingsAction {
     SettingsAction::SetTypography(t.with(mono, size, line, &ALWAYS))
@@ -63,6 +103,8 @@ pub fn page(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Setti
         .child(div().flex().gap(px(24.))
             .child(Stepper::new("corpo", "Corpo", size_label(&ty), less_size, more_size))
             .child(Stepper::new("entrelinha", "Entrelinha", line_label(&ty), less_line, more_line)));
+    let cursor = cursor_section(d, cx);
+    let data = &d.data;
     let top = data.status_bar_top;
     let bar = div().flex().flex_col()
         .child(heading("Barra de status", Some("A faixa com o resumo das sessões e o sino. O sino, a lista dele e os cartões de aviso ficam do mesmo lado que ela."), false, None, cx))
@@ -72,5 +114,5 @@ pub fn page(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Setti
         .child(heading("Barra lateral", Some("Atalhos no topo da lista de sessões."), false, None, cx))
         .child(Toggle::new("active-tray", "Área \"Em andamento\"", tray_on, d.send(SettingsAction::SetActiveTray(!tray_on)))
             .subtitle("As sessões em que você mandou um prompt aparecem no topo. Tirar uma de lá não fecha nem move a sessão."));
-    div().flex().flex_col().child(themes).child(typography).child(bar).child(sidebar).into_any_element()
+    div().flex().flex_col().child(themes).child(typography).child(cursor).child(bar).child(sidebar).into_any_element()
 }
