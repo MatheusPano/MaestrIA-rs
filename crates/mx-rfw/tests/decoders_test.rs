@@ -2,7 +2,7 @@ mod common;
 
 use common::content;
 use mx_rfw::decoders::*;
-use mx_rfw::widgets::core_layout::{Stack, Text};
+use mx_rfw::widgets::core_layout::{SingleChildScrollView, Stack, Text};
 use mx_rfw::widgets::core_widgets::{Expanded, Opacity, Positioned, ScrollList};
 use mx_rfw::widgets::maestria::{Glyph, IconButton, Pressable};
 use mx_rfw::widgets::{CircularProgressIndicator, Local, decode};
@@ -219,4 +219,11 @@ fn decode_maps_every_catalog_widget_and_flags_the_rest_as_unsupported() {
     assert!(matches!(decode(&node("Spacer()")), Local::Spacer { flex: 1 }));
     assert!(matches!(decode(&node("Image()")), Local::Unsupported(_)));
     assert!(matches!(decode(&node("Divider()")), Local::Unsupported(_)));
+}
+
+#[test]
+fn scroll_views_carry_an_optional_id_that_keeps_their_offset() {
+    assert_eq!(SingleChildScrollView::from_node(&node("SingleChildScrollView(id: \"done\")")).id.as_deref(), Some("done"));
+    assert_eq!(SingleChildScrollView::from_node(&node("SingleChildScrollView()")).id, None);
+    assert_eq!(ScrollList::list_view(&node("ListView(id: \"log\", children: [])")).id.as_deref(), Some("log"));
 }

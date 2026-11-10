@@ -19,6 +19,7 @@ pub struct SingleChildScrollView<'a> {
     pub primary: bool,
     pub clip_behavior: Clip,
     pub child: Option<&'a Widget>,
+    pub id: Option<String>,
 }
 
 impl<'a> SingleChildScrollView<'a> {
@@ -30,6 +31,7 @@ impl<'a> SingleChildScrollView<'a> {
             primary: b(n, "primary").unwrap_or(true),
             clip_behavior: Clip::decode(n.arg("clipBehavior")).unwrap_or(Clip::HardEdge),
             child: n.optional_child("child"),
+            id: n.arg("id").as_str().map(str::to_owned),
         }
     }
 }

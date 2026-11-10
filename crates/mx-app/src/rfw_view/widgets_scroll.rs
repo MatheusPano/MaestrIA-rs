@@ -20,6 +20,13 @@ fn scroller(cx: &mut Ctx, axis: Axis, reverse: bool) -> El {
     el
 }
 
+fn keep_offset(cx: &Ctx, el: El, id: Option<&str>) -> El {
+    match (cx.widgets, id) {
+        (Some(states), Some(id)) => el.track_scroll(&states.scroll(id)),
+        _ => el,
+    }
+}
+
 fn item_fit(axis: Axis) -> Fit {
     match axis {
         Axis::Vertical => Fit { w: true, h: false },
@@ -29,6 +36,7 @@ fn item_fit(axis: Axis) -> Fit {
 
 pub fn single(cx: &mut Ctx, s: &SingleChildScrollView, fit: Fit) -> El {
     let mut el = scroller(cx, s.scroll_direction, s.reverse);
+    el = keep_offset(cx, el, s.id.as_deref());
     if let Some(p) = &s.padding {
         set_padding(el.style(), p);
     }
@@ -47,6 +55,7 @@ pub fn list(cx: &mut Ctx, l: &ScrollList, fit: Fit) -> El {
         return grid_view(cx, l, grid, fit);
     }
     let mut el = scroller(cx, l.scroll_direction, l.reverse);
+    el = keep_offset(cx, el, l.id.as_deref());
     if let Some(p) = &l.padding {
         set_padding(el.style(), p);
     }
