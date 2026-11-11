@@ -373,6 +373,11 @@ value/null, `calendar` string or `{from,to}`) of the whole view (§3.5). For RFW
 for the sidebar tab, or the float id for floats. Only delivered if the plugin is active; it
 starts the process if needed (and waits for ready).
 
+Plugin links: a `maestria://<pluginId>/<action>` link clicked in a terminal or reader (plain text
+or OSC 8) goes to that plugin, not the browser: `view.action {viewId: "link", action: <action>,
+values: {tabId: <tab the link was in>}}`. An inactive or unknown plugin → sticky banner
+`Esse link é do plugin "<pluginId>", que não está ativo`.
+
 ### 2.4 Plugin → host methods (complete)
 
 Params validated by `_text(key)` are required strings (`"<key>" é obrigatório`, -32602).
