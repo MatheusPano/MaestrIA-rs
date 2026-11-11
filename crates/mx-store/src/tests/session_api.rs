@@ -227,6 +227,25 @@ async fn open_claude_in_background_registers_without_placing() {
 }
 
 #[tokio::test]
+async fn open_claude_with_resume_reopens_the_conversation_or_returns_the_tab_holding_it() {
+    let mut rig = Rig::new();
+    rig.s1();
+    let create = with(&["sessions.create"]);
+    let out = rpc(&mut rig, &create, "session.openClaude", json!({"cwd": "/repo", "resume": "conversa", "background": true})).await.unwrap();
+    assert_eq!(out["resumed"], json!(true));
+    let id = out["tabId"].as_str().unwrap().to_owned();
+    assert_eq!(rig.t(&id).resume_id(), Some("conversa"));
+    let again = rpc(&mut rig, &create, "session.openClaude", json!({"cwd": "/repo", "resume": "conversa"})).await.unwrap();
+    assert_eq!(again["tabId"].as_str(), Some(id.as_str()));
+    assert!(rig.s.is_open(&id));
+    rig.tm(&id).exited = true;
+    let fresh = rpc(&mut rig, &create, "session.openClaude", json!({"cwd": "/repo", "resume": "conversa"})).await.unwrap();
+    let fresh = fresh["tabId"].as_str().unwrap().to_owned();
+    assert_ne!(fresh, id);
+    assert_eq!(rig.t(&fresh).resume_id(), Some("conversa"));
+}
+
+#[tokio::test]
 async fn session_close_takes_a_user_claude_only_with_sessions_close() {
     let mut rig = Rig::new();
     rig.s1();

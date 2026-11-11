@@ -52,7 +52,7 @@ impl Store {
             .map(|(_, f)| f)
     }
 
-    fn tab_holding(&self, sid: &str) -> Option<&Tab> {
+    pub(crate) fn tab_holding(&self, sid: &str) -> Option<&Tab> {
         self.tabs.iter().find(|t| {
             (t.kind == TabKind::Claude || !t.exited)
                 && (t.resume_id() == Some(sid) || t.hooks.session_id.as_deref() == Some(sid))
