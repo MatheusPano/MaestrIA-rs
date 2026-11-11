@@ -58,7 +58,7 @@ fn sp4_the_sheet_must_be_a_file_inside_the_plugin_dir() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("a.png"), b"x").unwrap();
     std::fs::write(tmp.join("plugin-irmao.png"), b"x").unwrap();
-    assert_eq!(plugin_file_of(Some("a.png"), Some(&dir)), Some(dir.join("a.png")));
+    assert_eq!(plugin_file_of(Some("a.png"), Some(&dir)), Some(dir.canonicalize().unwrap().join("a.png")));
     for rel in ["../a.png", "/etc/hosts", "", "nao-existe.png", "../plugin-irmao.png"] {
         assert_eq!(plugin_file_of(Some(rel), Some(&dir)), None, "{rel}");
     }

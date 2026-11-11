@@ -19,6 +19,7 @@ fn picture_resolves_inside_plugin_then_data_dir() {
     let data = tmp.join("data");
     std::fs::create_dir_all(&plugin).unwrap();
     std::fs::create_dir_all(data.join("png")).unwrap();
+    let (plugin, data) = (plugin.canonicalize().unwrap(), data.canonicalize().unwrap());
     std::fs::write(data.join("a.png"), b"x").unwrap();
     std::fs::write(data.join("png/b.png"), b"x").unwrap();
     std::fs::write(plugin.join("c.png"), b"x").unwrap();
@@ -34,6 +35,39 @@ fn picture_resolves_inside_plugin_then_data_dir() {
     }
     assert_eq!(plugin_or_data_file_of(None, Some(&plugin), Some(&data)), None);
     assert_eq!(plugin_or_data_file_of(Some("a.png"), Some(&plugin), None), None);
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn picture_rejects_a_symlink_that_leaves_the_plugin_and_data_dirs() {
+    use std::os::unix::fs::symlink;
+    let tmp = std::env::temp_dir().join(format!("mx-rfw-picture-link-{}", std::process::id()));
+    std::fs::remove_dir_all(&tmp).ok();
+    let plugin = tmp.join("plugin");
+    let data = tmp.join("data");
+    let outside = tmp.join("fora");
+    for d in [&plugin, &data, &outside] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let (plugin, data, outside) =
+        (plugin.canonicalize().unwrap(), data.canonicalize().unwrap(), outside.canonicalize().unwrap());
+    std::fs::write(outside.join("x.png"), b"x").unwrap();
+    std::fs::write(data.join("a.png"), b"x").unwrap();
+    symlink(outside.join("x.png"), data.join("link.png")).unwrap();
+    symlink(&outside, data.join("pasta")).unwrap();
+    symlink(outside.join("x.png"), plugin.join("link.png")).unwrap();
+    symlink(data.join("a.png"), data.join("dentro.png")).unwrap();
+    for rel in ["link.png", "pasta/x.png"] {
+        assert_eq!(plugin_or_data_file_of(Some(rel), Some(&plugin), Some(&data)), None, "{rel}");
+    }
+    assert_eq!(
+        plugin_or_data_file_of(Some("dentro.png"), Some(&plugin), Some(&data)),
+        Some(data.join("a.png"))
+    );
+    let linked_root = tmp.join("data-link");
+    symlink(&data, &linked_root).unwrap();
+    assert_eq!(plugin_or_data_file_of(Some("a.png"), None, Some(&linked_root)), Some(data.join("a.png")));
     std::fs::remove_dir_all(&tmp).ok();
 }
 

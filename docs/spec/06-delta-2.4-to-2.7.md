@@ -1203,7 +1203,7 @@ Args (numbers accept int or double): `sheet` (path relative to the plugin dir), 
 (0), `start` (0), `frames` (1), `fps` (6.0), `width?`, `height?` (screen size; default = cell size), `flip`
 (false), `paused` (false), `loop` (true).
 - File resolution `pluginFileOf(rel, dir)`: null if rel empty/null, dir null, rel contains `..`, absolute path
-  outside dir, resolved path not under `dir/`, or file missing.
+  outside dir, resolved path not under `dir/` (symlinks resolved, Rust port), or file missing.
 - Frame at elapsed t: `frames<=1 || fps<=0 → 0`; `n = floor(t_us * fps / 1e6)`; loop → `n % frames`, else
   `clamp(n, 0, frames-1)` and the ticker stops at the last frame.
 - Animates iff `!paused && frames>1 && fps>0`. Restart from frame 0 when any of `row,start,frames,fps,paused,loop`

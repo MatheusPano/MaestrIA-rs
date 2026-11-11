@@ -77,6 +77,18 @@ fn a_picture_rewritten_with_a_different_png_loads_the_new_image() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
+#[test]
+fn a_picture_decodes_jpeg_webp_gif_and_bmp_like_png() {
+    let tmp = picture_dir("formats");
+    let img = image::RgbImage::from_pixel(6, 4, image::Rgb([10, 20, 30]));
+    for ext in ["png", "jpg", "jpeg", "webp", "gif", "bmp"] {
+        let file = tmp.join(format!("prova.{ext}"));
+        img.save(&file).unwrap();
+        assert_eq!(super::picture::load(&file).map(|l| l.size), Some((6, 4)), "{ext}");
+    }
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
 fn picture_dir(name: &str) -> std::path::PathBuf {
     let tmp = std::env::temp_dir().join(format!("mx-app-picture-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();

@@ -71,7 +71,7 @@ No UI dependency; the renderer (mx-app) matches on `widgets::Local` and draws.
   (`key_listener::KeyListener`: `keys` raw strings, `on_key`, `child`); core FittedBox
   (`zoom_view::FittedBox`); anything else → `Local::Unsupported(&Node)`.
 - `maestria::menu_extra(choice)` → `{action: choice}` for `onMenu`. `sprite::{sprite_frame, plugin_file_of}` — Dart
-  `spriteFrame` / `pluginFileOf` (no `..`, stays under the plugin dir); `plugin_or_data_file_of(rel, plugin_dir,
+  `spriteFrame` / `pluginFileOf` (no `..`, stays under the plugin dir, symlinks resolved; returns the resolved path); `plugin_or_data_file_of(rel, plugin_dir,
   data_dir)` tries the plugin dir, then the plugin data dir.
 - `zoom_view::{Transform, zoom_target, command_transform, zoom_around, wheel_factor, pan, clamp_translation,
   should_report, zoom_extra, fitted_scale, ease_out_cubic, ease_in_cubic}` — the InteractiveViewer math (step 1.5,
