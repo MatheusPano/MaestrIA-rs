@@ -62,10 +62,11 @@ pub enum PaneOpen {
     Beside,
     Below,
     Auto,
+    Mouse,
 }
 
 impl PaneOpen {
-    pub const ALL: [PaneOpen; 4] = [PaneOpen::Replace, PaneOpen::Beside, PaneOpen::Below, PaneOpen::Auto];
+    pub const ALL: [PaneOpen; 5] = [PaneOpen::Replace, PaneOpen::Beside, PaneOpen::Below, PaneOpen::Auto, PaneOpen::Mouse];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -73,6 +74,7 @@ impl PaneOpen {
             PaneOpen::Beside => "beside",
             PaneOpen::Below => "below",
             PaneOpen::Auto => "auto",
+            PaneOpen::Mouse => "mouse",
         }
     }
 

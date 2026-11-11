@@ -74,6 +74,20 @@ pub fn auto_split(tree: &PaneNode, target: &str, w: f64, h: f64, gap: f64) -> Op
     split_of(largest, gap).map(|side| (largest.id.clone(), side))
 }
 
+pub fn facing(r: &PaneRect, side: DropSide, at: (f64, f64)) -> DropSide {
+    let (x, y) = at;
+    let inside = x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    if !inside {
+        return side;
+    }
+    match side.axis() {
+        Axis::Row if x < r.x + r.w / 2.0 => DropSide::Left,
+        Axis::Row => DropSide::Right,
+        Axis::Column if y < r.y + r.h / 2.0 => DropSide::Top,
+        Axis::Column => DropSide::Bottom,
+    }
+}
+
 fn biggest<'a>(rects: impl Iterator<Item = &'a PaneRect>) -> Option<&'a PaneRect> {
     rects.reduce(|best, r| if r.area() > best.area() { r } else { best })
 }
