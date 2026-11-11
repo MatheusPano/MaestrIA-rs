@@ -93,23 +93,11 @@ pub fn sprite_frame(elapsed: Duration, fps: f64, frames: i64, looping: bool) -> 
     if looping { n.rem_euclid(frames) } else { n.clamp(0, frames - 1) }
 }
 
-fn absolute(p: &Path) -> PathBuf {
-    if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf())
-    }
-}
-
 pub fn plugin_file_of(rel: Option<&str>, dir: Option<&Path>) -> Option<PathBuf> {
-    let rel = rel.filter(|r| !r.is_empty() && !r.contains(".."))?;
-    let root = absolute(dir?);
-    let root_text = root.to_string_lossy().trim_end_matches('/').to_owned();
-    let file = PathBuf::from(format!("{root_text}/{rel}"));
-    if !file.to_string_lossy().starts_with(&format!("{root_text}/")) {
-        return None;
-    }
-    file.is_file().then_some(file)
+    let rel = rel.filter(|r| !r.is_empty() && !r.contains("..") && !Path::new(r).is_absolute())?;
+    let dir = dir?;
+    let (real_root, real_file) = (dir.canonicalize().ok()?, dir.join(rel).canonicalize().ok()?);
+    (real_file.starts_with(&real_root) && real_file.is_file()).then_some(real_file)
 }
 
 pub fn plugin_or_data_file_of(
