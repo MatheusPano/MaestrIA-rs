@@ -941,6 +941,7 @@ Notation: `name: decoder = default`. "USED" lists what the real files pass.
 
 **ListView** (ListView.builder)
 - Reads: `scrollDirection = vertical`; `reverse = false`; `primary`; `shrinkWrap = false`; `padding: edgeInsets`; `itemExtent: v<double>`; `prototypeItem: optionalChild`; `itemCount = length(children)`; item `i` is `child(['children', i])`; `clipBehavior = hardEdge`; the same keep-alive, cache and drag flags as GridView.
+- `id: string` (Maestria): same as SingleChildScrollView.
 - USED: `padding`, `children`; `scrollDirection: "horizontal"`, `reverse: true`, `itemExtent: 9.0` (devtools FrameChart).
 
 **Opacity** (AnimatedOpacity)
@@ -964,6 +965,7 @@ Notation: `name: decoder = default`. "USED" lists what the real files pass.
 
 **SingleChildScrollView**
 - Reads: `scrollDirection = vertical`; `reverse = false`; `padding: edgeInsets`; **`primary: v<bool> = true`**; `dragStartBehavior`; `clipBehavior = hardEdge`; `restorationId`; `keyboardDismissBehavior`; `child: optionalChild`.
+- `id: string` (Maestria): the scroll offset is kept under this id across updates; without it the offset follows the element's position, which shifts when content before it changes.
 - USED: `primary: false`, `scrollDirection: "horizontal"`, `padding`, `child`.
 
 **SizedBox**

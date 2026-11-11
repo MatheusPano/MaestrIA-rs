@@ -1,9 +1,9 @@
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gpui::{App, FocusHandle, Window, WindowTextSystem};
+use gpui::{App, FocusHandle, ScrollHandle, Window, WindowTextSystem};
 
 use super::anchor;
 use super::selectable::SelectionSlot;
@@ -70,6 +70,7 @@ pub struct WidgetStates {
     pub text_system: RefCell<Option<Arc<WindowTextSystem>>>,
     pub keys: Slots<super::key_listener::KeyListenerState>,
     pub key_scope: RefCell<Option<super::key_listener::KeySlot>>,
+    pub scrolls: RefCell<HashMap<String, ScrollHandle>>,
     spare_focus: RefCell<Vec<FocusHandle>>,
 }
 
@@ -89,6 +90,7 @@ impl Default for WidgetStates {
             text_system: RefCell::new(None),
             keys: Slots::default(),
             key_scope: RefCell::new(None),
+            scrolls: RefCell::new(HashMap::new()),
             spare_focus: RefCell::new(Vec::new()),
         }
     }
@@ -123,6 +125,10 @@ impl WidgetStates {
 
     pub fn take_focus(&self) -> Option<FocusHandle> {
         self.spare_focus.borrow_mut().pop()
+    }
+
+    pub fn scroll(&self, id: &str) -> ScrollHandle {
+        self.scrolls.borrow_mut().entry(id.to_owned()).or_default().clone()
     }
 
     pub fn selection(&self) -> Option<SelectionSlot> {

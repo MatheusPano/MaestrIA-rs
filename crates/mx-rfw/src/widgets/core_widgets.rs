@@ -195,6 +195,7 @@ pub struct ScrollList<'a> {
     pub grid_delegate: Option<GridDelegate>,
     pub clip_behavior: Clip,
     pub children: Vec<Child<'a>>,
+    pub id: Option<String>,
 }
 
 impl<'a> ScrollList<'a> {
@@ -223,6 +224,7 @@ impl<'a> ScrollList<'a> {
             grid_delegate: None,
             clip_behavior: Clip::decode(n.arg("clipBehavior")).unwrap_or(Clip::HardEdge),
             children: n.indexed_children("children"),
+            id: n.arg("id").as_str().map(str::to_owned),
         }
     }
 }
