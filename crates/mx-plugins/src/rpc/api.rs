@@ -32,6 +32,7 @@ pub struct OpenClaude {
     pub prompt: Option<String>,
     pub label: Option<String>,
     pub background: bool,
+    pub resume: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

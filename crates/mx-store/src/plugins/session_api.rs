@@ -94,10 +94,21 @@ impl Store {
     }
 
     pub(crate) fn plugin_open_claude(&mut self, req: OpenClaude) -> String {
+        let holder = req.resume.as_deref().and_then(|sid| self.tab_holding(sid));
+        if let Some((id, hibernated)) = holder.filter(|t| t.hibernated || !t.exited).map(|t| (t.id.clone(), t.hibernated)) {
+            if hibernated {
+                self.wake(&id);
+            }
+            if !req.background {
+                self.select_with(&id, How::FromSetting);
+            }
+            return id;
+        }
         let (folder, cwd) = self.plugin_place(req.cwd);
         let mut spec = ClaudeSpec::new(&folder, &cwd);
         spec.label = req.label;
         spec.prompt = req.prompt;
+        spec.resume_id = req.resume;
         spec.feature = self.focused_feature().map(|f| f.id.clone());
         if req.background {
             return self.open_claude_placed(spec, false);

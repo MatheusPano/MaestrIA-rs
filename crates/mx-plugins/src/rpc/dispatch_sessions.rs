@@ -71,8 +71,14 @@ async fn open_claude(api: &dyn PluginHostApi, p: &PluginInfo, params: &Obj) -> R
         prompt: opt_text(params, "prompt"),
         label: opt_text(params, "label"),
         background: is_true(params, "background"),
+        resume: opt_text(params, "resume").filter(|r| !r.is_empty()),
     };
-    Ok(obj(&[("tabId", Value::from(api.open_claude(p, request).await?))]))
+    let resumed = request.resume.is_some();
+    let id = api.open_claude(p, request).await?;
+    if resumed {
+        return Ok(obj(&[("tabId", Value::from(id)), ("resumed", Value::from(true))]));
+    }
+    Ok(obj(&[("tabId", Value::from(id))]))
 }
 
 async fn rename(api: &dyn PluginHostApi, p: &PluginInfo, params: &Obj) -> Result<Value, RpcError> {

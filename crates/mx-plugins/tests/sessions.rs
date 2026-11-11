@@ -114,10 +114,13 @@ async fn open_claude_in_background_is_passed_through() {
     assert_eq!(out.unwrap(), json!({"tabId": "tab7"}));
     assert_eq!(
         host.calls(),
-        [r#"claude OpenClaude { cwd: None, prompt: None, label: Some("a"), background: true }"#]
+        [r#"claude OpenClaude { cwd: None, prompt: None, label: Some("a"), background: true, resume: None }"#]
     );
     let (_, host) = call(FakeHost::default(), &c, "session.openClaude", json!({})).await;
-    assert!(host.calls()[0].ends_with("background: false }"));
+    assert!(host.calls()[0].ends_with("background: false, resume: None }"));
+    let (out, host) = call(FakeHost::default(), &c, "session.openClaude", json!({"resume": "s1"})).await;
+    assert_eq!(out.unwrap(), json!({"tabId": "tab7", "resumed": true}));
+    assert!(host.calls()[0].ends_with("resume: Some(\"s1\") }"));
 }
 
 #[tokio::test]
