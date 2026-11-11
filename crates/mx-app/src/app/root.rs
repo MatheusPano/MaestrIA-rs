@@ -1,6 +1,6 @@
 use gpui::{
-    AnyView, App, AppContext, ClipboardItem, Context, DragMoveEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Render, StatefulInteractiveElement, StyleRefinement, Styled,
+    AnyView, App, AppContext, ClipboardItem, Context, DispatchPhase, DragMoveEvent, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, MouseMoveEvent, ParentElement, Render, StatefulInteractiveElement, StyleRefinement, Styled,
     Window, canvas, deferred, div, prelude::FluentBuilder, px,
 };
 use mx_store::{Areas, Changes, Effect, Store};
@@ -221,6 +221,7 @@ impl Root {
 }
 
 fn pane_area_probe(host: Entity<StoreHost>) -> impl IntoElement {
+    let cursor_host = host.clone();
     canvas(
         move |bounds, _, cx| {
             let size = (f64::from(f32::from(bounds.size.width)), f64::from(f32::from(bounds.size.height)));
@@ -228,7 +229,21 @@ fn pane_area_probe(host: Entity<StoreHost>) -> impl IntoElement {
                 host.update(cx, |h, _| h.store.set_pane_area(size.0, size.1));
             }
         },
-        |_, _, _, _| {},
+        move |bounds, _, window, _| {
+            let host = cursor_host.clone();
+            window.on_mouse_event(move |ev: &MouseMoveEvent, phase, _, cx| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                let at = bounds.contains(&ev.position).then(|| {
+                    let p = ev.position - bounds.origin;
+                    (f64::from(f32::from(p.x)), f64::from(f32::from(p.y)))
+                });
+                if host.read(cx).store.pane_cursor() != at {
+                    host.update(cx, |h, _| h.store.set_pane_cursor(at));
+                }
+            });
+        },
     )
     .absolute()
     .top_0()

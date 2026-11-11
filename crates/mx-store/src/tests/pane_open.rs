@@ -79,6 +79,59 @@ fn auto_in_a_tall_area_goes_below() {
 }
 
 #[test]
+fn mouse_on_the_left_half_of_the_focused_pane_opens_on_the_left() {
+    let mut rig = rig(PaneOpen::Mouse, &["a", "b"]);
+    rig.s.set_pane_area(1600., 900.);
+    rig.s.set_pane_cursor(Some((300., 450.)));
+    rig.s.set_panes(Some(leaf("a")), Some("a"));
+    open(&mut rig, "b");
+    assert_eq!(rig.s.panes(), Some(&pair(Axis::Row, "b", "a")));
+    assert_eq!(rig.s.focused_pane_id(), Some("b"));
+}
+
+#[test]
+fn mouse_on_the_right_half_opens_on_the_right() {
+    let mut rig = rig(PaneOpen::Mouse, &["a", "b"]);
+    rig.s.set_pane_area(1600., 900.);
+    rig.s.set_pane_cursor(Some((1300., 450.)));
+    rig.s.set_panes(Some(leaf("a")), Some("a"));
+    open(&mut rig, "b");
+    assert_eq!(rig.s.panes(), Some(&pair(Axis::Row, "a", "b")));
+}
+
+#[test]
+fn mouse_on_the_top_half_of_a_tall_pane_opens_above() {
+    let mut rig = rig(PaneOpen::Mouse, &["a", "b", "c"]);
+    rig.s.set_pane_area(1600., 900.);
+    rig.s.set_pane_cursor(Some((1200., 100.)));
+    rig.s.set_panes(Some(pair(Axis::Row, "a", "b")), Some("b"));
+    open(&mut rig, "c");
+    let right = pair(Axis::Column, "c", "b");
+    assert_eq!(rig.s.panes(), Some(&PaneNode::split(Axis::Row, vec![leaf("a"), right], vec![0.5, 0.5])));
+}
+
+#[test]
+fn mouse_outside_the_split_pane_behaves_like_auto() {
+    let mut rig = rig(PaneOpen::Mouse, &["a", "b", "c"]);
+    rig.s.set_pane_area(1600., 900.);
+    rig.s.set_pane_cursor(Some((100., 100.)));
+    rig.s.set_panes(Some(pair(Axis::Row, "a", "b")), Some("b"));
+    open(&mut rig, "c");
+    let right = pair(Axis::Column, "b", "c");
+    assert_eq!(rig.s.panes(), Some(&PaneNode::split(Axis::Row, vec![leaf("a"), right], vec![0.5, 0.5])));
+}
+
+#[test]
+fn mouse_off_the_panes_behaves_like_auto() {
+    let mut rig = rig(PaneOpen::Mouse, &["a", "b"]);
+    rig.s.set_pane_area(1600., 900.);
+    rig.s.set_pane_cursor(None);
+    rig.s.set_panes(Some(leaf("a")), Some("a"));
+    open(&mut rig, "b");
+    assert_eq!(rig.s.panes(), Some(&pair(Axis::Row, "a", "b")));
+}
+
+#[test]
 fn every_mode_only_focuses_a_tab_already_on_screen() {
     for mode in PaneOpen::ALL {
         let mut rig = rig(mode, &["a", "b"]);

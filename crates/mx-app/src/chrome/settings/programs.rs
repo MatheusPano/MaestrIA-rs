@@ -57,6 +57,15 @@ pub fn pane_open_label(mode: PaneOpen) -> &'static str {
         PaneOpen::Beside => "Abrir ao lado",
         PaneOpen::Below => "Abrir embaixo",
         PaneOpen::Auto => "Automático",
+        PaneOpen::Mouse => "Pelo mouse",
+    }
+}
+
+fn pane_open_hint(mode: PaneOpen) -> Option<&'static str> {
+    match mode {
+        PaneOpen::Auto => Some("Ao lado ou embaixo, pelo formato do painel"),
+        PaneOpen::Mouse => Some("Como o Automático, mas do lado do painel onde está o mouse"),
+        _ => None,
     }
 }
 
@@ -71,6 +80,11 @@ fn pane_sketch(mode: PaneOpen, old: Hsla, new: Hsla) -> Div {
             .flex_row()
             .child(cell(old))
             .child(div().flex_1().flex().flex_col().gap(px(3.)).child(cell(new.opacity(0.55))).child(cell(new.opacity(0.55)))),
+        PaneOpen::Mouse => frame
+            .flex_row()
+            .child(cell(new.opacity(0.55)))
+            .child(cell(old))
+            .child(cell(new.opacity(0.55))),
     }
 }
 
@@ -87,7 +101,7 @@ fn pane_open_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> An
             .border_1().border_color(hsla(if on { t.accent } else { t.border })).hover(|s| s.bg(hsla(t.bg_hover)))
             .child(sketch)
             .child(div().px(px(2.)).text_size(px(12.)).text_color(hsla(t.fg)).child(pane_open_label(mode)))
-            .when(mode == PaneOpen::Auto, |c| c.child(div().px(px(2.)).text_size(px(11.)).line_height(px(15.)).text_color(hsla(t.fg_faint)).child("Ao lado ou embaixo, pelo formato do painel")))
+            .when_some(pane_open_hint(mode), |c, hint| c.child(div().px(px(2.)).text_size(px(11.)).line_height(px(15.)).text_color(hsla(t.fg_faint)).child(hint)))
             .on_click(move |_, w, cx| send(w, cx))
     });
     div().flex().flex_col().mb(px(24.))

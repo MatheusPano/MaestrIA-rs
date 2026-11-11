@@ -11,6 +11,7 @@ pub enum How {
     Replace,
     Split(DropSide),
     Auto,
+    Mouse,
     FromSetting,
 }
 
@@ -25,6 +26,14 @@ impl Store {
         }
     }
 
+    pub fn pane_cursor(&self) -> Option<(f64, f64)> {
+        self.pane_cursor
+    }
+
+    pub fn set_pane_cursor(&mut self, at: Option<(f64, f64)>) {
+        self.pane_cursor = at;
+    }
+
     fn resolve(&self, how: How) -> How {
         match how {
             How::FromSetting => match self.prefs.pane_open {
@@ -32,6 +41,7 @@ impl Store {
                 PaneOpen::Beside => How::Split(DropSide::Right),
                 PaneOpen::Below => How::Split(DropSide::Bottom),
                 PaneOpen::Auto => How::Auto,
+                PaneOpen::Mouse => How::Mouse,
             },
             other => other,
         }
@@ -112,14 +122,15 @@ impl Store {
     }
 
     fn place_with_now(&mut self, id: &str, how: How) {
-        let side = match self.resolve(how) {
-            How::Split(side) => Some(side),
-            How::Auto => None,
+        let (side, mouse) = match self.resolve(how) {
+            How::Split(side) => (Some(side), false),
+            How::Auto => (None, false),
+            How::Mouse => (None, true),
             How::Replace | How::FromSetting => return self.place(id),
         };
         self.enter_screen_of(id);
         if self.panes.as_ref().is_some_and(|p| !p.has(id))
-            && let Some((target, side)) = self.split_spot(side)
+            && let Some((target, side)) = self.split_spot(side, mouse)
         {
             self.panes = self.panes.take().map(|p| p.insert(id, &target, side));
             self.focused = Some(id.to_owned());
@@ -129,7 +140,7 @@ impl Store {
         self.place(id);
     }
 
-    fn split_spot(&self, side: Option<DropSide>) -> Option<(String, DropSide)> {
+    fn split_spot(&self, side: Option<DropSide>, mouse: bool) -> Option<(String, DropSide)> {
         let tree = self.panes.as_ref()?;
         let target = self
             .focused_tab_id()
@@ -142,7 +153,13 @@ impl Store {
             Some(side) => layout::rect_of(tree, &target, w, h, PANE_GAP)
                 .filter(|r| r.splits(side.axis(), PANE_GAP))
                 .map(|_| (target, side)),
-            None => layout::auto_split(tree, &target, w, h, PANE_GAP),
+            None => {
+                let (target, side) = layout::auto_split(tree, &target, w, h, PANE_GAP)?;
+                let toward = self.pane_cursor.filter(|_| mouse).and_then(|at| {
+                    layout::rect_of(tree, &target, w, h, PANE_GAP).map(|r| layout::facing(&r, side, at))
+                });
+                Some((target, toward.unwrap_or(side)))
+            }
         }
     }
 
