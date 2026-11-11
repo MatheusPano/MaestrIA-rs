@@ -9,6 +9,8 @@ use serde_json::Value;
 use crate::changes::Areas;
 use crate::store::Store;
 
+const PLUGIN_LINK_VIEW: &str = "link";
+
 enum Slot {
     Modal,
     Tab(String),
@@ -267,6 +269,20 @@ impl Store {
         self.plugin.badges.remove(plugin);
         self.plugin.hide_windows.remove(plugin);
         self.mark(Areas::PLUGINS);
+    }
+
+    pub fn follow_plugin_link(&mut self, rest: &str, from: Option<&str>) {
+        let (plugin, action) = rest.split_once('/').unwrap_or((rest, ""));
+        let registry = self.plugin.registry.as_ref().filter(|r| r.get(plugin).is_some_and(|p| p.active()));
+        let Some(registry) = registry else {
+            self.show_banner_sticky(&format!("Esse link é do plugin \"{plugin}\", que não está ativo"));
+            return;
+        };
+        let mut values = Obj::new();
+        if let Some(tab) = from {
+            values.insert("tabId".into(), Value::from(tab));
+        }
+        registry.view_action(plugin, PLUGIN_LINK_VIEW, action, values);
     }
 
     pub fn view_action(&mut self, tab: &str, action: &str, values: Obj) {

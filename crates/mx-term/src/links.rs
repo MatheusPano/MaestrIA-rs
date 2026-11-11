@@ -8,7 +8,7 @@ const URL_BREAKS: &str = " \t\"'`<>|[]{},;*";
 const TAIL: &str = ".,;:!?'\"";
 
 static URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:https?://|mailto:)\S").expect("url regex"));
+    LazyLock::new(|| Regex::new(r"(?:https?://|mailto:|maestria://)\S").expect("url regex"));
 static AT_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(.+?):\d+(?::\d+)?$").expect("at-line regex"));
 
@@ -144,6 +144,12 @@ mod tests {
         for col in [5, 20, 42] {
             assert_eq!(at(line, col).as_deref(), Some("https://docs.anthropic.com/claude-code"));
         }
+    }
+
+    #[test]
+    fn a_maestria_link_is_a_url() {
+        let line = "abra maestria://maestria.sessions/card/tab7 no painel";
+        assert_eq!(at(line, 12).as_deref(), Some("maestria://maestria.sessions/card/tab7"));
     }
 
     #[test]

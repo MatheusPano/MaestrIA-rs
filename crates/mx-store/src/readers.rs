@@ -133,6 +133,10 @@ impl Store {
     }
 
     pub fn follow_link(&mut self, href: &str, from: Option<&str>, base: Option<&str>) {
+        if let Some(rest) = href.trim().strip_prefix("maestria://") {
+            self.follow_plugin_link(rest, from);
+            return;
+        }
         let base = base
             .map(str::to_owned)
             .or_else(|| from.and_then(|f| self.tab(f)).map(|t| t.cwd.clone()));

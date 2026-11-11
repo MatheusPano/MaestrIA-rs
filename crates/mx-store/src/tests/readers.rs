@@ -101,6 +101,14 @@ fn links_open_externally_read_markdown_or_quick_look() {
     assert_eq!(*rig.notifier.looks.lock().unwrap(), [format!("{dir}/b.png")]);
 }
 
+#[test]
+fn a_maestria_link_goes_to_its_plugin_not_the_browser() {
+    let mut rig = session();
+    rig.s.follow_link("maestria://maestria.sessions/card/tab7", Some("s"), None);
+    assert!(rig.notifier.links.lock().unwrap().is_empty());
+    assert_eq!(rig.s.banner(), Some("Esse link é do plugin \"maestria.sessions\", que não está ativo"));
+}
+
 #[tokio::test]
 async fn open_markdown_shows_the_chosen_file() {
     let mut rig = session();
