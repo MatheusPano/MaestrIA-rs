@@ -104,3 +104,50 @@ fn block_on<F: std::future::Future<Output = ()>>(fut: F) {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
+
+fn idle() -> TerminalSession {
+    TerminalSession::spawn(
+        SpawnOptions { program: Some("/bin/sh".into()), args: vec!["-c".into(), "sleep 5".into()], ..Default::default() },
+        SIZE,
+        TerminalPalette::default(),
+    )
+    .unwrap()
+}
+
+fn shown(screen: &str) -> Option<String> {
+    let t = idle();
+    t.feed(format!("\x1b[2J\x1b[H{screen}").as_bytes());
+    t.prompt_suggestion()
+}
+
+#[test]
+fn the_dim_placeholder_in_an_empty_claude_prompt_is_its_suggestion() {
+    let rule = "─".repeat(20);
+    let focused = format!("❯ old prompt\r\n{rule}\r\n❯\u{a0}\x1b[7my\x1b[27m\x1b[2mes, build it\x1b[22m\r\n{rule}");
+    assert_eq!(shown(&focused).as_deref(), Some("yes, build it"));
+    assert_eq!(shown("❯ \x1b[2mroda os testes\x1b[22m").as_deref(), Some("roda os testes"));
+    let long = format!("❯ \x1b[2m{}\x1b[22m", "abc ".repeat(20));
+    assert_eq!(shown(&long), Some("abc ".repeat(20).trim().to_owned()));
+    let broken = format!("❯ \x1b[2mroda  os testes e\x1b[22m\r\n  \x1b[2mdepois o lint\x1b[22m\r\n{rule}");
+    assert_eq!(shown(&broken).as_deref(), Some("roda  os testes e depois o lint"));
+}
+
+#[test]
+fn the_suggestion_is_read_from_the_live_screen_even_when_scrolled_back() {
+    let t = idle();
+    t.feed(format!("\x1b[2J\x1b[H{}❯ \x1b[2mroda os testes\x1b[22m", "linha\r\n".repeat(30)).as_bytes());
+    t.scroll(10);
+    assert_eq!(t.prompt_suggestion().as_deref(), Some("roda os testes"));
+}
+
+#[test]
+fn typed_text_an_empty_prompt_the_tip_and_menus_are_not_suggestions() {
+    assert_eq!(shown("❯ hello\x1b[7m \x1b[27m"), None);
+    assert_eq!(shown("❯ \x1b[7m/\x1b[27m\x1b[2mcompact\x1b[22m\x1b[7mx\x1b[27m"), None);
+    assert_eq!(shown("❯ \x1b[7m \x1b[27m"), None);
+    assert_eq!(shown("❯ \x1b[2mTry \"create a util logging.py\"\x1b[22m"), None);
+    assert_eq!(shown("\x1b[2m❯ ready\x1b[22m\r\n❯ \x1b[7m \x1b[27m"), None);
+    let t = idle();
+    t.feed(TRUST_SCREEN);
+    assert_eq!(t.prompt_suggestion(), None);
+}

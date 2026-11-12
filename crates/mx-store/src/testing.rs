@@ -42,6 +42,7 @@ pub struct TermLog {
     pub exited: bool,
     pub code: Option<i32>,
     pub trust: bool,
+    pub prompt_suggestion: Option<String>,
     pub keys: Vec<TermKey>,
     pub enters: usize,
     pub kept: bool,
@@ -59,6 +60,10 @@ impl FakeTerm {
 impl TermInput for FakeTerm {
     fn asks_trust(&self) -> bool {
         self.log().trust
+    }
+
+    fn prompt_suggestion(&self) -> Option<String> {
+        self.log().prompt_suggestion.clone()
     }
 
     fn enter(&mut self) {

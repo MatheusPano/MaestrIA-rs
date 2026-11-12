@@ -222,6 +222,7 @@ fn session(id: &str, owner: Option<&str>, tag: Option<&str>) -> SessionJson {
         session_id: None,
         hibernated: false,
         exited: false,
+        prompt_suggestion: None,
         background_agents: 0,
         on_screen: true,
         focused: false,

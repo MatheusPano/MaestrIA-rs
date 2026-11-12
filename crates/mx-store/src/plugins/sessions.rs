@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Local, NaiveDate};
-use mx_core::model::{Doc, DocSource, Folder, Tab};
+use mx_core::model::{Doc, DocSource, Folder, Tab, TabKind};
 use mx_core::text::iso8601;
 use mx_plugins::host_json::{ChatJson, FeatureJson, FolderJson, SessionActivity, SessionJson, WorkspaceJson};
 use mx_plugins::rpc::{CreatedSession, OpenShell, RpcError, SuggestionCreated};
@@ -47,6 +47,13 @@ impl ChatLister {
 }
 
 impl Store {
+    fn prompt_suggestion_of(&self, t: &Tab) -> Option<String> {
+        if t.kind != TabKind::Claude || t.hibernated || t.exited || !t.status().at_rest() {
+            return None;
+        }
+        self.terms.get(&t.id).and_then(|term| term.prompt_suggestion())
+    }
+
     pub(crate) fn session_json(&self, t: &Tab) -> SessionJson {
         let feature = self.feature_of(t).map(|f| (f.name.clone(), f.kind));
         SessionJson {
@@ -61,6 +68,7 @@ impl Store {
             session_id: t.resume_id().map(str::to_owned),
             hibernated: t.hibernated,
             exited: t.exited,
+            prompt_suggestion: self.prompt_suggestion_of(t),
             background_agents: t.hooks.forks_out as i64,
             on_screen: self.is_open(&t.id),
             focused: self.focused.as_deref() == Some(t.id.as_str()),

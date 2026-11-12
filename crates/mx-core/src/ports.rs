@@ -93,6 +93,7 @@ impl TermKey {
 
 pub trait TermInput {
     fn asks_trust(&self) -> bool;
+    fn prompt_suggestion(&self) -> Option<String>;
     fn enter(&mut self);
     fn send_keys(&mut self, keys: Vec<TermKey>) -> BoxFuture<'static, ()>;
 }

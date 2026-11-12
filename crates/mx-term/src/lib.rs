@@ -11,6 +11,7 @@ mod mouse;
 mod paste;
 mod port;
 pub mod ptyd;
+mod prompt_suggestion;
 mod scrubber;
 mod session;
 mod signals;

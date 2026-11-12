@@ -4,7 +4,7 @@ use mx_core::ports::{BoxFuture, TermInput, TermKey};
 
 use crate::TermMode;
 use crate::session::TerminalSession;
-use crate::trust;
+use crate::{prompt_suggestion, trust};
 
 pub const KEY_GAP: Duration = Duration::from_millis(60);
 
@@ -31,6 +31,10 @@ impl TerminalSession {
 
     pub fn asks_trust(&self) -> bool {
         trust::asks_trust(&self.screen_text())
+    }
+
+    pub fn prompt_suggestion(&self) -> Option<String> {
+        prompt_suggestion::prompt_suggestion(&self.shared.term.lock())
     }
 
     pub fn press_enter(&self) {
@@ -65,6 +69,10 @@ impl TerminalSession {
 impl TermInput for TerminalSession {
     fn asks_trust(&self) -> bool {
         TerminalSession::asks_trust(self)
+    }
+
+    fn prompt_suggestion(&self) -> Option<String> {
+        TerminalSession::prompt_suggestion(self)
     }
 
     fn enter(&mut self) {

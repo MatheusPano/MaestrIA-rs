@@ -457,13 +457,22 @@ fn the_hook_transcript_path_is_enough_to_trust_the_session() {
 }
 
 #[tokio::test]
-async fn sessions_list_counts_the_background_agents_still_running() {
+async fn an_idle_claude_lists_its_prompt_suggestion_and_its_background_agents() {
     let mut rig = Rig::new();
     rig.s1();
     let id = claude(&mut rig, "c1");
+    rig.terms.edit(&id, |l| l.prompt_suggestion = Some("roda os testes".into()));
     let p = with(&[]);
+    let row = |v: Value| v.as_array().unwrap().iter().find(|s| s["id"] == json!("c1")).unwrap().clone();
+    rig.tm(&id).hooks.status = ClaudeStatus::Ready;
+    let fresh = row(rpc(&mut rig, &p, "sessions.list", json!({})).await.unwrap());
+    assert_eq!(fresh["promptSuggestion"], Value::Null);
+    rig.tm(&id).hooks.status = ClaudeStatus::Idle;
     rig.tm(&id).hooks.forks_out = 2;
-    let listed = rpc(&mut rig, &p, "sessions.list", json!({})).await.unwrap();
-    let row = listed.as_array().unwrap().iter().find(|s| s["id"] == json!("c1")).unwrap().clone();
-    assert_eq!(row["backgroundAgents"], json!(2));
+    let resting = row(rpc(&mut rig, &p, "sessions.list", json!({})).await.unwrap());
+    assert_eq!(resting["promptSuggestion"], json!("roda os testes"));
+    assert_eq!(resting["backgroundAgents"], json!(2));
+    rig.tm(&id).hooks.status = ClaudeStatus::Working;
+    let busy = row(rpc(&mut rig, &p, "sessions.list", json!({})).await.unwrap());
+    assert_eq!(busy["promptSuggestion"], Value::Null);
 }
