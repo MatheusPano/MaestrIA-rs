@@ -23,6 +23,7 @@ pub struct SessionJson {
     pub session_id: Option<String>,
     pub hibernated: bool,
     pub exited: bool,
+    pub background_agents: i64,
     pub on_screen: bool,
     pub focused: bool,
     pub started_at: String,
@@ -76,6 +77,7 @@ impl SessionJson {
         m.insert("done".into(), Value::from(self.done));
         m.insert("hibernated".into(), Value::from(self.hibernated));
         m.insert("exited".into(), Value::from(self.exited));
+        m.insert("backgroundAgents".into(), Value::from(self.background_agents));
         m.insert("onScreen".into(), Value::from(self.on_screen));
         m.insert("focused".into(), Value::from(self.focused));
         m.insert("startedAt".into(), Value::from(self.started_at.clone()));

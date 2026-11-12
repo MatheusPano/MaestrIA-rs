@@ -61,6 +61,7 @@ impl Store {
             session_id: t.resume_id().map(str::to_owned),
             hibernated: t.hibernated,
             exited: t.exited,
+            background_agents: t.hooks.forks_out as i64,
             on_screen: self.is_open(&t.id),
             focused: self.focused.as_deref() == Some(t.id.as_str()),
             started_at: iso8601(&t.started_at),

@@ -435,7 +435,7 @@ Params validated by `_text(key)` are required strings (`"<key>" é obrigatório`
   "id": "tab3", "kind": "claude|shell|reader|setup|plugin", "title": "...", "cwd": "...",
   "folder": "<folder root>", "branch": "...", "status": "<ClaudeStatus name>",
   "statusLabel": "<label>", "needsYou": bool, "sessionId": "<resume id or null>",
-  "done": bool, "hibernated": bool, "exited": bool, "onScreen": bool, "focused": bool,
+  "done": bool, "hibernated": bool, "exited": bool, "backgroundAgents": int, "onScreen": bool, "focused": bool,
   "startedAt": "<ISO-8601 local, no Z>", "project": "<name|null>", "featureOrHotfix": "<name|null>",
   "featureOrHotfixKind": "feature|hotfix|null", "workspaces": ["..."], "launcher": "<name|null>",
   "owner": "<pluginId|null>", "embedded": bool,

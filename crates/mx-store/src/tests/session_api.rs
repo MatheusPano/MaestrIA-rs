@@ -455,3 +455,15 @@ fn the_hook_transcript_path_is_enough_to_trust_the_session() {
     rig.hook("c1", "UserPromptSubmit", json!({"session_id": "x", "transcript_path": file}));
     assert_eq!(rig.t("c1").session_id.as_deref(), Some("x"));
 }
+
+#[tokio::test]
+async fn sessions_list_counts_the_background_agents_still_running() {
+    let mut rig = Rig::new();
+    rig.s1();
+    let id = claude(&mut rig, "c1");
+    let p = with(&[]);
+    rig.tm(&id).hooks.forks_out = 2;
+    let listed = rpc(&mut rig, &p, "sessions.list", json!({})).await.unwrap();
+    let row = listed.as_array().unwrap().iter().find(|s| s["id"] == json!("c1")).unwrap().clone();
+    assert_eq!(row["backgroundAgents"], json!(2));
+}
