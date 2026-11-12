@@ -290,3 +290,13 @@ fn the_pane_area_is_remembered() {
     rig.s.set_pane_area(1200., 700.);
     assert_eq!(rig.s.pane_area(), Some((1200., 700.)));
 }
+
+#[test]
+fn focus_following_the_mouse_is_a_saved_preference() {
+    let mut rig = Rig::new();
+    assert!(!rig.s.prefs().focus_follows_mouse);
+    rig.s.set_focus_follows_mouse(true);
+    assert_eq!(rig.written()["focusFollowsMouse"], json!(true));
+    rig.s.set_focus_follows_mouse(false);
+    assert!(rig.written().get("focusFollowsMouse").is_none());
+}

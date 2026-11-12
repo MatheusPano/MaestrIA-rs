@@ -215,6 +215,7 @@ pub struct Config {
     pub typography: Typography,
     pub cursor_shape: CursorShape,
     pub pane_open: PaneOpen,
+    pub focus_follows_mouse: bool,
     pub shortcuts: Obj,
     pub plugins: Obj,
     pub layout: Option<Layout>,
@@ -247,6 +248,7 @@ impl Default for Config {
             typography: Typography::default(),
             cursor_shape: CursorShape::Block,
             pane_open: PaneOpen::Replace,
+            focus_follows_mouse: false,
             shortcuts: Obj::new(),
             plugins: Obj::new(),
             layout: None,
@@ -333,6 +335,7 @@ impl Config {
         if self.pane_open != PaneOpen::Replace {
             m.insert("paneOpen".into(), json!(self.pane_open.key()));
         }
+        flag(&mut m, "focusFollowsMouse", self.focus_follows_mouse);
         if !self.shortcuts.is_empty() {
             m.insert("shortcuts".into(), Value::Object(self.shortcuts.clone()));
         }

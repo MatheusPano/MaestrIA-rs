@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::{
     AnyElement, AnyView, App, AppContext, Bounds, Context, DragMoveEvent, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, KeyDownEvent, Modifiers, ModifiersChangedEvent, MouseButton, ParentElement, Pixels,
+    InteractiveElement, IntoElement, KeyDownEvent, Modifiers, ModifiersChangedEvent, MouseButton, MouseMoveEvent, ParentElement, Pixels,
     Point, Render, SharedString, StyleRefinement, Styled, Subscription, Window, div, prelude::FluentBuilder, px, relative,
 };
 use mx_store::{Areas, PaneDrop};
@@ -313,7 +313,7 @@ impl PaneArea {
             .map(|(_, side, d)| (side, drop::label(d)));
         let focus_host = self.host.clone();
         let drop_host = self.host.clone();
-        let (move_id, focus_id, drop_id) = (id.to_owned(), id.to_owned(), id.to_owned());
+        let (move_id, focus_id, drop_id, hover_id) = (id.to_owned(), id.to_owned(), id.to_owned(), id.to_owned());
         div()
             .id(SharedString::from(format!("pane:{id}")))
             .debug_selector(|| format!("pane:{id}"))
@@ -328,6 +328,9 @@ impl PaneArea {
             .capture_any_mouse_down(move |_, _, cx: &mut App| {
                 update_store(&focus_host, cx, |s| s.focus_pane(&focus_id))
             })
+            .on_mouse_move(cx.listener(move |this, ev: &MouseMoveEvent, window, cx| {
+                this.follow_mouse(&hover_id, ev, window, cx)
+            }))
             .on_drag_move(cx.listener(move |this, ev: &DragMoveEvent<DraggedTab>, _, cx| {
                 this.on_drag_move(&move_id, ev, cx)
             }))
@@ -364,6 +367,23 @@ impl PaneArea {
             )
             .when_some(hint, |d, (side, label)| d.child(drop::overlay(mx, side, 0.5, label)))
             .into_any_element()
+    }
+
+    fn follow_mouse(&mut self, id: &str, ev: &MouseMoveEvent, window: &Window, cx: &mut Context<Self>) {
+        let store = &self.host.read(cx).store;
+        if !store.prefs().focus_follows_mouse
+            || store.focused_pane_id() == Some(id)
+            || store.zoomed().is_some()
+            || ev.pressed_button.is_some()
+            || cx.has_active_drag()
+            || self.resizing.is_some()
+            || self.cornering.is_some()
+            || !window.is_window_active()
+            || self.overlay_open(cx)
+        {
+            return;
+        }
+        update_store(&self.host, cx, |s| s.focus_pane(id));
     }
 
     fn pane_drop(&self) -> Option<(&str, DropSide, PaneDrop)> {
