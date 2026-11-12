@@ -13,6 +13,7 @@ pub struct Prefs {
     pub typography: Typography,
     pub cursor_shape: CursorShape,
     pub pane_open: PaneOpen,
+    pub focus_follows_mouse: bool,
     pub sidebar_width: f64,
     pub sidebar_hidden: bool,
     pub status_bar_top: bool,
@@ -37,6 +38,7 @@ impl Default for Prefs {
             typography: Typography::default(),
             cursor_shape: CursorShape::Block,
             pane_open: PaneOpen::Replace,
+            focus_follows_mouse: false,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_hidden: false,
             status_bar_top: false,
@@ -88,6 +90,10 @@ impl Store {
 
     pub fn set_pane_open(&mut self, mode: PaneOpen) {
         self.set_pref(mode, |p| &mut p.pane_open);
+    }
+
+    pub fn set_focus_follows_mouse(&mut self, on: bool) {
+        self.set_pref(on, |p| &mut p.focus_follows_mouse);
     }
 
     pub fn zoom_focused(&mut self, by: i64) {

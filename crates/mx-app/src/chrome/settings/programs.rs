@@ -96,10 +96,21 @@ fn pane_open_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> An
         .into_any_element()
 }
 
+fn focus_follows_mouse_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
+    let on = d.data.focus_follows_mouse;
+    div().flex().flex_col().mb(px(24.))
+        .child(heading("Foco", None, false, None, cx))
+        .child(
+            Toggle::new("focus-follows-mouse", "Foco segue o mouse", on, d.send(SettingsAction::SetFocusFollowsMouse(!on)))
+                .subtitle("Passar o mouse por cima de um painel já o deixa em foco, sem precisar clicar — como no Hyprland."),
+        )
+        .into_any_element()
+}
+
 pub fn sessions(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
     let m = d.data.hibernate_minutes;
     let on = m > 0;
-    let mut col = div().flex().flex_col().child(pane_open_section(d, cx)).child(heading(
+    let mut col = div().flex().flex_col().child(pane_open_section(d, cx)).child(focus_follows_mouse_section(d, cx)).child(heading(
         "Hibernação",
         Some("Uma sessão do Claude parada no prompt custa uns 200MB de RAM pra não fazer nada. Hibernar é desligar o processo e ficar com a conversa: a linha continua na lateral, e o clique nela retoma de onde parou. Também dá pra hibernar uma sessão à mão, pelo menu da linha."),
         false,

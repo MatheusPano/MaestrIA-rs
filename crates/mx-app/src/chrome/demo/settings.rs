@@ -45,6 +45,7 @@ pub fn data() -> SettingsData {
         zoom_keys: ("Ctrl+=".into(), "Ctrl+−".into()),
         cursor_shape: mx_core::persist::CursorShape::Beam,
         pane_open: mx_core::persist::PaneOpen::Auto,
+        focus_follows_mouse: false,
         status_bar_top: false,
         active_tray: false,
         shortcuts: shortcuts(),

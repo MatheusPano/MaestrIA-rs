@@ -304,6 +304,7 @@ fn false_booleans_and_defaults_are_never_written() {
         active_tray: true,
         active_tray_collapsed: true,
         hibernate_minutes: 0,
+        focus_follows_mouse: true,
         rail_order: vec!["p".into()],
         sidebar_view: Some("p".into()),
         ..Config::default()
@@ -327,6 +328,7 @@ fn false_booleans_and_defaults_are_never_written() {
             "activeTrayCollapsed",
             "hibernateMinutes",
             "theme",
+            "focusFollowsMouse",
             "layout"
         ]
     );
