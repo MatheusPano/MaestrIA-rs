@@ -64,6 +64,7 @@ async fn each_new_session_method_asks_for_its_permission() {
         ("terminal.sendKeys", "terminal.write"),
         ("terminal.pasteClipboard", "terminal.write"),
         ("session.rename", "sessions.create"),
+        ("session.tint", "sessions.create"),
         ("session.wake", "sessions.create"),
         ("session.hibernate", "sessions.close"),
     ] {
@@ -79,7 +80,7 @@ async fn each_new_session_method_asks_for_its_permission() {
 #[tokio::test]
 async fn rename_wake_hibernate_portrait_and_close_require_the_tab_id() {
     let all = with(&["sessions.create", "sessions.close"]);
-    for method in ["session.rename", "session.wake", "session.hibernate", "session.portrait", "session.close"] {
+    for method in ["session.rename", "session.tint", "session.wake", "session.hibernate", "session.portrait", "session.close"] {
         let e = run(&all, method, json!({"title": "x", "tabId": 7})).await.unwrap_err();
         assert_eq!(e, RpcError::invalid("\"tabId\" é obrigatório"), "{method}");
     }
@@ -172,14 +173,14 @@ fn session_json_context_is_null_until_reported() {
 }
 
 #[test]
-fn the_capability_list_is_the_2_7_one_plus_picture_zoom_focus_zoom_pan_and_key_listener_in_wire_order() {
+fn the_capability_list_is_the_2_7_one_plus_picture_zoom_focus_zoom_pan_key_listener_and_tint_in_wire_order() {
     let keys: Vec<&str> = mx_plugins::CAPABILITIES.iter().map(|(k, _, _)| *k).collect();
     assert_eq!(
         keys,
         [
             "rfw", "floats", "input", "form", "modal", "editor", "sprites", "zoom", "textInput", "openInBackground",
             "markdown", "pasteImage", "keys", "arrows", "wake", "hibernate", "portrait", "closeSessions", "modalFrom",
-            "selectable", "rename", "picture", "zoomFocus", "zoomPan", "keyListener"
+            "selectable", "rename", "picture", "zoomFocus", "zoomPan", "keyListener", "tint"
         ]
     );
     assert!(mx_plugins::CAPABILITIES.iter().all(|c| c.2));
@@ -207,4 +208,18 @@ async fn view_closed_reaches_only_a_running_owner_and_never_starts_it() {
     let line = read().lines().find(|l| l.contains("view.closed")).unwrap().to_owned();
     assert_eq!(line, r#"{"jsonrpc":"2.0","method":"event","params":{"type":"view.closed","viewId":"v1"}}"#);
     plugins.stop_all().await;
+}
+
+#[tokio::test]
+async fn tint_takes_a_known_name_or_null() {
+    let create = with(&["sessions.create"]);
+    let out = run(&create, "session.tint", json!({"tabId": "t1", "tint": "cyan"})).await;
+    assert_eq!(out.unwrap(), json!({"tint": "cyan"}));
+    let off = run(&create, "session.tint", json!({"tabId": "t1", "tint": null})).await;
+    assert_eq!(off.unwrap(), json!({"tint": null}));
+    assert_eq!(run(&create, "session.tint", json!({"tabId": "t1"})).await.unwrap(), json!({"tint": null}));
+    for bad in [json!("blue"), json!(3)] {
+        let e = run(&create, "session.tint", json!({"tabId": "t1", "tint": bad})).await.unwrap_err();
+        assert!(e.message.starts_with("\"tint\" é null ou uma de: red, orange"), "{}", e.message);
+    }
 }

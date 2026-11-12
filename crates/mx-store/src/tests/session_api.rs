@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::TimeDelta;
-use mx_core::model::{AgentInfo, ClaudeStatus, ContextUsage, TabKind};
+use mx_core::model::{AgentInfo, ClaudeStatus, ContextUsage, TabKind, Tint};
 use mx_core::ports::TermKey;
 use mx_plugins::{HostDispatcher, PluginInfo, PluginManifest, PluginState, RpcError};
 use serde_json::{Value, json};
@@ -454,4 +454,22 @@ fn the_hook_transcript_path_is_enough_to_trust_the_session() {
     std::fs::write(&file, "{}\n").unwrap();
     rig.hook("c1", "UserPromptSubmit", json!({"session_id": "x", "transcript_path": file}));
     assert_eq!(rig.t("c1").session_id.as_deref(), Some("x"));
+}
+
+#[tokio::test]
+async fn tint_colors_the_tab_shows_in_the_list_and_null_clears_it() {
+    let mut rig = Rig::new();
+    rig.s1();
+    let id = claude(&mut rig, "c1");
+    let create = with(&["sessions.create"]);
+    assert!(rpc(&mut rig, &with(&[]), "session.tint", json!({"tabId": id, "tint": "cyan"})).await.is_err());
+    assert!(rpc(&mut rig, &create, "session.tint", json!({"tabId": "nope", "tint": "cyan"})).await.is_err());
+    let out = rpc(&mut rig, &create, "session.tint", json!({"tabId": id, "tint": "cyan"})).await.unwrap();
+    assert_eq!(out, json!({"tint": "cyan"}));
+    assert_eq!(rig.t(&id).tint, Some(Tint::Cyan));
+    let listed = rpc(&mut rig, &create, "sessions.list", json!({})).await.unwrap();
+    let row = listed.as_array().unwrap().iter().find(|s| s["id"] == json!(id)).unwrap();
+    assert_eq!(row["tint"], json!("cyan"));
+    rpc(&mut rig, &create, "session.tint", json!({"tabId": id, "tint": null})).await.unwrap();
+    assert_eq!(rig.t(&id).tint, None);
 }

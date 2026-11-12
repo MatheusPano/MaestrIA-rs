@@ -338,7 +338,7 @@ Before `onCall` is wired: `a janela ainda não está pronta` (-32002).
   "apiVersion": 1, "blocks": 2, "rfw": 2, "floats": 1, "input": 1, "form": 1, "modal": 1, "editor": 1,
   "sprites": 1, "zoom": 1, "textInput": 1, "openInBackground": 1, "markdown": 1, "pasteImage": 1, "keys": 1,
   "arrows": 1, "wake": 1, "hibernate": 1, "portrait": 1, "closeSessions": 1, "modalFrom": 1, "selectable": 1,
-  "rename": 1, "picture": 1, "zoomFocus": 1, "zoomPan": 1, "keyListener": 1,
+  "rename": 1, "picture": 1, "zoomFocus": 1, "zoomPan": 1, "keyListener": 1, "tint": 1,
   "pluginId": "<id>", "pluginDir": "<dir>", "dataDir": "~/.maestria/plugin-data/<id> (absolute)",
   "permissions": ["hooks", ...], "settings": { ... resolved ... }
 }
@@ -348,6 +348,7 @@ Capability flags come from `CAPABILITIES` (`mx-plugins/src/registry/lifecycle.rs
 `zoomFocus: 1` (Rust port only) means `maestria.ZoomView` accepts `command: "focus"` and `onMove` (§3.4 C.3).
 `zoomPan: 1` (Rust port only) means `maestria.ZoomView` accepts `panButtons` (§3.4 C.3).
 `keyListener: 1` (Rust port only) means the `maestria.KeyListener` widget (§3.4 C.3) is available.
+`tint: 1` (Rust port only) means `session.tint` exists and the session JSON carries `tint` (§2.5).
 The result is ignored (any value). Errors → crash `o initialize falhou: <message>`.
 Timeout message: `"initialize" ficou sem resposta por 10s` (generic: `"<method>" ficou sem resposta por <n>s`, code -32002).
 
@@ -435,7 +436,7 @@ Params validated by `_text(key)` are required strings (`"<key>" é obrigatório`
   "id": "tab3", "kind": "claude|shell|reader|setup|plugin", "title": "...", "cwd": "...",
   "folder": "<folder root>", "branch": "...", "status": "<ClaudeStatus name>",
   "statusLabel": "<label>", "needsYou": bool, "sessionId": "<resume id or null>",
-  "done": bool, "hibernated": bool, "exited": bool, "onScreen": bool, "focused": bool,
+  "done": bool, "hibernated": bool, "exited": bool, "tint": "<tint name>"|null, "onScreen": bool, "focused": bool,
   "startedAt": "<ISO-8601 local, no Z>", "project": "<name|null>", "featureOrHotfix": "<name|null>",
   "featureOrHotfixKind": "feature|hotfix|null", "workspaces": ["..."], "launcher": "<name|null>",
   "owner": "<pluginId|null>", "embedded": bool,

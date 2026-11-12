@@ -6,6 +6,7 @@ use mx_plugins::rpc::{
 };
 use mx_plugins::ui::dialogs::{FormAnswer, InputRequest, PickRequest};
 use mx_plugins::ui::form::PluginForm;
+use mx_core::model::Tint;
 use mx_plugins::PluginInfo;
 use serde_json::Value;
 use tokio::sync::oneshot;
@@ -161,6 +162,10 @@ impl PluginHostApi for PluginHost {
 
     fn rename_session(&self, _: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String> {
         self.run(move |s| s.plugin_rename(tab_id, &title))
+    }
+
+    fn tint_session(&self, _: &PluginInfo, tab_id: String, tint: Option<Tint>) -> HostResult<'_, ()> {
+        self.run(move |s| s.plugin_tint(tab_id, tint))
     }
 
     fn wake_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {

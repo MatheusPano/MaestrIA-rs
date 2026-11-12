@@ -54,7 +54,7 @@ MaestrIA mínima, e um plugin que pede uma mais nova é recusado ao carregar e m
 - `PluginHostApi` (a store implementa; 37 métodos, todos `HostResult<'_, T>` = BoxFuture): banner, notify,
   open_url, pick, input, form, clipboard_write, sessions, focused_session, focus_session, folders,
   features_or_hotfixes, workspaces, chats, open_in_editor, send_text, send_keys, paste_clipboard,
-  open_claude, open_shell, rename_session, wake_session, hibernate_session, set_portrait, tab_owner(id),
+  open_claude, open_shell, rename_session, tint_session, wake_session, hibernate_session, set_portrait, tab_owner(id),
   close_tab, suggestion_created, open_markdown, view_open/update/append_lines/clear_lines/close,
   sidebar_update, float_show/update/hide. Params tipados: `SendText`, `SendKeys { keys: None = lista
   inválida }`, `OpenClaude { background }`, `OpenShell`, `ViewOpen { from, width, height }`, `ViewUpdate`,

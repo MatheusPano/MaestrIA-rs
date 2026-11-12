@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use mx_core::json::Obj;
-use mx_core::model::TabKind;
+use mx_core::model::{TabKind, Tint};
 use mx_core::ports::{BoxFuture, TermKey};
 use serde_json::Value;
 
@@ -127,6 +127,7 @@ pub trait PluginHostApi: Send + Sync {
     fn send_keys(&self, plugin: &PluginInfo, request: SendKeys) -> HostResult<'_, ()>;
     fn paste_clipboard(&self, plugin: &PluginInfo, tab_id: Option<String>) -> HostResult<'_, ()>;
     fn rename_session(&self, plugin: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String>;
+    fn tint_session(&self, plugin: &PluginInfo, tab_id: String, tint: Option<Tint>) -> HostResult<'_, ()>;
     fn wake_session(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, bool>;
     fn hibernate_session(&self, plugin: &PluginInfo, tab_id: String) -> HostResult<'_, bool>;
     fn set_portrait(&self, plugin: &PluginInfo, tab_id: String, image: Option<Value>) -> HostResult<'_, ()>;

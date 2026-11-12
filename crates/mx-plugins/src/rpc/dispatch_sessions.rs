@@ -1,5 +1,5 @@
 use mx_core::json::Obj;
-use mx_core::model::TabKind;
+use mx_core::model::{TabKind, Tint};
 use serde_json::Value;
 
 use super::dispatch::{need, obj};
@@ -36,6 +36,7 @@ pub(super) async fn dispatch_sessions(
         "terminal.pasteClipboard" => paste_clipboard(api, p, params).await,
         "session.openClaude" => open_claude(api, p, params).await,
         "session.rename" => rename(api, p, params).await,
+        "session.tint" => tint(api, p, params).await,
         "session.wake" => wake(api, p, params).await,
         "session.hibernate" => hibernate(api, p, params).await,
         "session.portrait" => portrait(api, p, params).await,
@@ -86,6 +87,26 @@ async fn rename(api: &dyn PluginHostApi, p: &PluginInfo, params: &Obj) -> Result
     let id = tab_id(params)?;
     let title = text(params, "title")?;
     Ok(obj(&[("title", Value::from(api.rename_session(p, id, title).await?))]))
+}
+
+fn tint_param(params: &Obj) -> Result<Option<Tint>, RpcError> {
+    let bad = || {
+        let names: Vec<_> = Tint::ALL.iter().map(|t| t.name()).collect();
+        RpcError::invalid(format!("\"tint\" é null ou uma de: {}", names.join(", ")))
+    };
+    match params.get("tint") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(name)) => Tint::by_name(Some(name)).map(Some).ok_or_else(bad),
+        Some(_) => Err(bad()),
+    }
+}
+
+async fn tint(api: &dyn PluginHostApi, p: &PluginInfo, params: &Obj) -> Result<Value, RpcError> {
+    need(p, Permission::SessionsCreate)?;
+    let id = tab_id(params)?;
+    let tint = tint_param(params)?;
+    api.tint_session(p, id, tint).await?;
+    Ok(obj(&[("tint", tint.map_or(Value::Null, |t| Value::from(t.name())))]))
 }
 
 async fn wake(api: &dyn PluginHostApi, p: &PluginInfo, params: &Obj) -> Result<Value, RpcError> {

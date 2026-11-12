@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use mx_core::model::{ClaudeStatus, TabKind};
+use mx_core::model::{ClaudeStatus, TabKind, Tint};
 use mx_core::ports::BoxFuture;
 use mx_core::text::clip_utf16;
 use mx_plugins::PluginInfo;
@@ -128,6 +128,12 @@ impl Store {
         self.rename_tab(&id, clip_utf16(title.trim(), TITLE_MAX));
         self.emit_renamed(&id);
         Ok(self.title_of(&id))
+    }
+
+    pub(crate) fn plugin_tint(&mut self, id: String, tint: Option<Tint>) -> Result<(), RpcError> {
+        let id = self.known_tab(id)?;
+        self.set_tab_tint(&id, tint);
+        Ok(())
     }
 
     pub(crate) fn plugin_wake(&mut self, id: String) -> Result<bool, RpcError> {
