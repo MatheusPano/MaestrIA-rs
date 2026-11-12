@@ -10,7 +10,7 @@ use crate::{BLOCKS_VERSION, PLUGIN_API};
 
 pub const MAESTRIA_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const CAPABILITIES: [(&str, i64, bool); 25] = [
+pub const CAPABILITIES: [(&str, i64, bool); 26] = [
     ("rfw", 2, true),
     ("floats", 1, true),
     ("input", 1, true),
@@ -36,6 +36,7 @@ pub const CAPABILITIES: [(&str, i64, bool); 25] = [
     ("zoomFocus", 1, true),
     ("zoomPan", 1, true),
     ("keyListener", 1, true),
+    ("tint", 1, true),
 ];
 
 pub const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);

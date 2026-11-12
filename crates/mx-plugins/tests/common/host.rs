@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use chrono::NaiveDate;
 use mx_plugins::host_json::{ChatJson, FeatureJson, FolderJson, SessionJson, WorkspaceJson};
-use mx_core::model::TabKind;
+use mx_core::model::{TabKind, Tint};
 use mx_plugins::rpc::{
     CreatedSession, FloatContent, HostResult, OpenClaude, OpenShell, SendKeys, SendText, SidebarUpdate,
     SuggestionCreated, TabOwner, ViewOpen, ViewUpdate,
@@ -125,6 +125,10 @@ impl PluginHostApi for FakeHost {
     fn rename_session(&self, _: &PluginInfo, tab_id: String, title: String) -> HostResult<'_, String> {
         self.rec(format!("rename {tab_id} {title}"));
         done(Ok(title.trim().to_owned()))
+    }
+    fn tint_session(&self, _: &PluginInfo, tab_id: String, tint: Option<Tint>) -> HostResult<'_, ()> {
+        self.rec(format!("tint {tab_id} {}", tint.map_or("none", Tint::name)));
+        done(Ok(()))
     }
     fn wake_session(&self, _: &PluginInfo, tab_id: String) -> HostResult<'_, bool> {
         self.rec(format!("wake {tab_id}"));

@@ -102,6 +102,9 @@ impl Store {
     }
 
     pub fn set_tab_tint(&mut self, id: &str, tint: Option<Tint>) {
+        if self.tab(id).is_none_or(|t| t.tint == tint) {
+            return;
+        }
         self.edit_tab(id, |t| t.tint = tint);
     }
 
