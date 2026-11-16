@@ -30,6 +30,11 @@ env:
 
 jobs:
   rust:
+    # O "Bump version" sai junto com a tag: rodar aqui disputaria os runners
+    # macOS arm64 (que vivem sem capacidade) com o release.yml, e os dois
+    # ficavam 15 min na fila. Ele só muda a versão dos crates do workspace, e o
+    # release acha o cache pelo prefixo da chave.
+    if: ${{ !startsWith(github.event.head_commit.message, 'Bump version') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.rust.outputs.version }}
