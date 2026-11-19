@@ -1,6 +1,6 @@
 use mx_core::json::Obj;
 use mx_core::persist::{
-    CursorShape, PaneOpen, DEFAULT_HIBERNATE_MINUTES, DEFAULT_SIDEBAR_WIDTH, MAX_HIBERNATE_MINUTES, MAX_SIDEBAR_WIDTH,
+    CursorShape, EqualizeShape, PaneOpen, DEFAULT_HIBERNATE_MINUTES, DEFAULT_SIDEBAR_WIDTH, MAX_HIBERNATE_MINUTES, MAX_SIDEBAR_WIDTH,
     MIN_SIDEBAR_WIDTH, Typography,
 };
 
@@ -13,6 +13,7 @@ pub struct Prefs {
     pub typography: Typography,
     pub cursor_shape: CursorShape,
     pub pane_open: PaneOpen,
+    pub equalize_shape: EqualizeShape,
     pub focus_follows_mouse: bool,
     pub sidebar_width: f64,
     pub sidebar_hidden: bool,
@@ -38,6 +39,7 @@ impl Default for Prefs {
             typography: Typography::default(),
             cursor_shape: CursorShape::Block,
             pane_open: PaneOpen::Replace,
+            equalize_shape: EqualizeShape::Rows,
             focus_follows_mouse: false,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_hidden: false,
@@ -90,6 +92,10 @@ impl Store {
 
     pub fn set_pane_open(&mut self, mode: PaneOpen) {
         self.set_pref(mode, |p| &mut p.pane_open);
+    }
+
+    pub fn set_equalize_shape(&mut self, shape: EqualizeShape) {
+        self.set_pref(shape, |p| &mut p.equalize_shape);
     }
 
     pub fn set_focus_follows_mouse(&mut self, on: bool) {

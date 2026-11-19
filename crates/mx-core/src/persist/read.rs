@@ -4,7 +4,7 @@ use crate::json::{Obj, get_bool, get_num, get_str, objects, strings};
 use crate::model::workspace::code_workspace_name;
 use crate::model::{FeatureOrHotfix, Folder, Launcher, PaneGroup, Workspace, new_workspace_id};
 use crate::persist::config::{
-    Config, CursorShape, PaneOpen, DEFAULT_HIBERNATE_MINUTES, Layout, LegacySlots, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH,
+    Config, CursorShape, EqualizeShape, PaneOpen, DEFAULT_HIBERNATE_MINUTES, Layout, LegacySlots, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH,
     Typography,
 };
 
@@ -189,6 +189,10 @@ impl Config {
         c.pane_open = get_str(j, "paneOpen")
             .lenient()
             .and_then(PaneOpen::from_key)
+            .unwrap_or_default();
+        c.equalize_shape = get_str(j, "equalizeShape")
+            .lenient()
+            .and_then(EqualizeShape::from_key)
             .unwrap_or_default();
         c.shortcuts = j
             .get("shortcuts")

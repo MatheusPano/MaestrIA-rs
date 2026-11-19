@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, Context, Div, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px};
-use mx_core::persist::PaneOpen;
+use mx_core::persist::{EqualizeShape, PaneOpen};
 
 use super::dialog::{SettingsDialog, heading};
 use super::model::{SettingsAction, hibernate_label, hibernate_less, hibernate_more, open_panels, remove_launcher_tip, MAX_HIBERNATE, MIN_HIBERNATE};
@@ -110,6 +110,65 @@ fn pane_open_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> An
         .into_any_element()
 }
 
+pub fn equalize_shape_label(shape: EqualizeShape) -> &'static str {
+    match shape {
+        EqualizeShape::Rows => "Em linhas",
+        EqualizeShape::Columns => "Em colunas",
+        EqualizeShape::Auto => "Automático",
+        EqualizeShape::Keep => "Manter a forma",
+    }
+}
+
+fn equalize_shape_hint(shape: EqualizeShape) -> &'static str {
+    match shape {
+        EqualizeShape::Rows => "Cada linha dividida entre os seus painéis",
+        EqualizeShape::Columns => "Cada coluna com a sua própria altura",
+        EqualizeShape::Auto => "Linhas ou colunas, o que deixar o menor painel maior",
+        EqualizeShape::Keep => "Só os tamanhos, sem mexer nas divisórias",
+    }
+}
+
+fn equalize_sketch(shape: EqualizeShape, c: Hsla) -> Div {
+    let cell = || div().flex_1().rounded(px(2.)).bg(c);
+    let line = |n: usize, row: bool| {
+        let l = div().flex_1().flex().gap(px(3.));
+        let l = if row { l.flex_row() } else { l.flex_col() };
+        l.children((0..n).map(|_| cell()))
+    };
+    let frame = div().w(px(56.)).h(px(36.)).flex().gap(px(3.));
+    match shape {
+        EqualizeShape::Rows => frame.flex_col().child(line(2, true)).child(line(3, true)),
+        EqualizeShape::Columns => frame.flex_row().child(line(2, false)).child(line(3, false)),
+        EqualizeShape::Auto => frame.flex_col().child(line(2, true)).child(line(2, true)),
+        EqualizeShape::Keep => frame
+            .flex_row()
+            .child(line(2, false))
+            .child(div().flex_1().flex().flex_col().gap(px(3.)).child(cell()).child(line(2, true))),
+    }
+}
+
+fn equalize_shape_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
+    let t = theme(cx);
+    let current = d.data.equalize_shape;
+    let options = EqualizeShape::ALL.into_iter().map(|shape| {
+        let on = shape == current;
+        let send = d.send(SettingsAction::SetEqualizeShape(shape));
+        let sketch = div().flex().justify_center().py(px(8.)).rounded(px(5.)).bg(hsla(t.canvas))
+            .child(equalize_sketch(shape, hsla(if on { t.accent } else { t.fg_faint }).opacity(if on { 1.0 } else { 0.35 })));
+        div().id(SharedString::from(format!("equalize-shape-{}", shape.key()))).debug_selector(move || format!("equalize-shape:{}", shape.key()))
+            .flex_1().min_w_0().flex().flex_col().gap(px(6.)).p(px(6.)).rounded(px(8.)).cursor_pointer()
+            .border_1().border_color(hsla(if on { t.accent } else { t.border })).hover(|s| s.bg(hsla(t.bg_hover)))
+            .child(sketch)
+            .child(div().px(px(2.)).text_size(px(12.)).text_color(hsla(t.fg)).child(equalize_shape_label(shape)))
+            .child(div().px(px(2.)).text_size(px(11.)).line_height(px(15.)).text_color(hsla(t.fg_faint)).child(equalize_shape_hint(shape)))
+            .on_click(move |_, w, cx| send(w, cx))
+    });
+    div().flex().flex_col().mb(px(24.))
+        .child(heading("Ao igualar os painéis", Some("Uma divisória só atravessa a tela inteira num sentido: em linhas, cada linha divide a largura do seu jeito; em colunas, cada coluna tem a sua altura. Vale para o atalho de igualar os painéis."), false, None, cx))
+        .child(div().flex().gap(px(8.)).children(options))
+        .into_any_element()
+}
+
 fn focus_follows_mouse_section(d: &SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
     let on = d.data.focus_follows_mouse;
     div().flex().flex_col().mb(px(24.))
@@ -124,7 +183,7 @@ fn focus_follows_mouse_section(d: &SettingsDialog, cx: &mut Context<SettingsDial
 pub fn sessions(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) -> AnyElement {
     let m = d.data.hibernate_minutes;
     let on = m > 0;
-    let mut col = div().flex().flex_col().child(pane_open_section(d, cx)).child(focus_follows_mouse_section(d, cx)).child(heading(
+    let mut col = div().flex().flex_col().child(pane_open_section(d, cx)).child(equalize_shape_section(d, cx)).child(focus_follows_mouse_section(d, cx)).child(heading(
         "Hibernação",
         Some("Uma sessão do Claude parada no prompt custa uns 200MB de RAM pra não fazer nada. Hibernar é desligar o processo e ficar com a conversa: a linha continua na lateral, e o clique nela retoma de onde parou. Também dá pra hibernar uma sessão à mão, pelo menu da linha."),
         false,

@@ -1,4 +1,5 @@
 use mx_core::layout::{Axis, DropSide, PaneNode};
+use mx_core::persist::EqualizeShape;
 
 use super::Rig;
 use crate::PaneDrop;
@@ -91,6 +92,23 @@ fn equalize_panes_evens_out_the_whole_tree_and_saves() {
     assert_eq!(weights(&rig), [0.5, 0.5]);
     assert_eq!(rig.s.panes().unwrap().as_split().unwrap().children[1].as_split().unwrap().weights, [0.5, 0.5]);
     assert!(rig.s.save_pending());
+}
+
+fn columns_grid() -> PaneNode {
+    let col = |a: &str, b: &str| PaneNode::split(Axis::Column, vec![PaneNode::leaf(a), PaneNode::leaf(b)], vec![0.5, 0.5]);
+    PaneNode::split(Axis::Row, vec![col("a", "b"), col("c", "d")], vec![0.3, 0.7])
+}
+
+#[test]
+fn equalize_panes_follows_the_shape_preference() {
+    for (shape, axis) in [(EqualizeShape::Rows, Axis::Column), (EqualizeShape::Columns, Axis::Row), (EqualizeShape::Auto, Axis::Row), (EqualizeShape::Keep, Axis::Row)] {
+        let mut rig = rig(&["a", "b", "c", "d"]);
+        rig.s.set_equalize_shape(shape);
+        rig.s.set_panes(Some(columns_grid()), Some("a"));
+        rig.s.equalize_panes();
+        assert_eq!(rig.s.panes().unwrap().as_split().unwrap().axis, axis, "{shape:?}");
+        assert_eq!(weights(&rig), [0.5, 0.5], "{shape:?}");
+    }
 }
 
 #[test]

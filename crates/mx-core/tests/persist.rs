@@ -579,3 +579,15 @@ fn the_cursor_shape_round_trips_and_block_is_never_written() {
     let (odd, _) = Config::from_json(&obj(json!({"cursorShape": "triangle"})));
     assert_eq!(odd.cursor_shape, CursorShape::Block);
 }
+
+#[test]
+fn the_equalize_shape_round_trips_and_rows_is_never_written() {
+    let auto = Config { equalize_shape: EqualizeShape::Auto, ..Config::default() };
+    let j = auto.to_json();
+    assert_eq!(j["equalizeShape"], json!("auto"));
+    let (back, _) = Config::from_json(j.as_object().unwrap());
+    assert_eq!(back.equalize_shape, EqualizeShape::Auto);
+    assert!(Config::default().to_json().get("equalizeShape").is_none());
+    let (odd, _) = Config::from_json(&obj(json!({"equalizeShape": "spiral"})));
+    assert_eq!(odd.equalize_shape, EqualizeShape::Rows);
+}

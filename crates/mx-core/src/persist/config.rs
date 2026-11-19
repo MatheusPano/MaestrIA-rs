@@ -83,6 +83,32 @@ impl PaneOpen {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EqualizeShape {
+    #[default]
+    Rows,
+    Columns,
+    Auto,
+    Keep,
+}
+
+impl EqualizeShape {
+    pub const ALL: [EqualizeShape; 4] = [EqualizeShape::Rows, EqualizeShape::Columns, EqualizeShape::Auto, EqualizeShape::Keep];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            EqualizeShape::Rows => "rows",
+            EqualizeShape::Columns => "columns",
+            EqualizeShape::Auto => "auto",
+            EqualizeShape::Keep => "keep",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<EqualizeShape> {
+        Self::ALL.into_iter().find(|s| s.key() == key)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Typography {
     pub mono: String,
@@ -215,6 +241,7 @@ pub struct Config {
     pub typography: Typography,
     pub cursor_shape: CursorShape,
     pub pane_open: PaneOpen,
+    pub equalize_shape: EqualizeShape,
     pub focus_follows_mouse: bool,
     pub shortcuts: Obj,
     pub plugins: Obj,
@@ -248,6 +275,7 @@ impl Default for Config {
             typography: Typography::default(),
             cursor_shape: CursorShape::Block,
             pane_open: PaneOpen::Replace,
+            equalize_shape: EqualizeShape::Rows,
             focus_follows_mouse: false,
             shortcuts: Obj::new(),
             plugins: Obj::new(),
@@ -334,6 +362,9 @@ impl Config {
         }
         if self.pane_open != PaneOpen::Replace {
             m.insert("paneOpen".into(), json!(self.pane_open.key()));
+        }
+        if self.equalize_shape != EqualizeShape::Rows {
+            m.insert("equalizeShape".into(), json!(self.equalize_shape.key()));
         }
         flag(&mut m, "focusFollowsMouse", self.focus_follows_mouse);
         if !self.shortcuts.is_empty() {

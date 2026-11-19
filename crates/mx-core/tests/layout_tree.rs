@@ -289,6 +289,66 @@ fn equalize_evens_out_every_split_in_the_tree() {
     assert_eq!(n.order(), ["a", "b", "c", "d", "e"]);
 }
 
+fn grid_of_columns() -> PaneNode {
+    row(
+        vec![
+            column(vec![leaf("nas"), leaf("maestria")], vec![0.5, 0.5]),
+            column(vec![leaf("lms"), row(vec![leaf("tickets"), leaf("task")], vec![0.5, 0.5])], vec![0.5, 0.5]),
+        ],
+        vec![0.42, 0.58],
+    )
+}
+
+#[test]
+fn equalize_into_rows_turns_columns_of_equal_height_into_rows_split_evenly_by_their_panes() {
+    let mut n = grid_of_columns();
+    n.equalize_into(Axis::Column);
+    let s = n.as_split().unwrap();
+    assert_eq!(s.axis, Axis::Column);
+    assert!(close(&s.weights, &[0.5, 0.5]));
+    let (top, bottom) = (&s.children[0], &s.children[1]);
+    assert_eq!(top.order(), ["nas", "lms"]);
+    assert!(close(&weights(top), &[0.5, 0.5]));
+    assert_eq!(bottom.order(), ["maestria", "tickets", "task"]);
+    assert!(close(&weights(bottom), &[1. / 3., 2. / 3.]));
+    assert!(close(&weights(&bottom.as_split().unwrap().children[1]), &[0.5, 0.5]));
+}
+
+#[test]
+fn equalize_into_columns_turns_those_rows_back_into_the_same_columns() {
+    let mut n = grid_of_columns();
+    n.equalize_into(Axis::Column);
+    n.equalize_into(Axis::Row);
+    let mut original = grid_of_columns();
+    original.equalize();
+    assert_eq!(n, original);
+}
+
+#[test]
+fn equalize_keeps_the_shape_and_gives_each_pane_of_a_nested_same_axis_split_an_equal_share() {
+    let mut n = grid_of_columns();
+    n.equalize();
+    assert_eq!(n.as_split().unwrap().axis, Axis::Row);
+    assert!(close(&weights(&n), &[0.5, 0.5]));
+    let mut nested = row(vec![leaf("a"), row(vec![leaf("b"), leaf("c")], vec![0.9, 0.1])], vec![0.5, 0.5]);
+    nested.equalize();
+    assert!(close(&weights(&nested), &[1. / 3., 2. / 3.]));
+    assert!(close(&weights(&nested.as_split().unwrap().children[1]), &[0.5, 0.5]));
+}
+
+#[test]
+fn equalize_into_rows_keeps_columns_of_different_heights_as_columns() {
+    let mut n = row(
+        vec![column(vec![leaf("a"), leaf("b")], vec![0.3, 0.7]), column(vec![leaf("c"), leaf("d"), leaf("e")], vec![0.2, 0.2, 0.6])],
+        vec![0.4, 0.6],
+    );
+    n.equalize_into(Axis::Column);
+    assert_eq!(n.as_split().unwrap().axis, Axis::Row);
+    assert!(close(&weights(&n), &[0.5, 0.5]));
+    assert!(close(&weights(&n.as_split().unwrap().children[1]), &[1. / 3., 1. / 3., 1. / 3.]));
+    assert_eq!(n.order(), ["a", "b", "c", "d", "e"]);
+}
+
 #[test]
 fn equalize_at_a_path_only_touches_that_split() {
     let mut n = row(vec![leaf("a"), column(vec![leaf("b"), leaf("c")], vec![0.2, 0.8])], vec![0.3, 0.7]);
@@ -414,4 +474,22 @@ proptest! {
         prop_assert_eq!(layout::order(back.as_ref()), order.clone());
         prop_assert!(layout::same_shape(back.as_ref(), after.as_ref()));
     }
+}
+
+#[test]
+fn equalize_auto_picks_the_shape_whose_smallest_pane_is_largest() {
+    let mut n = grid_of_columns();
+    n.equalize_auto();
+    assert_eq!(n.as_split().unwrap().axis, Axis::Column);
+    assert_eq!(n.as_split().unwrap().children[1].order(), ["maestria", "tickets", "task"]);
+}
+
+#[test]
+fn equalize_auto_keeps_a_square_grid_as_it_is() {
+    let col = |a: &str, b: &str| column(vec![leaf(a), leaf(b)], vec![0.2, 0.8]);
+    let mut n = row(vec![col("a", "b"), col("c", "d")], vec![0.3, 0.7]);
+    n.equalize_auto();
+    assert_eq!(n.as_split().unwrap().axis, Axis::Row);
+    assert!(close(&weights(&n), &[0.5, 0.5]));
+    assert!(close(&weights(&n.as_split().unwrap().children[0]), &[0.5, 0.5]));
 }

@@ -89,6 +89,7 @@ impl Store {
             typography: p.typography.clone(),
             cursor_shape: p.cursor_shape,
             pane_open: p.pane_open,
+            equalize_shape: p.equalize_shape,
             focus_follows_mouse: p.focus_follows_mouse,
             shortcuts: p.shortcuts.clone(),
             plugins: p.plugins.clone(),

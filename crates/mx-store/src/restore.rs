@@ -40,6 +40,7 @@ impl Store {
             typography: c.typography,
             cursor_shape: c.cursor_shape,
             pane_open: c.pane_open,
+            equalize_shape: c.equalize_shape,
             focus_follows_mouse: c.focus_follows_mouse,
             sidebar_width: c.sidebar_width,
             sidebar_hidden: c.sidebar_hidden,

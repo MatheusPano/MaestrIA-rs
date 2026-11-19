@@ -1,4 +1,5 @@
-use mx_core::layout::{DropSide, PaneNode};
+use mx_core::layout::{Axis, DropSide, PaneNode};
+use mx_core::persist::EqualizeShape;
 use mx_core::model::{Tab, TabKind, Tint};
 use mx_core::model::sidebar::{RowKey, sidebar_rows};
 use mx_plugins::chord::Chord;
@@ -335,7 +336,15 @@ impl Store {
         if self.panes.is_none() {
             return;
         }
-        self.tracked(|s| s.panes.as_mut().map(PaneNode::equalize));
+        let shape = self.prefs.equalize_shape;
+        self.tracked(|s| {
+            s.panes.as_mut().map(|p| match shape {
+                EqualizeShape::Rows => p.equalize_into(Axis::Column),
+                EqualizeShape::Columns => p.equalize_into(Axis::Row),
+                EqualizeShape::Auto => p.equalize_auto(),
+                EqualizeShape::Keep => p.equalize(),
+            })
+        });
         self.save();
         self.mark(Areas::PANES);
     }

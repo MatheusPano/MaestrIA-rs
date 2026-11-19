@@ -176,8 +176,68 @@ impl PaneNode {
 
     pub fn equalize(&mut self) {
         if let PaneNode::Split(s) = self {
-            s.equalize();
             s.children.iter_mut().for_each(PaneNode::equalize);
+            s.equalize();
+        }
+    }
+
+    pub fn equalize_into(&mut self, outer: Axis) {
+        if let Some(turned) = self.transposed(outer) {
+            *self = turned;
+        }
+        if let PaneNode::Split(s) = self {
+            s.children.iter_mut().for_each(|c| c.equalize_into(outer));
+            s.equalize();
+        }
+    }
+
+    pub fn equalize_auto(&mut self) {
+        let mut best = self.clone();
+        best.equalize();
+        for outer in [Axis::Column, Axis::Row] {
+            let mut turned = self.clone();
+            turned.equalize_into(outer);
+            if turned.smallest_share() > best.smallest_share() + 1e-9 {
+                best = turned;
+            }
+        }
+        *self = best;
+    }
+
+    fn smallest_share(&self) -> f64 {
+        match self {
+            PaneNode::Leaf(_) => 1.0,
+            PaneNode::Split(s) => s
+                .children
+                .iter()
+                .zip(&s.weights)
+                .map(|(c, w)| w * c.smallest_share())
+                .fold(f64::INFINITY, f64::min),
+        }
+    }
+
+    fn transposed(&self, outer: Axis) -> Option<PaneNode> {
+        let s = self.as_split().filter(|s| s.axis != outer)?;
+        let lines: Vec<&PaneSplit> =
+            s.children.iter().filter_map(PaneNode::as_split).filter(|c| c.axis == outer).collect();
+        let depth = lines.first()?.children.len();
+        if lines.len() != s.children.len() || lines.iter().any(|c| c.children.len() != depth) {
+            return None;
+        }
+        let turned = (0..depth)
+            .map(|i| {
+                let cells: Vec<PaneNode> = lines.iter().map(|c| c.children[i].clone()).collect();
+                let share = vec![1.0 / cells.len() as f64; cells.len()];
+                PaneNode::split(s.axis, cells, share)
+            })
+            .collect();
+        Some(PaneNode::split(outer, turned, vec![1.0 / depth as f64; depth]))
+    }
+
+    fn span(&self, axis: Axis) -> f64 {
+        match self {
+            PaneNode::Split(s) if s.axis == axis => s.children.iter().map(|c| c.span(axis)).sum(),
+            _ => 1.0,
         }
     }
 
@@ -320,8 +380,9 @@ impl PaneSplit {
     }
 
     pub fn equalize(&mut self) {
-        let n = self.weights.len() as f64;
-        self.weights.iter_mut().for_each(|w| *w = 1.0 / n);
+        let spans: Vec<f64> = self.children.iter().map(|c| c.span(self.axis)).collect();
+        let total: f64 = spans.iter().sum();
+        self.weights = spans.into_iter().map(|s| s / total).collect();
     }
 
     pub fn resize(&mut self, gutter: isize, delta: f64, total: f64) {
