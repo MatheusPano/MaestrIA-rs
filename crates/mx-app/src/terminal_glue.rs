@@ -85,8 +85,16 @@ pub fn follow(href: &str, tab: Option<&str>, cwd: Option<&str>, cx: &mut App) {
 }
 
 fn open_external(target: &str) {
-    let opener = if LINUX { "xdg-open" } else { "open" };
-    match std::process::Command::new(opener).arg(target).spawn() {
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler");
+        mx_core::proc::hide_window(&mut c);
+        c
+    } else {
+        std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" })
+    };
+    let opener = cmd.get_program().to_string_lossy().into_owned();
+    match cmd.arg(target).spawn() {
         Ok(mut child) => {
             std::thread::spawn(move || child.wait());
         }

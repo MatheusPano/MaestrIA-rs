@@ -95,7 +95,7 @@ impl ReaderView {
             title: None,
             subtitle: None,
             cwd: None,
-            home: std::env::var("HOME").ok(),
+            home: mx_core::paths::home(),
             pinned: false,
             visible: true,
             actions,

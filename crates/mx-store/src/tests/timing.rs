@@ -280,6 +280,7 @@ fn editor_for_a_missing_path_names_it() {
     assert_eq!(rig.s.banner(), Some("Esse workspace não está mais lá: /nao/existe.code-workspace"));
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn shutdown_stops_the_running_plugins() {
     use std::os::unix::fs::PermissionsExt;

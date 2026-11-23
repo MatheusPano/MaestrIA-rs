@@ -451,7 +451,7 @@ impl Store {
     }
 }
 
-const LINUX: bool = cfg!(target_os = "linux");
+const LINUX: bool = mx_plugins::chord::LINUX_STYLE;
 
 pub(crate) fn valid_hotkey(id: &str) -> Option<String> {
     Chord::parse(id).filter(|c| c.rejection(LINUX).is_none()).map(|_| id.to_owned())

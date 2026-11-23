@@ -3,7 +3,7 @@ use mx_plugins::chord::{Chord, Key, KeyPress};
 
 use crate::chrome::settings::{self, ChordCheck};
 
-pub const LINUX: bool = cfg!(target_os = "linux");
+pub const LINUX: bool = mx_plugins::chord::LINUX_STYLE;
 
 pub const UNUSABLE_KEY: &str = "essa tecla não dá pra usar num atalho";
 

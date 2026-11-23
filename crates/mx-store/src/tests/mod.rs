@@ -16,6 +16,7 @@ mod pin;
 mod plugin_footer;
 mod plugin_live;
 mod plugin_screen;
+#[cfg(unix)]
 mod plugin_tools;
 mod plugins;
 mod readers;

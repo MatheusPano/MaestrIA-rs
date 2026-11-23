@@ -383,11 +383,11 @@ pub fn key_hint(mx: &Mx, label: Option<String>) -> Option<gpui::Div> {
 }
 
 fn held_for_id(m: Modifiers) -> bool {
-    if cfg!(target_os = "linux") { m.control } else { m.alt }
+    if cfg!(target_os = "macos") { m.alt } else { m.control }
 }
 
 pub fn agent_tooltip(name: Option<&str>, session: Option<&str>) -> String {
-    let click = if cfg!(target_os = "linux") { "Ctrl+clique" } else { "⌥ clique" };
+    let click = if cfg!(target_os = "macos") { "⌥ clique" } else { "Ctrl+clique" };
     let mut lines = Vec::new();
     if let Some(name) = name {
         lines.push(format!("Nome: {name}  ·  clique pra copiar"));
