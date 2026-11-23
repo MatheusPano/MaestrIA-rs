@@ -142,7 +142,7 @@ impl Plugins {
             inner: Arc::new(Inner {
                 root,
                 data_root,
-                linux: cfg!(target_os = "linux"),
+                linux: crate::chord::LINUX_STYLE,
                 reg: Mutex::new(Registry::default()),
                 calls: RwLock::new(None),
                 listener: RwLock::new(None),

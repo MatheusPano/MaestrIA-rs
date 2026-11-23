@@ -1,3 +1,5 @@
+pub const LINUX_STYLE: bool = !cfg!(target_os = "macos");
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Char(char),

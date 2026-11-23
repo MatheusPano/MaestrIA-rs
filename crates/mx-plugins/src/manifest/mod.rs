@@ -114,7 +114,7 @@ impl PluginManifest {
     }
 
     pub fn parse(j: &Obj) -> Result<PluginManifest, ManifestError> {
-        Self::parse_for(j, cfg!(target_os = "linux"))
+        Self::parse_for(j, crate::chord::LINUX_STYLE)
     }
 
     pub fn parse_for(j: &Obj, linux: bool) -> Result<PluginManifest, ManifestError> {

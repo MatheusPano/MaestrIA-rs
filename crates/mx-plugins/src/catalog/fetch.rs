@@ -47,7 +47,9 @@ pub fn sha256_file(path: &Path) -> Result<String, InstallError> {
 }
 
 pub async fn git_head(git: &str, git_ref: Option<&str>, env: &[(String, String)]) -> Option<String> {
-    let out = Command::new("git")
+    let mut command = Command::new("git");
+    mx_core::proc::hide_window(command.as_std_mut());
+    let out = command
         .args(["ls-remote", git, git_ref.unwrap_or("HEAD")])
         .env_clear()
         .envs(env.iter().cloned())

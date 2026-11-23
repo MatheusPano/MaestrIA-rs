@@ -70,7 +70,9 @@ fn manifest_dir(dir: &Path) -> Option<PathBuf> {
 impl Plugins {
     async fn run_tool(&self, program: &str, args: &[&str]) -> Result<(), InstallError> {
         let env = self.inner.env.read().unwrap().clone();
-        let out = Command::new(program)
+        let mut command = Command::new(program);
+        mx_core::proc::hide_window(command.as_std_mut());
+        let out = command
             .args(args)
             .env_clear()
             .envs(env)
@@ -135,11 +137,18 @@ impl Plugins {
         } else if src.to_lowercase().ends_with(".zip") && Path::new(src).is_file() {
             if cfg!(target_os = "macos") {
                 self.run_tool("ditto", &["-x", "-k", src, &into_s]).await?;
+            } else if cfg!(windows) {
+                fs::create_dir_all(&into).map_err(|e| err(e.to_string()))?;
+                self.run_tool(&windows_tar(), &["-xf", src, "-C", &into_s]).await?;
             } else {
                 self.run_tool("unzip", &["-q", src, "-d", &into_s]).await?;
             }
         } else if Path::new(src).is_dir() {
-            self.run_tool("cp", &["-R", src, &into_s]).await?;
+            if cfg!(windows) {
+                copy_dir(Path::new(src), &into).map_err(|e| err(e.to_string()))?;
+            } else {
+                self.run_tool("cp", &["-R", src, &into_s]).await?;
+            }
         } else {
             return Err(err(format!("\"{source}\" não é uma URL de git, um .zip nem uma pasta que exista")));
         }
@@ -164,7 +173,7 @@ impl Plugins {
         self.stop(&p.id).await;
         let is_link = fs::symlink_metadata(&p.dir).is_ok_and(|m| m.file_type().is_symlink());
         if is_link {
-            let _ = fs::remove_file(&p.dir);
+            let _ = unlink_dir(&p.dir);
         } else {
             rm(&p.dir);
         }
@@ -225,8 +234,7 @@ impl Plugins {
         }
         fs::create_dir_all(&self.inner.root).map_err(|e| err(e.to_string()))?;
         let absolute = std::path::absolute(src_path).map_err(|e| err(e.to_string()))?;
-        std::os::unix::fs::symlink(&absolute, self.inner.root.join(&manifest.id))
-            .map_err(|e| err(e.to_string()))?;
+        link_dir(&absolute, &self.inner.root.join(&manifest.id)).map_err(|e| err(e.to_string()))?;
         self.reg().origins.remove(&manifest.id);
         self.scan();
         let plugin = self.get(&manifest.id).ok_or_else(|| err(format!("\"{path}\" não é uma pasta")))?;
@@ -295,4 +303,51 @@ pub fn installed_banner(name: &str, version: &str, replacing: Option<&str>) -> S
         None => format!("{name} {version} instalado"),
         Some(old) => format!("{name} atualizado de {old} pra {version}"),
     }
+}
+
+#[cfg(unix)]
+fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_dir(target, link).or_else(|_| junction(target, link))
+}
+
+#[cfg(unix)]
+fn unlink_dir(link: &Path) -> std::io::Result<()> {
+    fs::remove_file(link)
+}
+
+#[cfg(windows)]
+fn unlink_dir(link: &Path) -> std::io::Result<()> {
+    fs::remove_dir(link)
+}
+
+#[cfg(windows)]
+fn junction(target: &Path, link: &Path) -> std::io::Result<()> {
+    let mut cmd = std::process::Command::new("cmd.exe");
+    mx_core::proc::hide_window(&mut cmd);
+    let status = cmd.arg("/C").arg("mklink").arg("/J").arg(link).arg(target).status()?;
+    if status.success() { Ok(()) } else { Err(std::io::Error::other("mklink /J falhou")) }
+}
+
+fn windows_tar() -> String {
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    format!(r"{root}\System32\tar.exe")
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
