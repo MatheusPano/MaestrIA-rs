@@ -3772,9 +3772,9 @@ dependencies = [
 name = "mx-sys"
 version = "3.9.3"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "mx-core",
- "nix 0.29.0",
  "regex",
  "reqwest",
  "serde_json",

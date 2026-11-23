@@ -149,3 +149,11 @@ async fn operands_that_look_like_options_are_never_read_as_options() {
         ]
     );
 }
+
+#[test]
+fn windows_reveal_selects_the_file_in_explorer_with_backslashes() {
+    assert_eq!(
+        mx_sys::reveal::windows_select_command("C:/repo/a b.md"),
+        r"MSYS_NO_PATHCONV=1 explorer.exe '/select,C:\repo\a b.md'; true"
+    );
+}

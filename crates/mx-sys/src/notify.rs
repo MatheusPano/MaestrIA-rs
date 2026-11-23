@@ -26,7 +26,42 @@ pub fn alert_command_with_image(platform: Platform, title: &str, body: &str, ima
             );
             format!("osascript -e {}", q(&script))
         }
+        Platform::Windows => windows_toast_command(title, body),
     }
+}
+
+const POWERSHELL_AUMID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe";
+
+fn ps_string(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn xml_text(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+pub fn windows_toast_script(title: &str, body: &str) -> String {
+    let xml = format!(
+        "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual></toast>",
+        xml_text(title),
+        xml_text(body)
+    );
+    format!(
+        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\n\
+         [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\n\
+         $x = New-Object Windows.Data.Xml.Dom.XmlDocument\n\
+         $x.LoadXml({})\n\
+         [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier({}).Show([Windows.UI.Notifications.ToastNotification]::new($x))",
+        ps_string(&xml),
+        ps_string(POWERSHELL_AUMID)
+    )
+}
+
+pub fn windows_toast_command(title: &str, body: &str) -> String {
+    use base64::Engine;
+    let utf16: Vec<u8> = windows_toast_script(title, body).encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
+    format!("powershell.exe -NoProfile -NonInteractive -EncodedCommand {encoded}")
 }
 
 pub struct Notifier {
@@ -59,7 +94,7 @@ impl Notifier {
         }
         *last = label.map(str::to_owned);
         match self.platform {
-            Platform::Linux => None,
+            Platform::Linux | Platform::Windows => None,
             Platform::MacOs => Some(label.unwrap_or("").to_owned()),
         }
     }
@@ -75,6 +110,17 @@ mod tests {
             alert_command_with_image(Platform::Linux, "login", "pergunta: qual?", Some("/p/rosto.png")),
             "notify-send -a maestria -i '/p/rosto.png' -- 'login' 'pergunta: qual?'"
         );
+    }
+
+    #[test]
+    fn windows_toast_escapes_xml_and_powershell_quotes() {
+        let script = windows_toast_script("it's <a>", "x & y");
+        assert!(script.contains("<text>it''s &lt;a&gt;</text><text>x &amp; y</text>"));
+    }
+
+    #[test]
+    fn windows_toast_runs_powershell_with_an_encoded_command() {
+        assert!(alert_command(Platform::Windows, "t", "b").starts_with("powershell.exe -NoProfile -NonInteractive -EncodedCommand "));
     }
 
     #[test]

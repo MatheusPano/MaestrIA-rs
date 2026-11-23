@@ -19,12 +19,15 @@ pub use shell::{ShResult, output};
 pub enum Platform {
     Linux,
     MacOs,
+    Windows,
 }
 
 impl Platform {
     pub fn current() -> Self {
         if cfg!(target_os = "macos") {
             Platform::MacOs
+        } else if cfg!(windows) {
+            Platform::Windows
         } else {
             Platform::Linux
         }

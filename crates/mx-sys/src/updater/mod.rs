@@ -14,10 +14,17 @@ pub use sums::expected_sum;
 
 pub const ENABLED_ENV: &str = "MAESTRIA_UPDATE_ENABLED";
 pub const PACKAGE_PREFIX: &str = "maestria-rs_";
-pub const ASSET_SUFFIX: &str = if cfg!(target_os = "macos") { "_macos.dmg" } else { "_amd64.deb" };
+pub const ASSET_SUFFIX: &str = if cfg!(target_os = "macos") {
+    "_macos.dmg"
+} else if cfg!(windows) {
+    "_x64.msi"
+} else {
+    "_amd64.deb"
+};
 pub const INSTALL_DIR: &str = "/opt/maestria-rs/";
 pub const BUNDLE_NAME: &str = "maestria-rs.app";
-pub const INSTALLS_ON_QUIT: bool = cfg!(target_os = "macos");
+pub const INSTALLS_ON_QUIT: bool = cfg!(any(target_os = "macos", windows));
+pub const WINDOWS_INSTALL_DIR: &str = "maestria-rs";
 pub const FIRST_DELAY: Duration = Duration::from_secs(30);
 pub const EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -51,6 +58,10 @@ pub enum QuitPlan {
 }
 
 pub fn installed_here(exe: &Path) -> bool {
+    if cfg!(windows) {
+        return std::env::var_os("ProgramFiles")
+            .is_some_and(|pf| exe.starts_with(Path::new(&pf).join(WINDOWS_INSTALL_DIR)));
+    }
     cfg!(all(target_os = "linux", target_arch = "x86_64")) && exe.starts_with(INSTALL_DIR)
 }
 
@@ -70,7 +81,7 @@ fn target_of(exe: &Path) -> Option<PathBuf> {
 
 impl Updater {
     pub fn new(current: &str, state_dir: &Path) -> Updater {
-        let exe = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok());
+        let exe = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()).map(plain_path);
         let forced = std::env::var(ENABLED_ENV).is_ok_and(|v| v == "1");
         let target = exe.as_deref().and_then(target_of).or(if forced { exe } else { None });
         let mut u = Updater::with_enabled(current, state_dir, target.is_some());
@@ -244,5 +255,12 @@ impl Updater {
             return None;
         }
         Some(QuitPlan::Swap { bundle: self.target.clone()?, staged: self.staged.clone()?, relaunch: self.relaunch })
+    }
+}
+
+fn plain_path(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|p| p.strip_prefix(r"\\?\")) {
+        Some(plain) if cfg!(windows) => PathBuf::from(plain),
+        _ => path,
     }
 }

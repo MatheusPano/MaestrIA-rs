@@ -25,7 +25,7 @@ pub fn looks_like_one(path: &str) -> bool {
 }
 
 pub async fn read(raw_path: &str) -> Option<CodeWorkspace> {
-    read_with(raw_path, std::env::var("HOME").ok().as_deref()).await
+    read_with(raw_path, mx_core::paths::home().as_deref()).await
 }
 
 pub async fn read_with(raw_path: &str, home: Option<&str>) -> Option<CodeWorkspace> {
@@ -38,7 +38,7 @@ pub async fn read_with(raw_path: &str, home: Option<&str>) -> Option<CodeWorkspa
 }
 
 pub fn parse(source: &str, path: &str) -> Option<CodeWorkspace> {
-    parse_with(source, path, std::env::var("HOME").ok().as_deref())
+    parse_with(source, path, mx_core::paths::home().as_deref())
 }
 
 pub fn parse_with(source: &str, path: &str, home: Option<&str>) -> Option<CodeWorkspace> {
@@ -63,7 +63,7 @@ pub fn parse_with(source: &str, path: &str, home: Option<&str>) -> Option<CodeWo
 }
 
 pub fn resolve(raw: &str, from: &str) -> String {
-    resolve_with(raw, from, std::env::var("HOME").ok().as_deref())
+    resolve_with(raw, from, mx_core::paths::home().as_deref())
 }
 
 pub fn resolve_with(raw: &str, from: &str, home: Option<&str>) -> String {

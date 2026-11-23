@@ -32,5 +32,9 @@ pub async fn open_on(
             let cmd = format!("open -a {} {}", q(MAC_APP), q_operand(path));
             runner.run(cmd, None).await.ok()
         }
+        Platform::Windows => {
+            let target = crate::reveal::windows_path(path);
+            runner.run(crate::reveal::windows_open_command(&target), None).await.ok()
+        }
     }
 }
