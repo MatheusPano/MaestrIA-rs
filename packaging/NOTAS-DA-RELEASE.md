@@ -7,6 +7,7 @@ Cockpit para sessões do Claude Code, reescrito em Rust. Instala como
 |---|---|
 | **macOS** (Intel e Apple Silicon) | `maestria-rs_*_macos.dmg` |
 | **Linux** (Ubuntu 22.04+, Mint, Pop!_OS) | `maestria-rs_*_amd64.deb` |
+| **Windows** 10 1809+ / 11 (x64) | `maestria-rs_*_x64.msi` |
 
 ## Antes de tudo: o Claude Code
 
@@ -43,6 +44,15 @@ sudo apt install ./maestria-rs_*_amd64.deb
 O apt puxa o que falta. Depois é "MaestrIA (Rust)" no menu de aplicativos, ou
 `maestria-rs` no terminal.
 
+## Windows
+
+Precisa do [Git for Windows](https://git-scm.com/download/win) (o Git Bash é
+por onde o app roda git e o `claude`, como o próprio Claude Code exige) e do
+Claude Code (`irm https://claude.ai/install.ps1 | iex`). Rode o `.msi`; o
+SmartScreen avisa na primeira vez porque o pacote não é assinado: **Mais
+informações → Executar assim mesmo**. Painel de shell abre o `pwsh`, ou o
+Windows PowerShell se ele não estiver instalado.
+
 ## Pelo cargo (direto do git)
 
 Compila na sua máquina (uns 15 minutos) e serve pra qualquer distro ou pro Mac.
@@ -67,9 +77,10 @@ pra evitar letras duplicadas sob carga.
 O app pode se atualizar sozinho, se você ligar em **Configurações →
 Atualizações** (vem desligado). Ligado, quando sai versão nova ele baixa em
 segundo plano e mostra o número dela na barra de baixo, ao lado do sino. No Mac
-ela entra quando você fecha o app; no Linux, quando você clica (o sistema pede a
+ela entra quando você fecha o app; no Windows também (o instalador pede
+permissão de administrador); no Linux, quando você clica (o sistema pede a
 senha pra instalar o pacote). Nada reinicia sem você pedir. Vale só pro app
-instalado pelo `.deb` ou pelo `.dmg` da release.
+instalado pelo `.deb`, `.dmg` ou `.msi` da release.
 
 ## Primeiro uso
 

@@ -1,0 +1,20 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="MaestrIA-rs" Manufacturer="br.com.marrow" Version="$(Version)"
+           UpgradeCode="F9D917FB-4BBF-43C8-AA30-FD29C3759A88" Scope="perMachine" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="Uma versão mais nova do MaestrIA-rs já está instalada." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="AppIcon.ico" SourceFile="$(IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="maestria-rs">
+        <Component Id="App">
+          <File Id="AppExe" Source="$(ExePath)" Name="maestria-rs.exe" KeyPath="yes">
+            <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="MaestrIA-rs"
+                      WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

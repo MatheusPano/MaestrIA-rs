@@ -9,12 +9,13 @@ REMOTE   ?= upstream
 REPO     ?= MatheusPano/MaestrIA-rs
 DIST     := packaging/linux/dist
 MAC_DIST := packaging/macos/dist
+WIN_DIST := packaging/windows/dist
 RAW_VERSION := $(shell sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)
 REVISION    := $(shell sed -n '/^\[package.metadata.deb\]/,/^\[/s/^revision *= *"\([^"]*\)".*/\1/p' crates/mx-app/Cargo.toml | head -1)
 VERSION     := $(RAW_VERSION)-$(or $(REVISION),1)
 DEB         := $(DIST)/maestria-rs_$(VERSION)_amd64.deb
 
-.PHONY: help deb deb-only deb-fast deb-test dmg release publish analyze clippy test bench bump clean tag version
+.PHONY: help deb deb-only deb-fast deb-test dmg msi release publish analyze clippy test bench bump clean tag version
 
 help:
 	@echo "maestria $(VERSION)"
@@ -24,9 +25,10 @@ help:
 	@echo "  make deb-fast   .deb de teste nesta máquina, sem LTO: maior, mas sai em segundos (REV=2 muda a revisão)"
 	@echo "  make deb-test   instala o .deb numa ubuntu:22.04 limpa e abre o app"
 	@echo "  make dmg        gera o .dmg universal do Mac em $(MAC_DIST)/ (só no macOS)"
+	@echo "  make msi        gera o .msi em $(WIN_DIST)/ (só no Windows, com pwsh)"
 	@echo "  make release    clippy, testes, .deb e smoke test -- o caminho completo"
 	@echo
-	@echo "  make tag        publica a v$(RAW_VERSION) no GitHub (.deb e .dmg saem do CI)"
+	@echo "  make tag        publica a v$(RAW_VERSION) no GitHub (.deb, .dmg e .msi saem do CI)"
 	@echo "  make publish    gera o .deb nesta máquina e sobe na release v$(RAW_VERSION) com o SHA256SUMS (cria se faltar)"
 	@echo
 	@echo "  make clippy     cargo clippy --workspace -D warnings"
@@ -65,6 +67,9 @@ deb-test:
 dmg:
 	@./packaging/macos/make-dmg.sh
 
+msi:
+	@pwsh -NoProfile -File packaging/windows/make-msi.ps1
+
 release: clippy test deb-only deb-test
 	@echo
 	@echo "pronto: $(DEB)"
@@ -74,7 +79,7 @@ tag:
 	@git tag "v$(RAW_VERSION)"
 	@git push $(REMOTE) "v$(RAW_VERSION)"
 	@echo
-	@echo "v$(RAW_VERSION) empurrada. o .deb e o .dmg aparecem em"
+	@echo "v$(RAW_VERSION) empurrada. o .deb, o .dmg e o .msi aparecem em"
 	@echo "https://github.com/MatheusPano/MaestrIA-rs/releases/tag/v$(RAW_VERSION)"
 
 bump:
@@ -85,8 +90,8 @@ endif
 	@echo "Cargo.toml: $$(sed -n '/^\[workspace.package\]/,/^\[/s/^version.*/&/p' Cargo.toml)"
 
 clean:
-	@rm -rf $(DIST) $(MAC_DIST)
-	@echo "$(DIST) e $(MAC_DIST) limpos"
+	@rm -rf $(DIST) $(MAC_DIST) $(WIN_DIST)
+	@echo "$(DIST), $(MAC_DIST) e $(WIN_DIST) limpos"
 
 publish:
 	@git diff --quiet || { echo "há alterações não commitadas -- commite antes de publicar."; exit 1; }
