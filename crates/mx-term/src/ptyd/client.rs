@@ -1,12 +1,12 @@
 use std::fs::OpenOptions;
 use std::io::{self, ErrorKind, Read};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+use super::Stream as UnixStream;
 use super::wire::{self, Attach, Decoder, Exit, Failure, Finished, Hibernate, Info, Prune, Ready, Size, Spawn};
 use crate::io::{Feeder, LifeIo, LifeOwner, Port, SharedTerm, Sink, Wake, Writer, release_writer};
 use crate::session::GridSize;
@@ -49,7 +49,12 @@ impl Ptyd {
         let stderr = log
             .and_then(|p| OpenOptions::new().create(true).append(true).open(p).ok())
             .map_or_else(Stdio::null, Stdio::from);
-        let mut child = Command::new(exe)
+        let exe = daemon_exe(&self.socket, exe);
+        let mut command = Command::new(&exe);
+        if cfg!(windows) {
+            mx_core::proc::isolate(&mut command);
+        }
+        let mut child = command
             .arg(super::FLAG)
             .arg(&self.socket)
             .stdin(Stdio::null())
@@ -128,6 +133,49 @@ impl Ptyd {
         wire::write_json(&stream, wire::ATTACH, &Attach { v: wire::VERSION, key: key.to_owned() })?;
         let ready = reply(&stream)?;
         Ok((stream, ready))
+    }
+}
+
+#[cfg(unix)]
+fn daemon_exe(_: &Path, exe: &Path) -> PathBuf {
+    exe.to_path_buf()
+}
+
+// The daemon outlives the app; running it from a copy leaves the installed exe free for the MSI to replace.
+#[cfg(windows)]
+fn daemon_exe(socket: &Path, exe: &Path) -> PathBuf {
+    let Some(stamp) = exe_stamp(exe) else { return exe.to_path_buf() };
+    let copy = socket.with_file_name(format!("ptyd-{}-{stamp}.exe", super::rev()));
+    if copy.is_file() {
+        return copy;
+    }
+    let temp = copy.with_extension(format!("{}.tmp", std::process::id()));
+    let copied = std::fs::copy(exe, &temp).and_then(|_| std::fs::rename(&temp, &copy));
+    let _ = std::fs::remove_file(&temp);
+    if copied.is_err() && !copy.is_file() {
+        return exe.to_path_buf();
+    }
+    remove_old_copies(&copy);
+    copy
+}
+
+#[cfg(windows)]
+fn exe_stamp(exe: &Path) -> Option<String> {
+    let meta = std::fs::metadata(exe).ok()?;
+    let modified = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    Some(format!("{:x}{modified:x}", meta.len()))
+}
+
+#[cfg(windows)]
+fn remove_old_copies(current: &Path) {
+    let (Some(dir), Some(name)) = (current.parent(), current.file_name()) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let other = entry.file_name();
+        let other = other.to_string_lossy();
+        if other != name.to_string_lossy() && other.starts_with("ptyd-") && other.ends_with(".exe") {
+            let _ = std::fs::remove_file(entry.path());
+        }
     }
 }
 

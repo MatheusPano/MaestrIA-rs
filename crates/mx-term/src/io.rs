@@ -1,18 +1,28 @@
+#[cfg(unix)]
 use std::fs::File;
-use std::io::{ErrorKind, Read, Write};
+#[cfg(unix)]
+use std::io::{ErrorKind, Read};
+#[cfg(unix)]
+use std::io::Write;
+#[cfg(unix)]
 use std::os::fd::AsFd;
-use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+#[cfg(unix)]
+use std::time::Duration;
+use std::time::Instant;
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Term;
+#[cfg(unix)]
 use alacritty_terminal::tty::{ChildEvent, EventedPty, EventedReadWrite, Pty};
 use alacritty_terminal::vte::ansi::{Processor, Rgb as AnsiRgb};
 use mx_theme::TerminalPalette;
+#[cfg(unix)]
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
+
+use crate::ptyd::Stream as UnixStream;
 
 use crate::events::Fanout;
 use crate::frames::VtFrameGate;
@@ -20,13 +30,20 @@ use crate::scrubber::VtScrubber;
 use crate::session::{GridSize, TermEvent};
 use crate::sticky::StickyClock;
 
+#[cfg(unix)]
 const READ_CHUNK: usize = 0x10000;
+#[cfg(unix)]
 const MAX_LOCKED_READ: usize = 0x40000;
+#[cfg(unix)]
 const CHILD_CHECK: Duration = Duration::from_millis(500);
+#[cfg(unix)]
 const HUP_RECHECK: Duration = Duration::from_millis(10);
 
 pub(crate) enum Sink {
+    #[cfg(unix)]
     Pty { file: File, pending: Vec<u8>, waker: UnixStream },
+    #[cfg(windows)]
+    Conpty(crate::conpty::Handle),
     Remote(std::sync::mpsc::Sender<Vec<u8>>),
 }
 
@@ -38,6 +55,9 @@ pub(crate) struct Writer {
 impl Writer {
     fn push(&mut self, bytes: &[u8]) {
         match &mut self.sink {
+            #[cfg(windows)]
+            Sink::Conpty(handle) => handle.write(bytes),
+            #[cfg(unix)]
             Sink::Pty { file, pending, waker } => {
                 let mut rest = bytes;
                 if pending.is_empty() {
@@ -54,6 +74,7 @@ impl Writer {
         }
     }
 
+    #[cfg(unix)]
     fn flush(&mut self) {
         if let Sink::Pty { file, pending, .. } = &mut self.sink {
             let left = write_some(file, pending).len();
@@ -62,11 +83,13 @@ impl Writer {
         }
     }
 
+    #[cfg(unix)]
     fn has_pending(&self) -> bool {
         matches!(&self.sink, Sink::Pty { pending, .. } if !pending.is_empty())
     }
 }
 
+#[cfg(unix)]
 fn write_some<'a>(mut file: &File, mut bytes: &'a [u8]) -> &'a [u8] {
     while !bytes.is_empty() {
         match file.write(bytes) {
@@ -113,6 +136,9 @@ impl Port {
             && let Some(writer) = guard.as_ref()
         {
             match &writer.sink {
+                #[cfg(windows)]
+                Sink::Conpty(handle) => handle.resize(size),
+                #[cfg(unix)]
                 Sink::Pty { file, .. } => {
                     let ws = rustix::termios::Winsize {
                         ws_row: size.rows,
@@ -249,7 +275,10 @@ pub(crate) trait LifeOwner: Send + Sync + 'static {
 }
 
 pub(crate) enum Wake {
+    #[cfg(unix)]
     Pipe(UnixStream),
+    #[cfg(windows)]
+    Channel(std::sync::mpsc::Sender<crate::conpty::Msg>),
     Socket(UnixStream),
 }
 
@@ -262,8 +291,13 @@ impl Drop for LifeIo {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         match &self.wake {
+            #[cfg(unix)]
             Wake::Pipe(pipe) => {
                 let _ = (&*pipe).write(&[1]);
+            }
+            #[cfg(windows)]
+            Wake::Channel(tx) => {
+                let _ = tx.send(crate::conpty::Msg::Wake);
             }
             Wake::Socket(stream) => {
                 let _ = stream.shutdown(std::net::Shutdown::Both);
@@ -272,6 +306,53 @@ impl Drop for LifeIo {
     }
 }
 
+#[cfg(windows)]
+pub(crate) fn start(
+    mut pty: crate::conpty::Conpty,
+    generation: u64,
+    term: SharedTerm,
+    port: Arc<Port>,
+    feeder: Arc<Mutex<Feeder>>,
+    owner: Weak<dyn LifeOwner>,
+) -> anyhow::Result<LifeIo> {
+    if let Ok(mut slot) = port.writer.lock() {
+        *slot = Some(Writer { generation, sink: Sink::Conpty(pty.handle.clone()) });
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let wake = pty.waker();
+    let thread_stop = stop.clone();
+    std::thread::Builder::new().name(format!("mx-pty-{generation}")).spawn(move || {
+        let mut feed = |bytes: &[u8]| {
+            if let Ok(mut f) = feeder.lock() {
+                f.feed_from(generation, &term, &port, bytes);
+            }
+        };
+        let mut deadline = || feeder.lock().ok().and_then(|f| f.deadline());
+        let mut tick = || {
+            if let Ok(mut f) = feeder.lock()
+                && f.generation == generation
+                && f.deadline().is_some_and(|d| Instant::now() >= d)
+            {
+                f.expire(&term, &port);
+            }
+        };
+        let code = pty.run(crate::conpty::Hooks {
+            stop: &thread_stop,
+            deadline: &mut deadline,
+            data: &mut feed,
+            tick: &mut tick,
+        });
+        if let Some(code) = code
+            && let Some(owner) = owner.upgrade()
+        {
+            owner.reap(generation, &mut || Some(code));
+        }
+        release_writer(&port, generation);
+    })?;
+    Ok(LifeIo { stop, wake: Wake::Channel(wake) })
+}
+
+#[cfg(unix)]
 pub(crate) fn start(
     pty: Pty,
     generation: u64,
@@ -301,6 +382,7 @@ pub(crate) fn start(
     Ok(LifeIo { stop, wake: Wake::Pipe(wake_tx) })
 }
 
+#[cfg(unix)]
 struct Life {
     pty: Pty,
     generation: u64,
@@ -312,6 +394,7 @@ struct Life {
     stop: Arc<AtomicBool>,
 }
 
+#[cfg(unix)]
 impl Life {
     fn run(&mut self) {
         let mut buf = vec![0u8; READ_CHUNK];
@@ -444,6 +527,7 @@ pub(crate) fn release_writer(port: &Port, generation: u64) {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Life {
     fn drop(&mut self) {
         release_writer(&self.port, self.generation);

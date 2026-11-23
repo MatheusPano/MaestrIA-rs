@@ -4,12 +4,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use alacritty_terminal::event::WindowSize;
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term, TermMode};
+#[cfg(unix)]
 use alacritty_terminal::tty;
 use alacritty_terminal::vte::ansi;
 use mx_core::persist::CursorShape;
@@ -52,6 +54,7 @@ pub struct GridSize {
 impl GridSize {
     pub const DEFAULT: GridSize = GridSize { cols: 80, rows: 24, cell_width: 8, cell_height: 16 };
 
+    #[cfg(unix)]
     pub(crate) fn window_size(self) -> WindowSize {
         WindowSize {
             num_lines: self.rows,
@@ -266,7 +269,7 @@ impl TerminalSession {
         st.slept_away = finished.hibernated;
     }
 
-    fn adopt_remote(&self, stream: std::os::unix::net::UnixStream, ready: &ptyd::Ready) -> anyhow::Result<()> {
+    fn adopt_remote(&self, stream: ptyd::Stream, ready: &ptyd::Ready) -> anyhow::Result<()> {
         let mut st = lock(&self.shared.state);
         self.retire_life(&mut st);
         st.started = true;
@@ -363,10 +366,42 @@ impl TerminalSession {
     }
 
     fn start(&self, launch: Launch, cwd: Option<PathBuf>, env: &HashMap<String, String>) -> anyhow::Result<()> {
-        let plan = spawn::plan(mx_sys::shell::shell(), mx_sys::shell::env(), &launch, cwd, env);
+        let shell = match launch {
+            Launch::Shell => mx_sys::shell::interactive_shell(),
+            _ => mx_sys::shell::shell(),
+        };
+        let plan = spawn::plan(shell, mx_sys::shell::env(), &launch, cwd, env);
         if self.spawn_remote(&plan) {
             return Ok(());
         }
+        self.start_local(plan)
+    }
+
+    #[cfg(windows)]
+    fn start_local(&self, plan: spawn::SpawnPlan) -> anyhow::Result<()> {
+        let size = self.size();
+        let mut st = lock(&self.shared.state);
+        self.retire_life(&mut st);
+        let pty = crate::conpty::spawn(&plan.program, &plan.args, plan.cwd.as_ref(), &plan.env, size)?;
+        st.started = true;
+        st.exited = false;
+        st.exit_code = None;
+        st.pid = Some(pty.pid);
+        st.remote = false;
+        let owner: Weak<dyn LifeOwner> = Arc::downgrade(&self.shared) as Weak<dyn LifeOwner>;
+        st.life = Some(io::start(
+            pty,
+            st.generation,
+            self.shared.term.clone(),
+            self.shared.port.clone(),
+            self.shared.feeder.clone(),
+            owner,
+        )?);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn start_local(&self, plan: spawn::SpawnPlan) -> anyhow::Result<()> {
         let options = tty::Options {
             shell: Some(tty::Shell::new(plan.program, plan.args)),
             working_directory: plan.cwd,

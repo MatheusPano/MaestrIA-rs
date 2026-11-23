@@ -21,10 +21,16 @@ pub struct SpawnPlan {
 
 pub fn argv(shell: &str, launch: &Launch) -> (String, Vec<String>) {
     match launch {
+        Launch::Shell if is_powershell(shell) => (shell.to_owned(), vec!["-NoLogo".into()]),
         Launch::Shell => (shell.to_owned(), vec!["-l".into()]),
         Launch::Command(cmd) => (shell.to_owned(), vec!["-lc".into(), format!("exec {cmd}")]),
         Launch::Program { program, args } => (program.clone(), args.clone()),
     }
+}
+
+fn is_powershell(shell: &str) -> bool {
+    let name = shell.rsplit(['/', '\\']).next().unwrap_or(shell).to_ascii_lowercase();
+    matches!(name.trim_end_matches(".exe"), "pwsh" | "powershell")
 }
 
 pub fn child_env(
@@ -79,6 +85,14 @@ mod tests {
 
     fn env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs.iter().map(|(k, v)| ((*k).into(), (*v).into())).collect()
+    }
+
+    #[test]
+    fn powershell_opens_without_the_login_flag_it_rejects() {
+        let (_, a) = argv(r"C:\Program Files\PowerShell\7\pwsh.exe", &Launch::Shell);
+        assert_eq!(a, ["-NoLogo"]);
+        let (_, a) = argv("powershell.exe", &Launch::Shell);
+        assert_eq!(a, ["-NoLogo"]);
     }
 
     #[test]

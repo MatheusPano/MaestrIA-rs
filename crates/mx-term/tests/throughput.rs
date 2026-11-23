@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use std::time::{Duration, Instant};
 
 use mx_term::{GridSize, SpawnOptions, TermEvent, TerminalSession};

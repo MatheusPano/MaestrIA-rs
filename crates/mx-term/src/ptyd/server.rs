@@ -1,9 +1,17 @@
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::fs::File;
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{self, ErrorKind};
+#[cfg(unix)]
+use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsFd;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
+#[cfg(windows)]
+use uds_windows::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -11,21 +19,31 @@ use std::time::{Duration, Instant};
 
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::term::{Config, Term};
+#[cfg(unix)]
 use alacritty_terminal::tty::{self, ChildEvent, EventedPty, EventedReadWrite, Pty};
 use alacritty_terminal::vte::ansi::Processor;
+#[cfg(unix)]
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
+use super::Stream as UnixStream;
 use super::replay::replay;
 use super::wire::{self, Attach, Exit, Failure, Finished, Hibernate, Info, Prune, Ready, Size, Spawn};
 use crate::scrubber::VtScrubber;
 use crate::session::GridSize;
 use crate::signals;
 
+#[cfg(unix)]
 const READ_CHUNK: usize = 0x10000;
+#[cfg(unix)]
 const CHILD_CHECK: Duration = Duration::from_millis(500);
+#[cfg(unix)]
 const HUP_RECHECK: Duration = Duration::from_millis(10);
 const CLIENT_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(unix)]
 const INPUT_RECHECK: Duration = Duration::from_secs(1);
+#[cfg(unix)]
+const ACCEPT_TICK: Duration = Duration::from_secs(1);
+#[cfg(windows)]
 const ACCEPT_TICK: Duration = Duration::from_secs(1);
 const IDLE_EXIT: Duration = Duration::from_secs(60);
 
@@ -33,6 +51,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+#[cfg(unix)]
 fn window(size: GridSize) -> alacritty_terminal::event::WindowSize {
     alacritty_terminal::event::WindowSize {
         num_lines: size.rows,
@@ -42,6 +61,7 @@ fn window(size: GridSize) -> alacritty_terminal::event::WindowSize {
     }
 }
 
+#[cfg(unix)]
 fn timespec(d: Duration) -> Timespec {
     Timespec { tv_sec: d.as_secs() as _, tv_nsec: d.subsec_nanos() as _ }
 }
@@ -104,7 +124,10 @@ struct Session {
     key: String,
     pid: u32,
     done: AtomicBool,
+    #[cfg(unix)]
     pty: Mutex<File>,
+    #[cfg(windows)]
+    pty: crate::conpty::Handle,
     mirror: Mutex<Mirror>,
 }
 
@@ -129,7 +152,7 @@ impl Session {
             && !m.hibernating
             && m.exited.is_none()
             && m.hibernate_after.is_some_and(|after| m.quiet_since.elapsed() >= after)
-            && (!m.idle_shell || signals::idle_shell(&*lock(&self.pty), self.pid));
+            && (!m.idle_shell || self.idle_shell());
         if due {
             m.hibernating = true;
         }
@@ -148,6 +171,32 @@ impl Session {
         }
     }
 
+    #[cfg(unix)]
+    fn idle_shell(&self) -> bool {
+        signals::idle_shell(&*lock(&self.pty), self.pid)
+    }
+
+    #[cfg(windows)]
+    fn idle_shell(&self) -> bool {
+        false
+    }
+
+    #[cfg(unix)]
+    fn redraw(&self) {
+        signals::redraw(&*lock(&self.pty));
+    }
+
+    #[cfg(windows)]
+    fn redraw(&self) {}
+
+    #[cfg(windows)]
+    fn input(&self, bytes: &[u8]) {
+        if self.alive() {
+            self.pty.write(bytes);
+        }
+    }
+
+    #[cfg(unix)]
     fn input(&self, mut bytes: &[u8]) {
         let file = lock(&self.pty);
         while !bytes.is_empty() && self.alive() {
@@ -171,6 +220,16 @@ impl Session {
         m.size = size;
         m.term.resize(size);
         drop(m);
+        self.resize_pty(size);
+    }
+
+    #[cfg(windows)]
+    fn resize_pty(&self, size: GridSize) {
+        self.pty.resize(size);
+    }
+
+    #[cfg(unix)]
+    fn resize_pty(&self, size: GridSize) {
         let file = lock(&self.pty);
         let ws = rustix::termios::Winsize {
             ws_row: size.rows,
@@ -239,21 +298,21 @@ impl Daemon {
 }
 
 pub fn run(socket: &Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
     let _ = rustix::process::setsid();
     serve(socket)
 }
 
 pub fn serve(socket: &Path) -> anyhow::Result<()> {
     let rev = super::rev();
-    let listener = bind(socket)?;
-    listener.set_nonblocking(true)?;
+    let listener = clients(bind(socket)?)?;
     let daemon = Arc::new(Daemon { rev: rev.clone(), socket: socket.to_owned(), ..Daemon::default() });
     let stop = Arc::new(AtomicBool::new(false));
     let mut idle_since: Option<Instant> = None;
     log::info!("ptyd {rev} listening on {}", socket.display());
     while !stop.load(Ordering::Acquire) {
-        match listener.accept() {
-            Ok((stream, _)) => {
+        match accept(&listener) {
+            Ok(stream) => {
                 if !same_user(&stream) {
                     continue;
                 }
@@ -271,9 +330,7 @@ pub fn serve(socket: &Path) -> anyhow::Result<()> {
                 }
                 continue;
             }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                let _ = poll(&mut [PollFd::new(&listener, PollFlags::IN)], Some(&timespec(ACCEPT_TICK)));
-            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => wait_for_client(&listener),
             Err(e) if e.kind() == ErrorKind::Interrupted => {}
             Err(e) => return Err(e.into()),
         }
@@ -292,6 +349,55 @@ pub fn serve(socket: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+type Clients = UnixListener;
+
+#[cfg(unix)]
+fn clients(listener: UnixListener) -> io::Result<Clients> {
+    listener.set_nonblocking(true)?;
+    Ok(listener)
+}
+
+#[cfg(unix)]
+fn accept(listener: &Clients) -> io::Result<UnixStream> {
+    listener.accept().map(|(stream, _)| stream)
+}
+
+#[cfg(unix)]
+fn wait_for_client(listener: &Clients) {
+    let _ = poll(&mut [PollFd::new(listener, PollFlags::IN)], Some(&timespec(ACCEPT_TICK)));
+}
+
+#[cfg(windows)]
+type Clients = std::sync::mpsc::Receiver<io::Result<UnixStream>>;
+
+#[cfg(windows)]
+fn clients(listener: UnixListener) -> io::Result<Clients> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new().name("ptyd-accept".into()).spawn(move || {
+        loop {
+            let accepted = listener.accept().map(|(stream, _)| stream);
+            if tx.send(accepted).is_err() {
+                return;
+            }
+        }
+    })?;
+    Ok(rx)
+}
+
+#[cfg(windows)]
+fn accept(clients: &Clients) -> io::Result<UnixStream> {
+    use std::sync::mpsc::RecvTimeoutError;
+    match clients.recv_timeout(ACCEPT_TICK) {
+        Ok(accepted) => accepted,
+        Err(RecvTimeoutError::Timeout) => Err(ErrorKind::WouldBlock.into()),
+        Err(RecvTimeoutError::Disconnected) => Err(io::Error::other("ptyd accept thread ended")),
+    }
+}
+
+#[cfg(windows)]
+fn wait_for_client(_: &Clients) {}
+
 fn bind(socket: &Path) -> io::Result<UnixListener> {
     if let Some(dir) = socket.parent() {
         std::fs::create_dir_all(dir)?;
@@ -307,6 +413,7 @@ fn bind(socket: &Path) -> io::Result<UnixListener> {
         }
         Err(e) => return Err(e),
     };
+    #[cfg(unix)]
     std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
 }
@@ -316,7 +423,7 @@ fn same_user(stream: &UnixStream) -> bool {
     rustix::net::sockopt::socket_peercred(stream).is_ok_and(|c| c.uid == rustix::process::getuid())
 }
 
-// macOS has no SO_PEERCRED; there the 0600 socket file is what keeps other users out.
+// macOS has no SO_PEERCRED and Windows no peer uid; there the private socket file keeps other users out.
 #[cfg(not(target_os = "linux"))]
 fn same_user(_: &UnixStream) -> bool {
     true
@@ -404,15 +511,7 @@ fn spawn(daemon: &Arc<Daemon>, req: Spawn, client: Client) -> anyhow::Result<Arc
         anyhow::bail!("a sessão {} já está viva", req.key);
     }
     let size = GridSize::from(req.size);
-    let options = tty::Options {
-        shell: Some(tty::Shell::new(req.program, req.args)),
-        working_directory: req.cwd,
-        drain_on_exit: true,
-        env: req.env,
-    };
-    let pty = tty::new(&options, window(size), 0)?;
-    let pid = pty.child().id();
-    let file = pty.file().try_clone()?;
+    let (pty, pid, handle) = open_pty(&req, size)?;
     let config = Config { scrolling_history: req.scrollback, ..Config::default() };
     let mirror = Mirror {
         term: Term::new(config, &size, VoidListener),
@@ -431,7 +530,7 @@ fn spawn(daemon: &Arc<Daemon>, req: Spawn, client: Client) -> anyhow::Result<Arc
         key: req.key.clone(),
         pid,
         done: AtomicBool::new(false),
-        pty: Mutex::new(file),
+        pty: handle,
         mirror: Mutex::new(mirror),
     });
     lock(&daemon.sessions).insert(req.key, session.clone());
@@ -472,10 +571,56 @@ fn attach(daemon: &Arc<Daemon>, key: &str, client: Client) -> Option<Arc<Session
     m.send_json(wire::READY, &ready);
     m.send(wire::DATA, &screen);
     drop(guard);
-    signals::redraw(&*lock(&session.pty));
+    session.redraw();
     Some(session)
 }
 
+#[cfg(unix)]
+fn open_pty(req: &Spawn, size: GridSize) -> anyhow::Result<(Pty, u32, Mutex<File>)> {
+    let options = tty::Options {
+        shell: Some(tty::Shell::new(req.program.clone(), req.args.clone())),
+        working_directory: req.cwd.clone(),
+        drain_on_exit: true,
+        env: req.env.clone(),
+    };
+    let pty = tty::new(&options, window(size), 0)?;
+    let pid = pty.child().id();
+    let file = pty.file().try_clone()?;
+    Ok((pty, pid, Mutex::new(file)))
+}
+
+#[cfg(windows)]
+fn open_pty(req: &Spawn, size: GridSize) -> anyhow::Result<(crate::conpty::Conpty, u32, crate::conpty::Handle)> {
+    let pty = crate::conpty::spawn(&req.program, &req.args, req.cwd.as_ref(), &req.env, size)?;
+    let (pid, handle) = (pty.pid, pty.handle.clone());
+    Ok((pty, pid, handle))
+}
+
+#[cfg(windows)]
+fn pump(daemon: &Arc<Daemon>, session: &Arc<Session>, mut pty: crate::conpty::Conpty) {
+    let never = AtomicBool::new(false);
+    let mut next_check = Instant::now();
+    let code = pty
+        .run(crate::conpty::Hooks {
+            stop: &never,
+            deadline: &mut || session.sync_deadline(),
+            data: &mut |bytes| session.output(bytes),
+            tick: &mut || {
+                session.expire_sync();
+                if Instant::now() >= next_check {
+                    next_check = Instant::now() + Duration::from_millis(500);
+                    if session.due_to_hibernate() {
+                        log::info!("ptyd hibernating idle session {}", session.key);
+                        signals::hang_up(session.pid);
+                    }
+                }
+            },
+        })
+        .flatten();
+    finish(daemon, session, code);
+}
+
+#[cfg(unix)]
 fn pump(daemon: &Arc<Daemon>, session: &Arc<Session>, mut pty: Pty) {
     let mut buf = vec![0u8; READ_CHUNK];
     let mut hung_up = false;
@@ -517,6 +662,10 @@ fn pump(daemon: &Arc<Daemon>, session: &Arc<Session>, mut pty: Pty) {
             }
         }
     };
+    finish(daemon, session, code);
+}
+
+fn finish(daemon: &Arc<Daemon>, session: &Arc<Session>, code: Option<i32>) {
     let mut m = lock(&session.mirror);
     m.exited = Some(code);
     session.done.store(true, Ordering::Release);
@@ -544,10 +693,12 @@ fn save_finished(socket: &Path, key: &str, m: &Mirror, code: Option<i32>) -> io:
     let finished = Finished { code, size: m.size.into(), screen, hibernated: m.hibernating };
     let temp = file.with_extension("tmp");
     std::fs::write(&temp, serde_json::to_vec(&finished).map_err(io::Error::other)?)?;
+    #[cfg(unix)]
     std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o600))?;
     std::fs::rename(&temp, &file)
 }
 
+#[cfg(unix)]
 fn read_all(session: &Session, pty: &mut Pty, buf: &mut [u8]) -> bool {
     loop {
         match pty.reader().read(buf) {
