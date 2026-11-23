@@ -3721,6 +3721,7 @@ name = "mx-core"
 version = "3.9.3"
 dependencies = [
  "chrono",
+ "nix 0.29.0",
  "proptest",
  "regex",
  "serde_json",

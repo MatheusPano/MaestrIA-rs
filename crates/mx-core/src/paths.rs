@@ -4,7 +4,8 @@ pub const STATE_DIR_ENV: &str = "MAESTRIA_HOME";
 pub const CONFIG_FILE: &str = "config.json";
 
 pub fn home() -> Option<String> {
-    std::env::var("HOME").ok().filter(|h| !h.is_empty())
+    let var = |k| std::env::var(k).ok().filter(|h: &String| !h.is_empty());
+    var("HOME").or_else(|| if cfg!(windows) { var("USERPROFILE") } else { None })
 }
 
 pub fn expand_home(path: &str) -> String {
