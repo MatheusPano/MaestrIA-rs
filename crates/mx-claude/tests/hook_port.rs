@@ -32,6 +32,27 @@ async fn occupied_saved_port_falls_back_to_a_free_one_and_remembers_it() {
 }
 
 #[tokio::test]
+async fn sessions_announced_on_a_port_lost_at_startup_still_reach_the_panel() {
+    let state = tempfile::tempdir().unwrap();
+    let (mut first, _rx) = start(state.path()).await;
+    let announced = first.port();
+    first.stop().await;
+
+    let squatter = std::net::TcpListener::bind(("127.0.0.1", announced)).unwrap();
+    let (mut second, _rx2) = start(state.path()).await;
+    assert_ne!(second.port(), announced);
+    second.stop().await;
+    drop(squatter);
+
+    let (third, mut rx) = start(state.path()).await;
+    let (status, _) = post(announced, "/hook/tab1", r#"{"hook_event_name":"Stop"}"#).await;
+    assert_eq!(status, 200);
+    assert!(matches!(rx.recv().await, Some(ServerEvent::Hook { tab_id, .. }) if tab_id == "tab1"));
+    let (status, _) = post(third.port(), "/hook/tab2", r#"{"hook_event_name":"Stop"}"#).await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
 async fn unreadable_port_file_does_not_stop_the_server() {
     let state = tempfile::tempdir().unwrap();
     std::fs::write(port_file(state.path()), "nem número\n").unwrap();

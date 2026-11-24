@@ -15,6 +15,8 @@ type PendingAlert = (String, String, Option<(String, String, String)>);
 
 impl Store {
     pub fn apply_status(&mut self, tab: &str, payload: &Value) {
+        let Some(tab) = self.hook_tab(tab, payload.get("session_id").and_then(Value::as_str)) else { return };
+        let tab = tab.as_str();
         let usage = ContextUsage::from_statusline(payload);
         let Some(t) = self.tab_mut(tab) else { return };
         if t.context == usage {
@@ -27,6 +29,8 @@ impl Store {
     }
 
     pub fn apply_hook(&mut self, tab: &str, name: &str, payload: Map<String, Value>) {
+        let Some(tab) = self.hook_tab(tab, payload.get("session_id").and_then(Value::as_str)) else { return };
+        let tab = tab.as_str();
         let now = self.now();
         let home = self.opts.home.clone();
         let chat_home = self.opts.chat_home.clone();

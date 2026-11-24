@@ -23,6 +23,7 @@ mod replace_pane;
 mod reorder;
 mod rested;
 mod search;
+mod stale_tabs;
 mod session_api;
 mod suggestions;
 mod timing;

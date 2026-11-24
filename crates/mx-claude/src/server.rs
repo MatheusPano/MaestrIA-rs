@@ -37,6 +37,10 @@ pub fn port_file(state_dir: &Path) -> PathBuf {
     state_dir.join("hook-port")
 }
 
+pub fn past_ports_file(state_dir: &Path) -> PathBuf {
+    state_dir.join("hook-ports-past")
+}
+
 pub fn status_line_file(state_dir: &Path) -> PathBuf {
     state_dir.join("statusline.sh")
 }
@@ -57,14 +61,16 @@ pub struct HookServer {
     state_dir: PathBuf,
     sink: SharedSink,
     tools: SharedTools,
-    task: Option<JoinHandle<()>>,
+    tasks: Vec<JoinHandle<()>>,
 }
+
+const PAST_PORTS_KEPT: usize = 16;
 
 impl HookServer {
     pub async fn start(state_dir: &Path, events: UnboundedSender<ServerEvent>) -> io::Result<Self> {
         let listener = bind(state_dir).await?;
         let port = listener.local_addr()?.port();
-        remember(state_dir, port);
+        let past = remember(state_dir, port);
         write_status_line(state_dir);
 
         let sink: SharedSink = Arc::new(RwLock::new(Arc::new(NoSink)));
@@ -75,19 +81,24 @@ impl HookServer {
             sink: sink.clone(),
             tools: tools.clone(),
         };
-        let app = Router::new()
-            .fallback(route)
-            .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-            .with_state(shared);
-        let task = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
+        let mut tasks = vec![serve(listener, shared.clone())];
+        for old in past {
+            if let Ok(listener) = TcpListener::bind(("127.0.0.1", old)).await {
+                tasks.push(serve(
+                    listener,
+                    Shared {
+                        port: old,
+                        ..shared.clone()
+                    },
+                ));
+            }
+        }
         Ok(Self {
             port,
             state_dir: state_dir.to_owned(),
             sink,
             tools,
-            task: Some(task),
+            tasks,
         })
     }
 
@@ -96,7 +107,7 @@ impl HookServer {
     }
 
     pub fn running(&self) -> bool {
-        self.task.is_some()
+        !self.tasks.is_empty()
     }
 
     pub fn set_sink(&self, sink: Arc<dyn SuggestionSink>) {
@@ -112,7 +123,7 @@ impl HookServer {
     }
 
     pub async fn stop(&mut self) {
-        if let Some(task) = self.task.take() {
+        for task in std::mem::take(&mut self.tasks) {
             task.abort();
             let _ = task.await;
         }
@@ -140,7 +151,7 @@ impl HookServer {
 
 impl Drop for HookServer {
     fn drop(&mut self) {
-        if let Some(task) = self.task.take() {
+        for task in self.tasks.drain(..) {
             task.abort();
         }
     }
@@ -161,12 +172,42 @@ async fn bind(state_dir: &Path) -> io::Result<TcpListener> {
     TcpListener::bind(("127.0.0.1", 0)).await
 }
 
-fn remember(state_dir: &Path, port: u16) {
-    if saved(state_dir) == Some(port) {
-        return;
+fn serve(listener: TcpListener, shared: Shared) -> JoinHandle<()> {
+    let app = Router::new()
+        .fallback(route)
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .with_state(shared);
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    })
+}
+
+fn past_ports(state_dir: &Path) -> Vec<u16> {
+    std::fs::read_to_string(past_ports_file(state_dir))
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|p| p.parse::<u16>().ok())
+        .filter(|p| *p > 1024)
+        .collect()
+}
+
+fn remember(state_dir: &Path, port: u16) -> Vec<u16> {
+    let mut past = past_ports(state_dir);
+    let previous = saved(state_dir);
+    if let Some(previous) = previous.filter(|p| *p != port && !past.contains(p)) {
+        past.insert(0, previous);
     }
+    past.retain(|p| *p != port);
+    past.truncate(PAST_PORTS_KEPT);
     let _ = std::fs::create_dir_all(state_dir);
-    let _ = std::fs::write(port_file(state_dir), format!("{port}\n"));
+    if previous != Some(port) {
+        let _ = std::fs::write(port_file(state_dir), format!("{port}\n"));
+    }
+    if past != past_ports(state_dir) {
+        let text: String = past.iter().map(|p| format!("{p}\n")).collect();
+        let _ = std::fs::write(past_ports_file(state_dir), text);
+    }
+    past
 }
 
 fn write_status_line(state_dir: &Path) {

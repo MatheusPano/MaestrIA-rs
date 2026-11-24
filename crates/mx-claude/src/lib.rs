@@ -12,5 +12,5 @@ pub mod usage;
 
 pub use context::{ChipLevel, ContextUsage, format_tokens};
 pub use launch::{ClaudeLaunch, mcp_config_for, settings_for, settings_with_tools, user_status_line};
-pub use server::{HookServer, STATUS_LINE_SCRIPT, ServerEvent, port_file, status_line_file};
+pub use server::{HookServer, STATUS_LINE_SCRIPT, ServerEvent, past_ports_file, port_file, status_line_file};
 pub use sh::sh_quote;
