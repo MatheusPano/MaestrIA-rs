@@ -115,6 +115,7 @@ async fn run_trims_output_and_reports_the_exit_code() {
     assert!(!r.ok());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn run_uses_the_given_cwd() {
     let dir = tempfile::tempdir().unwrap();

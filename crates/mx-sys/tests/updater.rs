@@ -102,7 +102,13 @@ fn the_mac_bundle_is_the_app_folder_around_the_executable() {
 
 #[test]
 fn the_asset_is_the_maestria_rs_package_for_this_platform() {
-    let want = if cfg!(target_os = "macos") { "_macos.dmg" } else { "_amd64.deb" };
+    let want = if cfg!(target_os = "macos") {
+        "_macos.dmg"
+    } else if cfg!(windows) {
+        "_x64.msi"
+    } else {
+        "_amd64.deb"
+    };
     assert_eq!(mx_sys::updater::ASSET_SUFFIX, want);
     assert_eq!(mx_sys::updater::PACKAGE_PREFIX, "maestria-rs_");
 }
@@ -300,8 +306,8 @@ mod network {
     #[tokio::test]
     async fn the_latest_release_answers_with_its_etag_and_maestria_rs_asset() {
         let body = json!({"tag_name": "v3.1.0", "assets": [
-            {"name": "maestria_3.1.0-1_amd64.deb", "browser_download_url": "https://x/flutter"},
-            {"name": "maestria-rs_3.1.0-1_amd64.deb", "browser_download_url": "https://x/rs"}
+            {"name": format!("maestria_3.1.0-1{}", mx_sys::updater::ASSET_SUFFIX), "browser_download_url": "https://x/flutter"},
+            {"name": format!("maestria-rs_3.1.0-1{}", mx_sys::updater::ASSET_SUFFIX), "browser_download_url": "https://x/rs"}
         ]});
         let base = serve(HashMap::from([("/latest".to_owned(), (200, body.to_string().into_bytes())), ("/same".to_owned(), (304, vec![]))]));
         let Latest::Found { release, etag } = latest(&format!("{base}/latest"), "3.0.0", None).await.unwrap() else { panic!() };
