@@ -243,6 +243,9 @@ pub async fn run_with_timeout(command: &str, cwd: Option<&str>, limit: Option<Du
         Some(limit) => match tokio::time::timeout(limit, &mut waited).await {
             Ok(done) => done,
             Err(_) => {
+                if let Some(pid) = group.0.take() {
+                    kill_tree(pid).await;
+                }
                 return output(TIMED_OUT, "", format!("timed out after {} ms", limit.as_millis()));
             }
         },
@@ -263,9 +266,19 @@ struct GroupKill(Option<u32>);
 impl Drop for GroupKill {
     fn drop(&mut self) {
         if let Some(pid) = self.0 {
-            mx_core::proc::kill_group_now(pid);
+            mx_core::proc::kill_group(pid, true);
         }
     }
+}
+
+// taskkill /T only finds the tree while its root is alive, so it has to finish before kill_on_drop.
+async fn kill_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        let _ = tokio::process::Command::from(mx_core::proc::taskkill(pid)).status().await;
+    }
+    #[cfg(unix)]
+    mx_core::proc::kill_group(pid, true);
 }
 
 pub fn ps_quote(value: &str) -> String {

@@ -41,12 +41,6 @@ pub fn kill_group(pid: u32, hard: bool) {
     }
 }
 
-#[cfg(unix)]
-pub fn kill_group_now(pid: u32) {
-    kill_group(pid, true);
-}
-
-// Console programs ignore a soft taskkill, so on Windows every kill is the hard one.
 #[cfg(windows)]
 pub fn kill_group(pid: u32, _hard: bool) {
     if let Ok(mut child) = taskkill(pid).spawn() {
@@ -54,14 +48,8 @@ pub fn kill_group(pid: u32, _hard: bool) {
     }
 }
 
-// Waits for taskkill: /T only finds the tree while its root is still alive.
 #[cfg(windows)]
-pub fn kill_group_now(pid: u32) {
-    let _ = taskkill(pid).status();
-}
-
-#[cfg(windows)]
-fn taskkill(pid: u32) -> Command {
+pub fn taskkill(pid: u32) -> Command {
     let mut cmd = Command::new("taskkill");
     cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
     hide_window(&mut cmd);
