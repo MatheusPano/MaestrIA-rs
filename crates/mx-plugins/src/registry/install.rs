@@ -339,15 +339,26 @@ fn windows_tar() -> String {
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    copy_dir_once(from, to, &mut Vec::new())
+}
+
+fn copy_dir_once(from: &Path, to: &Path, ancestors: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    let real = fs::canonicalize(from)?;
+    if ancestors.contains(&real) {
+        return Ok(());
+    }
+    ancestors.push(real);
     fs::create_dir_all(to)?;
     for entry in fs::read_dir(from)? {
         let entry = entry?;
         let target = to.join(entry.file_name());
-        if fs::metadata(entry.path())?.is_dir() {
-            copy_dir(&entry.path(), &target)?;
+        let Ok(meta) = fs::metadata(entry.path()) else { continue };
+        if meta.is_dir() {
+            copy_dir_once(&entry.path(), &target, ancestors)?;
         } else {
             fs::copy(entry.path(), target)?;
         }
     }
+    ancestors.pop();
     Ok(())
 }

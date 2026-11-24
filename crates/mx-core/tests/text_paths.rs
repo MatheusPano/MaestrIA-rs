@@ -137,3 +137,13 @@ proptest! {
         prop_assert_eq!(back.unwrap(), at);
     }
 }
+
+#[test]
+fn a_path_is_within_its_root_even_when_the_root_ends_with_a_separator() {
+    use mx_core::paths::is_within;
+    assert!(is_within("/a/b", "/a"));
+    assert!(is_within("/a", "/a"));
+    assert!(!is_within("/ab", "/a"));
+    assert!(is_within("/a/b", "/a/"));
+    assert!(is_within("/home/x", "/"));
+}
