@@ -89,7 +89,7 @@ pub fn on_quit(pid: u32, plan: &QuitPlan) {
 }
 
 fn ps_quote(value: &Path) -> String {
-    format!("'{}'", value.to_string_lossy().replace('\'', "''"))
+    crate::shell::ps_quote(&value.to_string_lossy())
 }
 
 pub fn windows_quit_script(pid: u32, exe: &Path, msi: Option<&Path>, relaunch: bool) -> String {

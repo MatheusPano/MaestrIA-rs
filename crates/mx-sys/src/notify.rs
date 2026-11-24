@@ -32,9 +32,7 @@ pub fn alert_command_with_image(platform: Platform, title: &str, body: &str, ima
 
 const POWERSHELL_AUMID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe";
 
-fn ps_string(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
+use crate::shell::ps_quote as ps_string;
 
 fn xml_text(value: &str) -> String {
     value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")

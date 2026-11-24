@@ -263,7 +263,14 @@ struct GroupKill(Option<u32>);
 impl Drop for GroupKill {
     fn drop(&mut self) {
         if let Some(pid) = self.0 {
-            mx_core::proc::kill_group(pid, true);
+            mx_core::proc::kill_group_now(pid);
         }
     }
 }
+
+pub fn ps_quote(value: &str) -> String {
+    let doubled: String = value.chars().flat_map(|c| if PS_QUOTES.contains(&c) { vec![c, c] } else { vec![c] }).collect();
+    format!("'{doubled}'")
+}
+
+const PS_QUOTES: [char; 5] = ['\'', '\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'];

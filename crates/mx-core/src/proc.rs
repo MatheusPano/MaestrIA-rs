@@ -41,20 +41,32 @@ pub fn kill_group(pid: u32, hard: bool) {
     }
 }
 
+#[cfg(unix)]
+pub fn kill_group_now(pid: u32) {
+    kill_group(pid, true);
+}
+
 // Console programs ignore a soft taskkill, so on Windows every kill is the hard one.
 #[cfg(windows)]
 pub fn kill_group(pid: u32, _hard: bool) {
+    if let Ok(mut child) = taskkill(pid).spawn() {
+        std::thread::spawn(move || child.wait());
+    }
+}
+
+// Waits for taskkill: /T only finds the tree while its root is still alive.
+#[cfg(windows)]
+pub fn kill_group_now(pid: u32) {
+    let _ = taskkill(pid).status();
+}
+
+#[cfg(windows)]
+fn taskkill(pid: u32) -> Command {
     let mut cmd = Command::new("taskkill");
     cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
     hide_window(&mut cmd);
-    let spawned = cmd
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    if let Ok(mut child) = spawned {
-        std::thread::spawn(move || child.wait());
-    }
+    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd
 }
 
 pub fn exit_code(status: &ExitStatus) -> i32 {
