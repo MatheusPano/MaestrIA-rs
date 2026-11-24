@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use mx_sys::git::{Git, WorktreeInfo, WorktreeSafety, parse_worktrees};
+#[cfg(unix)]
+use mx_sys::git::parse_worktrees;
+use mx_sys::git::{Git, WorktreeInfo, WorktreeSafety};
 use mx_sys::runner::Call;
 use mx_sys::{FakeRunner, ShResult, output};
 

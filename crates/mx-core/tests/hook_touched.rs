@@ -1,5 +1,7 @@
 use chrono::{Local, TimeZone};
-use mx_core::hook::{apply_with_home, shell_markdown};
+use mx_core::hook::apply_with_home;
+#[cfg(unix)]
+use mx_core::hook::shell_markdown;
 use mx_core::model::{ClaudeStatus, HookState};
 use mx_core::text::Time;
 use serde_json::{Value, json};

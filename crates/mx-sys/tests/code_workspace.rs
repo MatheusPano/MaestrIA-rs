@@ -1,6 +1,7 @@
+#[cfg(unix)]
+use mx_sys::code_workspace::normalize;
 use mx_sys::code_workspace::{
-    CodeWorkspace, WorkspaceImport, looks_like_one, name_of, normalize, parse_with, read_with,
-    strip_jsonc,
+    CodeWorkspace, WorkspaceImport, looks_like_one, name_of, parse_with, read_with, strip_jsonc,
 };
 
 const HOME: Option<&str> = Some("/home/eu");
