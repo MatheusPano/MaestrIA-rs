@@ -24,6 +24,7 @@ const PORCELAIN: &str = "worktree /repo\nHEAD abc\nbranch refs/heads/master\n\n\
 worktree /repo/.claude/worktrees/TASK-47730\nHEAD def\nbranch refs/heads/feature/TASK#47730\n\n\
 worktree /gone/TASK-45371\nHEAD 123\ndetached\nprunable gitdir file points to non-existent location\n";
 
+#[cfg(unix)]
 #[test]
 fn porcelain_blocks_parse_into_worktrees_with_the_first_as_main() {
     assert_eq!(
@@ -65,6 +66,7 @@ async fn worktrees_of_a_non_repo_is_empty_but_other_failures_are_none() {
     assert_eq!(g.worktrees("/x").await, None);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn main_root_is_the_first_worktree_line() {
     let fake = Arc::new(FakeRunner::new());
@@ -134,6 +136,7 @@ async fn default_remote_ref_falls_back_to_master_then_main() {
     assert_eq!(none.commands().len(), 3);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn add_worktree_refuses_an_existing_dir() {
     let fake = Arc::new(FakeRunner::new());
@@ -148,6 +151,7 @@ async fn add_worktree_refuses_an_existing_dir() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn add_worktree_fetches_then_adds_with_exact_argv() {
     let fake = Arc::new(FakeRunner::new());

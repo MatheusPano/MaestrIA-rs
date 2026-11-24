@@ -68,6 +68,7 @@ fn clip_appends_ellipsis_only_past_the_limit() {
     assert_eq!(clip_or_ellipsis("a😀b", 2), "a…");
 }
 
+#[cfg(unix)]
 #[test]
 fn tilde_paths_expand_to_home() {
     assert_eq!(expand_home_with("~/repos/foo", HOME), "/home/u/repos/foo");

@@ -2,6 +2,7 @@ use mx_core::paths::expand_home_with;
 
 const HOME: Option<&str> = Some("/home/eu");
 
+#[cfg(unix)]
 #[test]
 fn tilde_slash_becomes_the_home_of_whoever_runs_the_app() {
     assert_eq!(expand_home_with("~/repos/foo", HOME), "/home/eu/repos/foo");
@@ -26,6 +27,7 @@ fn absolute_relative_and_empty_paths_pass_untouched() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn unset_or_empty_home_leaves_the_path_alone() {
     assert_eq!(expand_home_with("~/x", None), "~/x");

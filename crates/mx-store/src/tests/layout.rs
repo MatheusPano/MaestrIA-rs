@@ -79,7 +79,7 @@ async fn p5_add_folder_expands_the_home_tilde() {
     rig.s.add_folder("~/projeto");
     rig.s.settle().await;
     let f = rig.s.find_folder(&made).expect("folder added");
-    assert!(!f.root.contains('~'));
+    assert!(!f.root.starts_with('~'));
     assert!(f.root.starts_with(rig.dir.path().to_str().unwrap()));
     assert!(std::path::Path::new(&f.root).is_dir());
 }

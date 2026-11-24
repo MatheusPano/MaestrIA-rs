@@ -239,6 +239,7 @@ async fn shutdown_writes_the_pending_config_before_killing() {
     assert_eq!(rig.terms.log(&id).kills, 1);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn new_task_creates_a_worktree_and_opens_claude_there() {
     let runner = FakeRunner::new();

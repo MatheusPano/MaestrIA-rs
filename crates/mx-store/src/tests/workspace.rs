@@ -77,7 +77,7 @@ async fn w17_import_reports_missing_folders_and_sticks() {
     import(&mut rig, &file).await;
     let r = rig.s.last_import().unwrap();
     assert_eq!(r.added.len(), 1);
-    assert!(r.missing[0].ends_with("/sumiu"));
+    assert!(std::path::Path::new(&r.missing[0]).ends_with("sumiu"));
     assert!(r.sticky());
     assert!(!rig.s.timers.is_set(&crate::TimerKey::Banner));
     assert_eq!(rig.s.banner(), Some("Workspace \"cefis\": 1 pasta adicionada, 1 não existe no disco"));

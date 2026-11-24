@@ -236,7 +236,7 @@ fn clicking_a_bare_markdown_name_resolves_against_cwd() {
     let t = term(80, 5, 100);
     t.feed(b"escrevi PLANO.md agora");
     let href = t.link_at(8, 0, dir.path().to_str()).unwrap();
-    let want = format!("{}/PLANO.md", dir.path().display());
+    let want = dir.path().join("PLANO.md").display().to_string();
     assert_eq!(mx_term::follow_link(&href, dir.path().to_str()), mx_term::LinkFollow::Reader(want));
     assert_eq!(t.link_at(2, 0, dir.path().to_str()), None);
 }

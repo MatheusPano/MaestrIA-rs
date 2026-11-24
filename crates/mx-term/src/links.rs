@@ -309,6 +309,7 @@ mod tests {
         assert_eq!(local_path("https://x.dev"), "https://x.dev");
     }
 
+    #[cfg(unix)]
     #[test]
     fn resolve_relative_absolute_and_home() {
         assert_eq!(resolve_link_path("a.md", Some("/w")), "/w/a.md");

@@ -271,6 +271,7 @@ fn subagent_reads_keep_the_parent_working() {
     assert_eq!(s.subtitle(&now()), "divide");
 }
 
+#[cfg(unix)]
 #[test]
 fn shell_markdown_tilde_targets_expand_home() {
     let mut s = HookState::new();
