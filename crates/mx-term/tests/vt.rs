@@ -258,6 +258,7 @@ fn the_default_cursor_shape_yields_to_the_program() {
     assert_eq!(kind(&t), Some(CursorKind::Underline));
 }
 
+#[cfg(unix)]
 const SCRATCHPAD_PNG: &str =
     "/tmp/claude-1000/-home-usuario/00000000-0000-4000-8000-000000000000/scratchpad/cefis-crawler-11-13-vs-11-16.png";
 
