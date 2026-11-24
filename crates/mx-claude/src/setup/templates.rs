@@ -69,7 +69,7 @@ const SETTINGS_TEMPLATE: &str = "{\n  \"permissions\": {\n    \"allow\": [],\n  
 
 pub fn template(rel: &str, folder_name: &str, title: &str) -> String {
     static LEADING_DIGITS: OnceLock<Regex> = OnceLock::new();
-    let base = rel.rsplit('/').next().unwrap_or(rel);
+    let base = mx_core::text::last_segment(rel);
     let name = if title.is_empty() {
         base.replace(".md", "")
     } else {

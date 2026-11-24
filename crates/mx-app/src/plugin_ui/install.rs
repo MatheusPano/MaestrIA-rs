@@ -18,7 +18,7 @@ pub const INSTALL_TITLE: &str = "Instalar plugin";
 
 pub fn uninstall_text(linked: bool, dir: &str) -> String {
     if linked {
-        let base = dir.trim_end_matches('/').rsplit('/').next().unwrap_or(dir);
+        let base = mx_core::text::last_segment(dir.trim_end_matches(mx_core::paths::SEPARATORS));
         format!("Sai da MaestrIA o link pra {base}. A sua pasta de desenvolvimento fica onde está, intocada.")
     } else {
         "A pasta do plugin e o que ele guardou vão embora. Pra ter de volta, instale de novo.".to_owned()

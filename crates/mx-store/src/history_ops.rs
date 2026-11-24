@@ -36,7 +36,7 @@ impl Store {
         if cwd.is_empty() {
             return None;
         }
-        let inside = |root: &str| cwd == root || cwd.starts_with(&format!("{root}/"));
+        let inside = |root: &str| mx_core::paths::is_within(cwd, root);
         self.folders
             .iter()
             .filter_map(|f| {

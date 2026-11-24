@@ -126,7 +126,7 @@ pub struct MxSetup {
 
 impl MxSetup {
     pub fn name(&self) -> &str {
-        self.root.rsplit('/').next().unwrap_or(&self.root)
+        mx_core::text::last_segment(&self.root)
     }
 
     pub fn to_json(&self) -> Value {

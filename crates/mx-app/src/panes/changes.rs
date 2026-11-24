@@ -174,7 +174,7 @@ impl ChangesView {
     }
 
     fn row(&self, mx: &Mx, ix: usize, path: &str, selected: bool, slot: &Slot, cx: &mut Context<Self>) -> AnyElement {
-        let name = path.rsplit('/').next().unwrap_or(path).to_owned();
+        let name = mx_core::text::last_segment(path).to_owned();
         let place = produced_where(path, &self.shown.cwd);
         let gone = !Path::new(path).exists();
         let stat = match slot {
@@ -354,11 +354,11 @@ fn open_produced(host: &Entity<StoreHost>, tab: &str, path: &str, cx: &mut App) 
 }
 
 pub fn produced_where(path: &str, cwd: &str) -> String {
-    let dir = path.rfind('/').map_or("", |i| &path[..i]);
+    let dir = path.rfind(mx_core::paths::SEPARATORS).map_or("", |i| &path[..i]);
     if dir == cwd {
         return String::new();
     }
-    match dir.strip_prefix(cwd).and_then(|rest| rest.strip_prefix('/')) {
+    match dir.strip_prefix(cwd).and_then(|rest| rest.strip_prefix(mx_core::paths::SEPARATORS)) {
         Some(rest) if !cwd.is_empty() => rest.to_owned(),
         _ => dir.to_owned(),
     }

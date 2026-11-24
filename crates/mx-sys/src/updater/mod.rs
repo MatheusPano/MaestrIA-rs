@@ -81,7 +81,7 @@ fn target_of(exe: &Path) -> Option<PathBuf> {
 
 impl Updater {
     pub fn new(current: &str, state_dir: &Path) -> Updater {
-        let exe = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()).map(plain_path);
+        let exe = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()).map(mx_core::paths::plain);
         let forced = std::env::var(ENABLED_ENV).is_ok_and(|v| v == "1");
         let target = exe.as_deref().and_then(target_of).or(if forced { exe } else { None });
         let mut u = Updater::with_enabled(current, state_dir, target.is_some());
@@ -255,12 +255,5 @@ impl Updater {
             return None;
         }
         Some(QuitPlan::Swap { bundle: self.target.clone()?, staged: self.staged.clone()?, relaunch: self.relaunch })
-    }
-}
-
-fn plain_path(path: PathBuf) -> PathBuf {
-    match path.to_str().and_then(|p| p.strip_prefix(r"\\?\")) {
-        Some(plain) if cfg!(windows) => PathBuf::from(plain),
-        _ => path,
     }
 }

@@ -67,7 +67,7 @@ pub struct MxDoc {
 }
 
 fn base_name(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
+    mx_core::text::last_segment(path)
 }
 
 fn to_micros(at: NaiveDateTime) -> NaiveDateTime {

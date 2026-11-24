@@ -1,11 +1,32 @@
 use std::path::PathBuf;
 
+pub const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+
+pub fn is_within(path: &str, root: &str) -> bool {
+    path == root || path.strip_prefix(root).is_some_and(|rest| rest.starts_with(SEPARATORS))
+}
+
+pub fn native(path: &str) -> String {
+    if cfg!(windows) { path.replace('/', "\\") } else { path.to_owned() }
+}
+
+pub fn plain(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str().filter(|_| cfg!(windows)) else { return path };
+    if let Some(share) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{share}"));
+    }
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 pub const STATE_DIR_ENV: &str = "MAESTRIA_HOME";
 pub const CONFIG_FILE: &str = "config.json";
 
 pub fn home() -> Option<String> {
     let var = |k| std::env::var(k).ok().filter(|h: &String| !h.is_empty());
-    var("HOME").or_else(|| if cfg!(windows) { var("USERPROFILE") } else { None })
+    if cfg!(windows) { var("USERPROFILE").or_else(|| var("HOME")) } else { var("HOME") }
 }
 
 pub fn expand_home(path: &str) -> String {
@@ -13,7 +34,8 @@ pub fn expand_home(path: &str) -> String {
 }
 
 pub fn expand_home_with(path: &str, home: Option<&str>) -> String {
-    if path != "~" && !path.starts_with("~/") {
+    let tilde_dir = path.strip_prefix('~').is_some_and(|r| r.starts_with(SEPARATORS));
+    if path != "~" && !tilde_dir {
         return path.to_owned();
     }
     let Some(home) = home.filter(|h| !h.is_empty()) else {
@@ -23,7 +45,8 @@ pub fn expand_home_with(path: &str, home: Option<&str>) -> String {
     if rest.is_empty() {
         return home.to_owned();
     }
-    format!("{}{rest}", home.strip_suffix('/').unwrap_or(home))
+    let home = home.trim_end_matches(SEPARATORS);
+    if cfg!(windows) { format!("{home}{}", rest.replace('/', "\\")) } else { format!("{home}{rest}") }
 }
 
 pub fn state_dir() -> PathBuf {

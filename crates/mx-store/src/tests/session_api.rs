@@ -178,7 +178,7 @@ async fn a_portrait_must_be_a_png_of_the_plugin_or_its_data() {
     let p = plugin("escritorio", &[], dir.path(), &data);
     let rosto = dir.path().join("rosto.png");
     rpc(&mut rig, &p, "session.portrait", json!({"tabId": id, "image": rosto})).await.unwrap();
-    let real = std::fs::canonicalize(&rosto).unwrap();
+    let real = mx_core::paths::plain(std::fs::canonicalize(&rosto).unwrap());
     assert_eq!(rig.s.portrait_of(&id), Some(real.to_str().unwrap()));
     let outro = elsewhere.path().join("outro.png");
     let foreign = rpc(&mut rig, &p, "session.portrait", json!({"tabId": id, "image": outro})).await.unwrap_err();
@@ -368,7 +368,7 @@ fn a_waiting_session_with_a_portrait_notifies_with_its_name_and_question() {
     let dir = tempfile::tempdir().unwrap();
     let png = dir.path().join("rosto.png");
     std::fs::write(&png, b"png").unwrap();
-    let real = std::fs::canonicalize(&png).unwrap().to_string_lossy().into_owned();
+    let real = mx_core::paths::plain(std::fs::canonicalize(&png).unwrap()).to_string_lossy().into_owned();
     let p = plugin("escritorio", &[], dir.path(), dir.path());
     rig.s.plugin_portrait(&p, id.clone(), Some(json!(png))).unwrap();
     rig.hook(&id, "UserPromptSubmit", json!({}));
