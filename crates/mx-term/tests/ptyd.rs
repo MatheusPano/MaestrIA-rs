@@ -63,7 +63,6 @@ fn a_session_outlives_the_app_and_comes_back_with_its_screen() {
     assert!(until(Duration::from_secs(5), || d.info().unwrap().sessions == 0));
 }
 
-#[cfg_attr(windows, ignore = "a session that ends while detached is not finished on Windows yet")]
 #[test]
 fn a_session_that_ended_while_detached_comes_back_finished_with_its_screen() {
     let dir = tempfile::tempdir().unwrap();
@@ -85,7 +84,6 @@ fn a_session_that_ended_while_detached_comes_back_finished_with_its_screen() {
     assert!(registry(&d).adopt("tab1").is_none());
 }
 
-#[cfg_attr(windows, ignore = "a session that ends while detached is not finished on Windows yet")]
 #[test]
 fn prune_sweeps_screens_no_panel_claimed() {
     let dir = tempfile::tempdir().unwrap();
@@ -154,7 +152,6 @@ fn prune_ends_the_sessions_nobody_adopted() {
     assert!(!kept.is_exited());
 }
 
-#[cfg_attr(windows, ignore = "a session that ends while detached is not finished on Windows yet")]
 #[test]
 fn a_quiet_session_without_the_app_is_hibernated_and_comes_back_asleep() {
     let dir = tempfile::tempdir().unwrap();

@@ -166,6 +166,9 @@ impl Conpty {
             if let Some((code, at)) = exited
                 && at.elapsed() >= DRAIN_AFTER_EXIT
             {
+                while let Ok(Msg::Data(bytes)) = self.output.try_recv() {
+                    (hooks.data)(&bytes);
+                }
                 return Some(code);
             }
             let limit = exited.map_or(next_check, |(_, at)| at + DRAIN_AFTER_EXIT);

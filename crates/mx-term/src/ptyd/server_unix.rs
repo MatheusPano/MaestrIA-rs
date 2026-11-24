@@ -149,4 +149,6 @@ impl Session {
         };
         let _ = rustix::termios::tcsetwinsize(file.as_fd(), ws);
     }
+
+    pub(super) fn after_detach(&self) {}
 }

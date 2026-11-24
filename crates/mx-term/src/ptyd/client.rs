@@ -167,13 +167,17 @@ fn exe_stamp(exe: &Path) -> Option<String> {
 }
 
 #[cfg(windows)]
+const STALE_COPY: Duration = Duration::from_secs(24 * 60 * 60);
+
+#[cfg(windows)]
 fn remove_old_copies(current: &Path) {
     let (Some(dir), Some(name)) = (current.parent(), current.file_name()) else { return };
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let other = entry.file_name();
         let other = other.to_string_lossy();
-        if other != name.to_string_lossy() && other.starts_with("ptyd-") && other.ends_with(".exe") {
+        let stale = entry.metadata().and_then(|m| m.created()).is_ok_and(|t| t.elapsed().is_ok_and(|age| age > STALE_COPY));
+        if stale && other != name.to_string_lossy() && other.starts_with("ptyd-") && other.ends_with(".exe") {
             let _ = std::fs::remove_file(entry.path());
         }
     }

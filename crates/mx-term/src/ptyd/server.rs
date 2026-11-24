@@ -59,6 +59,8 @@ struct Mirror {
     hibernate_after: Option<Duration>,
     hibernating: bool,
     idle_shell: bool,
+    #[cfg(windows)]
+    cursor_queries: platform::CursorQueries,
 }
 
 impl Mirror {
@@ -119,6 +121,8 @@ impl Session {
         m.scrubber.scrub_into(bytes, &mut m.scrubbed);
         m.parser.advance(&mut m.term, &m.scrubbed);
         m.quiet_since = Instant::now();
+        #[cfg(windows)]
+        self.cursor_queries_in(m, bytes);
         m.send(wire::DATA, bytes);
     }
 
@@ -164,6 +168,8 @@ impl Session {
             m.client = None;
             m.quiet_since = Instant::now();
         }
+        drop(m);
+        self.after_detach();
     }
 }
 
@@ -249,7 +255,7 @@ pub fn serve(socket: &Path) -> anyhow::Result<()> {
                 continue;
             }
             Err(e) if e.kind() == ErrorKind::WouldBlock => wait_for_client(&listener),
-            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) if matches!(e.kind(), ErrorKind::Interrupted | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted) => {}
             Err(e) => return Err(e.into()),
         }
         if daemon.idle() {
@@ -398,6 +404,8 @@ fn spawn(daemon: &Arc<Daemon>, req: Spawn, client: Client) -> anyhow::Result<Arc
         hibernate_after: None,
         hibernating: false,
         idle_shell: false,
+        #[cfg(windows)]
+        cursor_queries: platform::CursorQueries::default(),
     };
     let session = Arc::new(Session {
         key: req.key.clone(),
