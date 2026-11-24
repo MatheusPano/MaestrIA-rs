@@ -45,9 +45,8 @@ impl Handle {
     }
 
     fn close(&self) {
-        if let Ok(mut guard) = self.master.lock() {
-            guard.take();
-        }
+        let master = self.master.lock().ok().and_then(|mut guard| guard.take());
+        drop(master);
     }
 }
 
@@ -149,7 +148,6 @@ impl Conpty {
                 next_check = Instant::now() + CHILD_CHECK;
                 if let Some(code) = self.exit_code() {
                     exited = Some((code, Instant::now()));
-                    self.handle.close();
                 }
             }
             if let Some((code, at)) = exited
@@ -169,32 +167,37 @@ impl Conpty {
                                 (hooks.data)(&more);
                                 batched += more.len();
                             }
-                            Ok(Msg::Eof) => return Some(self.wait_exit(exited)),
+                            Ok(Msg::Eof) => return Some(self.wait_exit(exited, hooks.stop)),
                             _ => break,
                         }
                     }
                 }
-                Ok(Msg::Eof) | Err(RecvTimeoutError::Disconnected) => return Some(self.wait_exit(exited)),
+                Ok(Msg::Eof) | Err(RecvTimeoutError::Disconnected) => return Some(self.wait_exit(exited, hooks.stop)),
                 Ok(Msg::Wake) | Err(RecvTimeoutError::Timeout) => {}
             }
             (hooks.tick)();
         }
     }
 
-    fn wait_exit(&mut self, exited: Option<(Option<i32>, Instant)>) -> Option<i32> {
+    fn wait_exit(&mut self, exited: Option<(Option<i32>, Instant)>, stop: &AtomicBool) -> Option<i32> {
         if let Some((code, _)) = exited {
             return code;
         }
-        self.handle.close();
-        match self.child.wait() {
-            Ok(status) => Some(status.exit_code() as i32),
-            Err(_) => None,
+        let give_up = Instant::now() + DRAIN_AFTER_EXIT;
+        while !stop.load(Ordering::Acquire) && Instant::now() < give_up {
+            if let Some(code) = self.exit_code() {
+                return code;
+            }
+            std::thread::sleep(Duration::from_millis(50));
         }
+        None
     }
 }
 
+// ClosePseudoConsole can block until conhost exits, so it never runs on the thread that reports the exit.
 impl Drop for Conpty {
     fn drop(&mut self) {
-        self.handle.close();
+        let handle = self.handle.clone();
+        let _ = std::thread::Builder::new().name("mx-conpty-close".into()).spawn(move || handle.close());
     }
 }

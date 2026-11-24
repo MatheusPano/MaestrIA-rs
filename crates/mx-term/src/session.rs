@@ -377,45 +377,15 @@ impl TerminalSession {
         self.start_local(plan)
     }
 
-    #[cfg(windows)]
     fn start_local(&self, plan: spawn::SpawnPlan) -> anyhow::Result<()> {
         let size = self.size();
         let mut st = lock(&self.shared.state);
         self.retire_life(&mut st);
-        let pty = crate::conpty::spawn(&plan.program, &plan.args, plan.cwd.as_ref(), &plan.env, size)?;
+        let (pty, pid) = open_local(plan, size)?;
         st.started = true;
         st.exited = false;
         st.exit_code = None;
-        st.pid = Some(pty.pid);
-        st.remote = false;
-        let owner: Weak<dyn LifeOwner> = Arc::downgrade(&self.shared) as Weak<dyn LifeOwner>;
-        st.life = Some(io::start(
-            pty,
-            st.generation,
-            self.shared.term.clone(),
-            self.shared.port.clone(),
-            self.shared.feeder.clone(),
-            owner,
-        )?);
-        Ok(())
-    }
-
-    #[cfg(unix)]
-    fn start_local(&self, plan: spawn::SpawnPlan) -> anyhow::Result<()> {
-        let options = tty::Options {
-            shell: Some(tty::Shell::new(plan.program, plan.args)),
-            working_directory: plan.cwd,
-            drain_on_exit: true,
-            env: plan.env,
-        };
-        let size = self.size();
-        let mut st = lock(&self.shared.state);
-        self.retire_life(&mut st);
-        let pty = tty::new(&options, size.window_size(), 0)?;
-        st.started = true;
-        st.exited = false;
-        st.exit_code = None;
-        st.pid = Some(pty.child().id());
+        st.pid = Some(pid);
         st.remote = false;
         let owner: Weak<dyn LifeOwner> = Arc::downgrade(&self.shared) as Weak<dyn LifeOwner>;
         st.life = Some(io::start(
@@ -762,4 +732,24 @@ impl Drop for Shared {
             signals::hang_up(pid);
         }
     }
+}
+
+#[cfg(unix)]
+fn open_local(plan: spawn::SpawnPlan, size: GridSize) -> anyhow::Result<(tty::Pty, u32)> {
+    let options = tty::Options {
+        shell: Some(tty::Shell::new(plan.program, plan.args)),
+        working_directory: plan.cwd,
+        drain_on_exit: true,
+        env: plan.env,
+    };
+    let pty = tty::new(&options, size.window_size(), 0)?;
+    let pid = pty.child().id();
+    Ok((pty, pid))
+}
+
+#[cfg(windows)]
+fn open_local(plan: spawn::SpawnPlan, size: GridSize) -> anyhow::Result<(crate::conpty::Conpty, u32)> {
+    let pty = crate::conpty::spawn(&plan.program, &plan.args, plan.cwd.as_ref(), &plan.env, size)?;
+    let pid = pty.pid;
+    Ok((pty, pid))
 }
