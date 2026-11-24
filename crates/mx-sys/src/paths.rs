@@ -2,6 +2,9 @@ use mx_core::paths::SEPARATORS;
 
 pub fn dirname(path: &str) -> String {
     let trimmed = path.trim_end_matches(SEPARATORS);
+    if cfg!(windows) && trimmed.len() == 2 && trimmed.ends_with(':') {
+        return format!("{trimmed}\\");
+    }
     if trimmed.is_empty() {
         return if path.is_empty() { ".".into() } else { "/".into() };
     }

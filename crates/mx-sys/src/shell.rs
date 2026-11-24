@@ -225,7 +225,7 @@ pub async fn run_with_timeout(command: &str, cwd: Option<&str>, limit: Option<Du
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .kill_on_drop(cfg!(unix));
     mx_core::proc::isolate(cmd.as_std_mut());
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
@@ -271,7 +271,7 @@ impl Drop for GroupKill {
     }
 }
 
-// taskkill /T only finds the tree while its root is alive, so it has to finish before kill_on_drop.
+// On Windows the child has no kill_on_drop: taskkill /T walks the tree from its root, so the root must outlive it.
 async fn kill_tree(pid: u32) {
     #[cfg(windows)]
     {

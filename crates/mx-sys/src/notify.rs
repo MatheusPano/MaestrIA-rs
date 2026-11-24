@@ -35,7 +35,8 @@ const POWERSHELL_AUMID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsP
 use crate::shell::ps_quote as ps_string;
 
 fn xml_text(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    let allowed: String = value.chars().filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r')).collect();
+    allowed.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 pub fn windows_toast_script(title: &str, body: &str) -> String {
