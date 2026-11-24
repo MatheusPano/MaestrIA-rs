@@ -14,6 +14,7 @@ const READ_CHUNK: usize = 0x10000;
 const MAX_BATCH: usize = 0x40000;
 const CHILD_CHECK: Duration = Duration::from_millis(500);
 const DRAIN_AFTER_EXIT: Duration = Duration::from_secs(2);
+const QUIET_BEFORE_CLOSE: Duration = Duration::from_millis(200);
 
 pub(crate) enum Msg {
     Data(Vec<u8>),
@@ -125,6 +126,12 @@ pub(crate) struct Hooks<'a> {
 }
 
 impl Conpty {
+    // ClosePseudoConsole ends the output pipe but can block until conhost exits, so it runs on its own thread.
+    fn close_soon(&self) {
+        let handle = self.handle.clone();
+        let _ = std::thread::Builder::new().name("mx-conpty-close".into()).spawn(move || handle.close());
+    }
+
     pub fn waker(&self) -> Sender<Msg> {
         self.wake.clone()
     }
@@ -139,6 +146,7 @@ impl Conpty {
 
     pub fn run(&mut self, hooks: Hooks<'_>) -> Option<Option<i32>> {
         let mut exited: Option<(Option<i32>, Instant)> = None;
+        let mut close_at: Option<Instant> = None;
         let mut next_check = Instant::now();
         loop {
             if hooks.stop.load(Ordering::Acquire) {
@@ -148,7 +156,12 @@ impl Conpty {
                 next_check = Instant::now() + CHILD_CHECK;
                 if let Some(code) = self.exit_code() {
                     exited = Some((code, Instant::now()));
+                    close_at = Some(Instant::now() + QUIET_BEFORE_CLOSE);
                 }
+            }
+            if close_at.is_some_and(|at| Instant::now() >= at) {
+                close_at = None;
+                self.close_soon();
             }
             if let Some((code, at)) = exited
                 && at.elapsed() >= DRAIN_AFTER_EXIT
@@ -156,9 +169,13 @@ impl Conpty {
                 return Some(code);
             }
             let limit = exited.map_or(next_check, |(_, at)| at + DRAIN_AFTER_EXIT);
+            let limit = close_at.map_or(limit, |at| at.min(limit));
             let wait = (hooks.deadline)().map_or(limit, |d| d.min(limit)).saturating_duration_since(Instant::now());
             match self.output.recv_timeout(wait) {
                 Ok(Msg::Data(bytes)) => {
+                    if let Some(at) = close_at.as_mut() {
+                        *at = Instant::now() + QUIET_BEFORE_CLOSE;
+                    }
                     (hooks.data)(&bytes);
                     let mut batched = bytes.len();
                     while batched < MAX_BATCH {
@@ -194,10 +211,8 @@ impl Conpty {
     }
 }
 
-// ClosePseudoConsole can block until conhost exits, so it never runs on the thread that reports the exit.
 impl Drop for Conpty {
     fn drop(&mut self) {
-        let handle = self.handle.clone();
-        let _ = std::thread::Builder::new().name("mx-conpty-close".into()).spawn(move || handle.close());
+        self.close_soon();
     }
 }

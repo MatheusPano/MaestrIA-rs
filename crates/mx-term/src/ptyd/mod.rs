@@ -17,8 +17,10 @@ pub(crate) type Stream = uds_windows::UnixStream;
 pub const FLAG: &str = "--ptyd";
 pub const PROTOCOL: u32 = wire::VERSION;
 
-const SOURCES: [&str; 7] = [
+const SOURCES: [&str; 9] = [
     include_str!("server.rs"),
+    include_str!("server_unix.rs"),
+    include_str!("server_windows.rs"),
     include_str!("wire.rs"),
     include_str!("replay.rs"),
     include_str!("../scrubber.rs"),
