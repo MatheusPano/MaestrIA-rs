@@ -281,6 +281,7 @@ fn deep_file(dir: &tempfile::TempDir, name: &str) -> String {
     file.display().to_string()
 }
 
+#[cfg(unix)]
 #[test]
 fn path_cut_by_claude_is_one_link_from_either_row() {
     let t = hard_wrapped(80, SCRATCHPAD_PNG);
