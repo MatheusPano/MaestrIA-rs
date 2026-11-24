@@ -3,7 +3,9 @@ use std::path::PathBuf;
 pub const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
 
 pub fn is_within(path: &str, root: &str) -> bool {
-    path == root || path.strip_prefix(root).is_some_and(|rest| rest.starts_with(SEPARATORS))
+    let Some(head) = path.get(..root.len()) else { return false };
+    let same = if cfg!(windows) { head.eq_ignore_ascii_case(root) } else { head == root };
+    same && (path.len() == root.len() || path[root.len()..].starts_with(SEPARATORS))
 }
 
 pub fn native(path: &str) -> String {

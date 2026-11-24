@@ -343,7 +343,7 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     for entry in fs::read_dir(from)? {
         let entry = entry?;
         let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        if fs::metadata(entry.path())?.is_dir() {
             copy_dir(&entry.path(), &target)?;
         } else {
             fs::copy(entry.path(), target)?;
