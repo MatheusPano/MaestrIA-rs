@@ -342,10 +342,20 @@ fn windows_tar() -> String {
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
-    copy_dir_once(from, to, &mut Vec::new())
+    let source = fs::canonicalize(from)?;
+    let existed = to.exists();
+    fs::create_dir_all(to)?;
+    let dest = fs::canonicalize(to).or_else(|_| std::path::absolute(to))?;
+    if dest.starts_with(&source) {
+        if !existed {
+            let _ = fs::remove_dir(to);
+        }
+        return Err(std::io::Error::other("A pasta do plugin contém a pasta de plugins do Maestria"));
+    }
+    copy_dir_once(from, to, &dest, &mut Vec::new())
 }
 
-fn copy_dir_once(from: &Path, to: &Path, ancestors: &mut Vec<PathBuf>) -> std::io::Result<()> {
+fn copy_dir_once(from: &Path, to: &Path, dest: &Path, ancestors: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let real = fs::canonicalize(from)?;
     if ancestors.contains(&real) {
         return Ok(());
@@ -354,14 +364,52 @@ fn copy_dir_once(from: &Path, to: &Path, ancestors: &mut Vec<PathBuf>) -> std::i
     fs::create_dir_all(to)?;
     for entry in fs::read_dir(from)? {
         let entry = entry?;
+        if fs::canonicalize(entry.path()).is_ok_and(|real| real.starts_with(dest)) {
+            continue;
+        }
         let target = to.join(entry.file_name());
         let Ok(meta) = fs::metadata(entry.path()) else { continue };
         if meta.is_dir() {
-            copy_dir_once(&entry.path(), &target, ancestors)?;
+            copy_dir_once(&entry.path(), &target, dest, ancestors)?;
         } else {
             fs::copy(entry.path(), target)?;
         }
     }
     ancestors.pop();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_is_copied_but_never_into_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("plugin");
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("sub").join("a.txt"), "a").unwrap();
+        let out = dir.path().join("out");
+        copy_dir(&src, &out).unwrap();
+        assert_eq!(fs::read_to_string(out.join("sub").join("a.txt")).unwrap(), "a");
+        let staging = src.join(".staging");
+        fs::create_dir(&staging).unwrap();
+        assert!(copy_dir(&src, &staging.join("p1")).is_err());
+        assert!(!staging.join("p1").exists());
+        assert!(copy_dir(&src, &src).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_back_into_the_destination_are_not_copied() {
+        let dir = tempfile::tempdir().unwrap();
+        let (src, out) = (dir.path().join("plugin"), dir.path().join("data"));
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("a.txt"), "a").unwrap();
+        std::os::unix::fs::symlink(&out, src.join("data")).unwrap();
+        std::os::unix::fs::symlink(out.join("a.txt"), src.join("z.txt")).unwrap();
+        copy_dir(&src, &out).unwrap();
+        assert!(out.join("a.txt").exists());
+        assert!(!out.join("data").exists() && !out.join("z.txt").exists());
+    }
 }
