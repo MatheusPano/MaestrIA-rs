@@ -145,7 +145,11 @@ impl Plugins {
             }
         } else if Path::new(src).is_dir() {
             if cfg!(windows) {
-                copy_dir(Path::new(src), &into).map_err(|e| err(e.to_string()))?;
+                let (from, to) = (PathBuf::from(src), into.clone());
+                tokio::task::spawn_blocking(move || copy_dir(&from, &to))
+                    .await
+                    .map_err(|e| err(e.to_string()))?
+                    .map_err(|e| err(e.to_string()))?;
             } else {
                 self.run_tool("cp", &["-R", src, &into_s]).await?;
             }
