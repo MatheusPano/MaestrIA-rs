@@ -116,12 +116,12 @@ impl RenderState {
         (x.floor(), y.floor(), x.fract() >= 0.5)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn snapshot(&self) -> &Snapshot {
         &self.snap
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn painted_row(&self, r: usize) -> String {
         let mut out = String::new();
         for (col, line) in &self.cache[r].texts {

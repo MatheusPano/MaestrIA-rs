@@ -82,3 +82,16 @@ jobs:
         env:
           RUST_VERSION: ${{ needs.rust.outputs.version }}
           DEB_IMAGE_PREBUILT: 1
+
+  windows:
+    needs: rust
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.rust.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+      - run: cargo build -p mx-app --release --locked

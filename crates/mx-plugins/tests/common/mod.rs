@@ -3,7 +3,6 @@
 pub mod host;
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -42,7 +41,9 @@ pub fn write_plugin(parent: &Path, name: &str, manifest: Value, files: &[(&str, 
         let file = dir.join(path);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(&file, text).unwrap();
+        #[cfg(unix)]
         if path.ends_with(".sh") {
+            use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).unwrap();
         }
     }

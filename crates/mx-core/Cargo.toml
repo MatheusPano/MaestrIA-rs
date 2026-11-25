@@ -10,6 +10,9 @@ serde_json = { workspace = true, features = ["float_roundtrip"] }
 chrono.workspace = true
 regex.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true

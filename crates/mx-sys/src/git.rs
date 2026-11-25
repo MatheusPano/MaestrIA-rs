@@ -65,7 +65,7 @@ pub fn parse_worktrees(porcelain: &str) -> Vec<WorktreeInfo> {
     for line in porcelain.split('\n') {
         if let Some(rest) = line.strip_prefix("worktree ") {
             flush(&mut path, &mut branch, &mut prunable);
-            path = Some(rest.trim().to_owned());
+            path = Some(mx_core::paths::native(rest.trim()));
         } else if let Some(rest) = line.strip_prefix("branch ") {
             branch = rest.trim().replacen("refs/heads/", "", 1);
         } else if line.starts_with("prunable") {
@@ -101,7 +101,7 @@ impl Git {
         }
         r.stdout
             .split('\n')
-            .find_map(|l| l.strip_prefix("worktree ").map(|p| p.trim().to_owned()))
+            .find_map(|l| l.strip_prefix("worktree ").map(|p| mx_core::paths::native(p.trim())))
     }
 
     pub async fn worktrees(&self, root: &str) -> Option<Vec<WorktreeInfo>> {
@@ -152,7 +152,7 @@ impl Git {
         branch: &str,
         base_ref: &str,
     ) -> GitOutcome {
-        let path = format!("{root}/.claude/worktrees/{dir_name}");
+        let path = std::path::Path::new(root).join(".claude").join("worktrees").join(dir_name).to_string_lossy().into_owned();
         if self.sh(&format!("test -d {}", q(&path)), None).await.ok() {
             return GitOutcome::new(false, &path, format!("Worktree já existe em {path}"));
         }

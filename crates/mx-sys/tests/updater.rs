@@ -102,7 +102,13 @@ fn the_mac_bundle_is_the_app_folder_around_the_executable() {
 
 #[test]
 fn the_asset_is_the_maestria_rs_package_for_this_platform() {
-    let want = if cfg!(target_os = "macos") { "_macos.dmg" } else { "_amd64.deb" };
+    let want = if cfg!(target_os = "macos") {
+        "_macos.dmg"
+    } else if cfg!(windows) {
+        "_x64.msi"
+    } else {
+        "_amd64.deb"
+    };
     assert_eq!(mx_sys::updater::ASSET_SUFFIX, want);
     assert_eq!(mx_sys::updater::PACKAGE_PREFIX, "maestria-rs_");
 }
@@ -300,8 +306,8 @@ mod network {
     #[tokio::test]
     async fn the_latest_release_answers_with_its_etag_and_maestria_rs_asset() {
         let body = json!({"tag_name": "v3.1.0", "assets": [
-            {"name": "maestria_3.1.0-1_amd64.deb", "browser_download_url": "https://x/flutter"},
-            {"name": "maestria-rs_3.1.0-1_amd64.deb", "browser_download_url": "https://x/rs"}
+            {"name": format!("maestria_3.1.0-1{}", mx_sys::updater::ASSET_SUFFIX), "browser_download_url": "https://x/flutter"},
+            {"name": format!("maestria-rs_3.1.0-1{}", mx_sys::updater::ASSET_SUFFIX), "browser_download_url": "https://x/rs"}
         ]});
         let base = serve(HashMap::from([("/latest".to_owned(), (200, body.to_string().into_bytes())), ("/same".to_owned(), (304, vec![]))]));
         let Latest::Found { release, etag } = latest(&format!("{base}/latest"), "3.0.0", None).await.unwrap() else { panic!() };
@@ -331,4 +337,24 @@ mod network {
         r.sums_url = None;
         assert_eq!(fetch("3.0.0", &r, &dir.path().join("update"), None).await.unwrap_err(), "3.1.0 sem SHA256SUMS");
     }
+}
+
+#[test]
+fn windows_quit_script_waits_installs_with_a_quoted_msi_and_relaunches() {
+    let script = mx_sys::updater::install::windows_quit_script(
+        42,
+        std::path::Path::new(r"C:\Program Files\maestria-rs\maestria-rs.exe"),
+        Some(std::path::Path::new(r"C:\Users\John Doe\.maestria-rs\update\m_x64.msi")),
+        true,
+    );
+    assert!(script.starts_with("Wait-Process -Id 42 "));
+    assert!(script.contains(r#"@('/i', '"C:\Users\John Doe\.maestria-rs\update\m_x64.msi"', '/passive', '/norestart')"#));
+    assert!(script.ends_with("Start-Process 'C:\\Program Files\\maestria-rs\\maestria-rs.exe'\n"));
+}
+
+#[test]
+fn windows_quit_script_without_relaunch_only_installs() {
+    let script = mx_sys::updater::install::windows_quit_script(7, std::path::Path::new("a.exe"), Some(std::path::Path::new("it's.msi")), false);
+    assert!(script.contains(r#"'"it''s.msi"'"#));
+    assert!(!script.contains("Start-Process 'a.exe'"));
 }

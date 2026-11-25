@@ -38,7 +38,7 @@ fn bucket_color(mx: &Mx, b: Bucket) -> Hsla {
 pub fn session_cards(mx: &Mx, host: &Entity<StoreHost>, store: &Store, width: f32) -> impl IntoElement {
     let tabs = model::card_tabs(store);
     let (_, card_width) = model::columns(width, GAP, model::CARD_MIN);
-    let home = std::env::var("HOME").ok();
+    let home = mx_core::paths::home();
     let mut col = div().flex().flex_col();
     for (bucket, list) in model::sections(&tabs) {
         let cards: Vec<AnyElement> =

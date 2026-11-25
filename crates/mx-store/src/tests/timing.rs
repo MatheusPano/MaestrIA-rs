@@ -239,6 +239,7 @@ async fn shutdown_writes_the_pending_config_before_killing() {
     assert_eq!(rig.terms.log(&id).kills, 1);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn new_task_creates_a_worktree_and_opens_claude_there() {
     let runner = FakeRunner::new();
@@ -280,6 +281,7 @@ fn editor_for_a_missing_path_names_it() {
     assert_eq!(rig.s.banner(), Some("Esse workspace não está mais lá: /nao/existe.code-workspace"));
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn shutdown_stops_the_running_plugins() {
     use std::os::unix::fs::PermissionsExt;

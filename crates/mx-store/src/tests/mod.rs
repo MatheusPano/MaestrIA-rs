@@ -16,6 +16,7 @@ mod pin;
 mod plugin_footer;
 mod plugin_live;
 mod plugin_screen;
+#[cfg(unix)]
 mod plugin_tools;
 mod plugins;
 mod readers;
@@ -177,7 +178,7 @@ impl Rig {
     }
 
     pub fn mkdir(&self, name: &str) -> String {
-        let p = self.dir.path().join(name);
+        let p = name.split('/').fold(self.dir.path().to_path_buf(), |p, part| p.join(part));
         std::fs::create_dir_all(&p).unwrap();
         p.to_str().unwrap().to_owned()
     }

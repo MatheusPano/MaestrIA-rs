@@ -107,11 +107,7 @@ fn read(r: &ShResult) -> Option<FileDiff> {
 /// What changed in `path` since the last commit, or None when git has nothing to say about it:
 /// outside a repo, ignored, binary. A file git does not know yet is diffed against the void.
 pub async fn diff_of(runner: &dyn CommandRunner, path: &str) -> Option<FileDiff> {
-    let dir = match path.rfind('/') {
-        Some(0) => "/".to_owned(),
-        Some(i) => path[..i].to_owned(),
-        None => ".".to_owned(),
-    };
+    let dir = crate::paths::dirname(path);
     let git = |args: String| runner.run(format!("git {args}"), Some(dir.clone()));
     let file = q(path);
     if git(format!("ls-files --error-unmatch -- {file}")).await.ok() {

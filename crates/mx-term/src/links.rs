@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
+use mx_core::paths::SEPARATORS;
 use regex::Regex;
 
 const BREAKS: &str = " \t\"'`<>|()[]{},;*";
@@ -84,14 +85,23 @@ pub fn clickable_at_chars(line: &[char], column: usize, base: Option<&str>) -> O
 }
 
 fn written_as_local_file(path: &str, target: &str) -> bool {
-    if !path.starts_with('/') && !path.starts_with("~/") {
+    let home_relative = path.strip_prefix('~').is_some_and(|r| r.starts_with(SEPARATORS));
+    if !absolute(path) && !home_relative {
         return false;
     }
-    let parts: Vec<&str> = target.split('/').filter(|s| !s.is_empty()).collect();
+    let mut parts: Vec<&str> = target.split(SEPARATORS).filter(|s| !s.is_empty()).collect();
+    let drive = match parts.first() {
+        Some(d) if cfg!(windows) && d.ends_with(':') => parts.remove(0),
+        _ => "",
+    };
     let has_extension = parts.last().and_then(|p| p.rsplit_once('.')).is_some_and(|(n, e)| {
         !n.is_empty() && (1..=8).contains(&e.len()) && e.chars().all(|c| c.is_ascii_alphanumeric())
     });
-    parts.len() >= 2 && has_extension && Path::new(&format!("/{}", parts[0])).is_dir()
+    parts.len() >= 2 && has_extension && Path::new(&format!("{drive}/{}", parts[0])).is_dir()
+}
+
+fn absolute(path: &str) -> bool {
+    path.starts_with('/') || Path::new(path).is_absolute()
 }
 
 fn path_at(line: &[char], column: usize) -> Option<String> {
@@ -107,7 +117,7 @@ fn path_at(line: &[char], column: usize) -> Option<String> {
             .and_then(|c| c.get(1))
             .map_or(bare, |m| m.as_str()),
     );
-    (path.contains('/') || mx_core::model::is_markdown_path(path)).then(|| path.to_owned())
+    (path.contains(SEPARATORS) || mx_core::model::is_markdown_path(path)).then(|| path.to_owned())
 }
 
 pub(crate) fn file_part(path: &str) -> &str {
@@ -116,11 +126,11 @@ pub(crate) fn file_part(path: &str) -> &str {
 
 pub fn resolve_link_path(path: &str, base: Option<&str>) -> String {
     let path = mx_core::paths::expand_home(path);
-    if path.starts_with('/') {
+    if absolute(&path) {
         return path;
     }
     match base.filter(|b| !b.is_empty()) {
-        Some(b) => format!("{}/{path}", b.trim_end_matches('/')),
+        Some(b) => format!("{}{}{path}", b.trim_end_matches(SEPARATORS), std::path::MAIN_SEPARATOR),
         None => path,
     }
 }
@@ -299,6 +309,7 @@ mod tests {
         assert_eq!(local_path("https://x.dev"), "https://x.dev");
     }
 
+    #[cfg(unix)]
     #[test]
     fn resolve_relative_absolute_and_home() {
         assert_eq!(resolve_link_path("a.md", Some("/w")), "/w/a.md");

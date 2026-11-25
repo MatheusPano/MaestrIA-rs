@@ -23,7 +23,7 @@ pub fn where_of(folder: &Folder, cwd: &str) -> String {
     if cwd == root || !cwd.starts_with(root.as_str()) {
         return folder.name.clone();
     }
-    format!("{}/{}", folder.name, cwd.rsplit('/').next().unwrap_or_default())
+    format!("{}/{}", folder.name, mx_core::text::last_segment(cwd))
 }
 
 fn targets(store: &Store, root: &str, except: Option<&str>) -> Vec<(String, String)> {

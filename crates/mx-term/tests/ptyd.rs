@@ -238,6 +238,7 @@ fn shell_left_alone(dir: &Path, typed: &str) -> (Ptyd, TermRegistry) {
     (d.clone(), registry(&d))
 }
 
+#[cfg(unix)]
 #[test]
 fn a_shell_idle_at_its_prompt_is_hibernated_and_comes_back_asleep() {
     let dir = tempfile::tempdir().unwrap();

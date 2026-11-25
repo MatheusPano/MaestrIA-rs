@@ -5,14 +5,17 @@ use mx_sys::shell::{
     bin_dirs, early_exit_message, env, path_with_fallbacks, profile_file, q, resolve_shell, run,
 };
 
+#[cfg(unix)]
 const BARE: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 
+#[cfg(unix)]
 #[test]
 fn an_existing_dir_missing_from_path_is_appended_at_the_end() {
     let path = path_with_fallbacks(BARE, &["/opt/claude/bin"], |_| true);
     assert_eq!(path, format!("{BARE}:/opt/claude/bin"));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_dir_that_does_not_exist_stays_out() {
     let path = path_with_fallbacks(BARE, &["/opt/claude/bin", "/opt/nao-instalado/bin"], |d| {
@@ -21,6 +24,7 @@ fn a_dir_that_does_not_exist_stays_out() {
     assert_eq!(path, format!("{BARE}:/opt/claude/bin"));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_dir_already_in_path_is_not_added_again() {
     let inherited = format!("{BARE}:/opt/claude/bin");
@@ -35,8 +39,8 @@ fn empty_path_still_yields_a_usable_path() {
 
 #[test]
 fn sh_env_path_carries_every_existing_bin_dir_of_this_machine() {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let path: Vec<&str> = env()["PATH"].split(':').collect();
+    let home = mx_core::paths::home().unwrap_or_default();
+    let path: Vec<&str> = env()["PATH"].split(mx_core::proc::PATH_LIST_SEP).collect();
     for dir in bin_dirs(&home, Platform::current()) {
         if Path::new(&dir).is_dir() {
             assert!(path.contains(&dir.as_str()), "{dir} missing from PATH");
@@ -111,6 +115,7 @@ async fn run_trims_output_and_reports_the_exit_code() {
     assert!(!r.ok());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn run_uses_the_given_cwd() {
     let dir = tempfile::tempdir().unwrap();
@@ -195,4 +200,24 @@ async fn dropping_a_run_kills_its_process_group() {
     assert!(abandoned.is_err());
     let pid = std::fs::read_to_string(&pidfile).unwrap().trim().to_owned();
     assert!(gone_soon(&pid).await);
+}
+
+#[test]
+fn git_bash_sits_in_bin_next_to_the_cmd_folder_of_git() {
+    let bash = mx_sys::shell::git_bash_from_git(Path::new("/g/Git/cmd/git.exe")).unwrap();
+    assert_eq!(bash, Path::new("/g/Git/bin/bash.exe"));
+}
+
+#[test]
+fn git_bash_prefers_the_override_then_the_one_beside_git_then_the_default() {
+    use mx_sys::shell::resolve_git_bash;
+    assert_eq!(resolve_git_bash(Some("/x/bash.exe"), None, |_| true), "/x/bash.exe");
+    let beside = resolve_git_bash(None, Some(Path::new("/g/Git/cmd/git.exe")), |p| p.ends_with("bash.exe"));
+    assert_eq!(Path::new(&beside), Path::new("/g/Git/bin/bash.exe"));
+    assert_eq!(resolve_git_bash(Some("/gone"), None, |_| false), r"C:\Program Files\Git\bin\bash.exe");
+}
+
+#[test]
+fn windows_reads_profile_from_the_user_path() {
+    assert_eq!(profile_file(Platform::Windows), "PATH das variáveis de ambiente do usuário");
 }

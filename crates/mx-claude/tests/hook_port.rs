@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{post, start, stop_url_port};
+use common::{launch_json, post, start, stop_url_port};
 use mx_claude::{ServerEvent, port_file};
 
 #[tokio::test]
@@ -15,7 +15,7 @@ async fn second_run_binds_the_same_port_as_the_first() {
 
     let (again, _rx2) = start(state.path()).await;
     assert_eq!(again.port(), was);
-    assert_eq!(stop_url_port(&again.settings_for("tab2", None, None)), was);
+    assert_eq!(stop_url_port(again.settings_for("tab2", None, None)), was);
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn unreadable_port_file_does_not_stop_the_server() {
 async fn hook_reaches_the_panel_through_the_announced_port() {
     let state = tempfile::tempdir().unwrap();
     let (server, mut rx) = start(state.path()).await;
-    let port = stop_url_port(&server.settings_for("tab7", None, None));
+    let port = stop_url_port(server.settings_for("tab7", None, None));
     assert_eq!(port, server.port());
 
     let (status, body) = post(
@@ -171,4 +171,38 @@ async fn a_rebound_host_name_is_refused() {
     let local = format!("localhost:{port}");
     assert_eq!(raw_post(port, "/hook/tab1", &[("host", &local)], hook).await, 200);
     assert!(matches!(rx.recv().await, Some(ServerEvent::Hook { .. })));
+}
+
+#[tokio::test]
+async fn claude_gets_its_settings_and_mcp_config_inline_or_as_files_on_windows() {
+    let state = tempfile::tempdir().unwrap();
+    let (server, _rx) = start(state.path()).await;
+    let settings = server.settings_for("tab1", None, None);
+    let mcp = server.mcp_config_for("tab1");
+    if cfg!(windows) {
+        assert!(settings.ends_with("tab1-settings.json") && mcp.ends_with("tab1-mcp.json"));
+    }
+    for (arg, key) in [(settings, "hooks"), (mcp, "mcpServers")] {
+        assert!(serde_json::from_str::<serde_json::Value>(&launch_json(arg)).unwrap().get(key).is_some());
+    }
+}
+
+#[test]
+fn a_launch_file_is_named_after_a_sanitized_tab_and_holds_the_json() {
+    let state = tempfile::tempdir().unwrap();
+    let path = mx_claude::launch_file(state.path(), "a/b c", "settings", "{}").unwrap();
+    assert!(path.ends_with("a_b_c-settings.json"));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "{}");
+}
+
+#[test]
+fn launch_files_older_than_a_month_are_pruned_and_recent_ones_stay() {
+    let state = tempfile::tempdir().unwrap();
+    let old = mx_claude::launch_file(state.path(), "old", "mcp", "{}").unwrap();
+    let new = mx_claude::launch_file(state.path(), "new", "mcp", "{}").unwrap();
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(31 * 24 * 3600);
+    std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
+    mx_claude::prune_launch_files(state.path());
+    assert!(!std::path::Path::new(&old).exists());
+    assert!(std::path::Path::new(&new).exists());
 }

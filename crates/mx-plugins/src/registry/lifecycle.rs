@@ -132,7 +132,7 @@ impl Plugins {
             match Connection::spawn(&exe, args, &dir, &env, self.handlers(id, slot.clone())) {
                 Ok(c) => break c,
                 // ETXTBSY: a just-written script whose fd leaked into a concurrent fork; transient.
-                Err(e) if e.raw_os_error() == Some(nix::libc::ETXTBSY) && attempt < 10 => {
+                Err(e) if text_busy(&e) && attempt < 10 => {
                     attempt += 1;
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
@@ -329,3 +329,12 @@ impl Plugins {
     }
 }
 
+#[cfg(unix)]
+fn text_busy(e: &std::io::Error) -> bool {
+    e.raw_os_error() == Some(nix::libc::ETXTBSY)
+}
+
+#[cfg(not(unix))]
+fn text_busy(_: &std::io::Error) -> bool {
+    false
+}

@@ -6,6 +6,7 @@ pub mod layout;
 pub mod model;
 pub mod paths;
 pub mod persist;
+pub mod proc;
 pub mod ports;
 pub mod text;
 pub mod version;

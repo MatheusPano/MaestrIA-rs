@@ -45,6 +45,31 @@ pub fn status_line_file(state_dir: &Path) -> PathBuf {
     state_dir.join("statusline.sh")
 }
 
+const LAUNCH_FILE_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+
+fn launch_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("launch")
+}
+
+pub fn launch_file(state_dir: &Path, tab_id: &str, kind: &str, json: &str) -> io::Result<String> {
+    let safe: String = tab_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    let dir = launch_dir(state_dir);
+    let path = dir.join(format!("{safe}-{kind}.json"));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(&path, json)?;
+    path.into_os_string().into_string().map_err(|_| io::Error::other("launch file path is not UTF-8"))
+}
+
+pub fn prune_launch_files(state_dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(launch_dir(state_dir)) else { return };
+    for entry in entries.flatten() {
+        let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+        if old.is_some_and(|age| age > LAUNCH_FILE_AGE) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 type SharedSink = Arc<RwLock<Arc<dyn SuggestionSink>>>;
 type SharedTools = Arc<RwLock<Arc<dyn PluginTools>>>;
 
@@ -72,6 +97,7 @@ impl HookServer {
         let port = listener.local_addr()?.port();
         let past = remember(state_dir, port);
         write_status_line(state_dir);
+        prune_launch_files(state_dir);
 
         let sink: SharedSink = Arc::new(RwLock::new(Arc::new(NoSink)));
         let tools: SharedTools = Arc::new(RwLock::new(Arc::new(NoTools)));
@@ -141,11 +167,23 @@ impl HookServer {
             .iter()
             .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_owned))
             .collect();
-        settings_with_tools(self.port, &self.status_line_file(), tab_id, cwd, home, &extra)
+        let json = settings_with_tools(self.port, &self.status_line_file(), tab_id, cwd, home, &extra);
+        self.windows_arg(tab_id, "settings", json)
     }
 
     pub fn mcp_config_for(&self, tab_id: &str) -> String {
-        mcp_config_for(self.port, tab_id)
+        self.windows_arg(tab_id, "mcp", mcp_config_for(self.port, tab_id))
+    }
+
+    // Quotes inside a JSON argument do not survive Git Bash's hand-off to claude on Windows; a file path does.
+    fn windows_arg(&self, tab_id: &str, kind: &str, json: String) -> String {
+        if !cfg!(windows) {
+            return json;
+        }
+        launch_file(&self.state_dir, tab_id, kind, &json).unwrap_or_else(|err| {
+            log::warn!("claude {kind} for {tab_id} stays inline: {err}");
+            json
+        })
     }
 }
 

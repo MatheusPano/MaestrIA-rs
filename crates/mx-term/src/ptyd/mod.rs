@@ -9,15 +9,24 @@ pub use server::{run, serve, socket_in};
 pub(crate) use wire::{Finished, Ready};
 pub use wire::Info;
 
+#[cfg(unix)]
+pub(crate) type Stream = std::os::unix::net::UnixStream;
+#[cfg(windows)]
+pub(crate) type Stream = uds_windows::UnixStream;
+
 pub const FLAG: &str = "--ptyd";
 pub const PROTOCOL: u32 = wire::VERSION;
 
-const SOURCES: [&str; 5] = [
+const SOURCES: [&str; 9] = [
     include_str!("server.rs"),
+    include_str!("server_unix.rs"),
+    include_str!("server_windows.rs"),
     include_str!("wire.rs"),
     include_str!("replay.rs"),
     include_str!("../scrubber.rs"),
     include_str!("../signals.rs"),
+    include_str!("../conpty.rs"),
+    include_str!("../../../mx-core/src/proc.rs"),
 ];
 
 const fn fnv(sources: &[&str]) -> u64 {

@@ -17,7 +17,7 @@ fn sh_git(dir: &Path, args: &[&str]) {
 
 fn repo() -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().canonicalize().unwrap();
+    let root = mx_core::paths::plain(dir.path().canonicalize().unwrap());
     sh_git(&root, &["init", "-q"]);
     std::fs::write(root.join("a.txt"), "a").unwrap();
     sh_git(&root, &["add", "."]);
@@ -67,7 +67,7 @@ async fn add_list_and_remove_a_worktree_with_its_branch() {
     let g = real();
     let added = g.add_worktree(&root, "TASK-1", "feature/TASK#1", "HEAD").await;
     assert!(added.ok, "{}", added.message);
-    let wt_path = format!("{root}/.claude/worktrees/TASK-1");
+    let wt_path = Path::new(&root).join(".claude").join("worktrees").join("TASK-1").to_string_lossy().into_owned();
     assert_eq!(added.path, wt_path);
     assert!(Path::new(&wt_path).is_dir());
 
@@ -92,7 +92,7 @@ async fn a_worktree_whose_folder_vanished_is_prunable_and_prune_clears_it() {
     let (_dir, root) = repo();
     let g = real();
     assert!(g.add_worktree(&root, "gone", "gone", "HEAD").await.ok);
-    std::fs::remove_dir_all(format!("{root}/.claude/worktrees/gone")).unwrap();
+    std::fs::remove_dir_all(Path::new(&root).join(".claude").join("worktrees").join("gone")).unwrap();
 
     let list = g.worktrees(&root).await.unwrap();
     assert!(list[1].prunable);

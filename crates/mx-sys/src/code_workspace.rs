@@ -2,7 +2,8 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use mx_core::paths::expand_home_with;
+use mx_core::paths::{SEPARATORS, expand_home_with};
+use std::path::MAIN_SEPARATOR_STR as SEP;
 use mx_core::text::last_segment as basename;
 
 pub const EXT: &str = ".code-workspace";
@@ -25,7 +26,7 @@ pub fn looks_like_one(path: &str) -> bool {
 }
 
 pub async fn read(raw_path: &str) -> Option<CodeWorkspace> {
-    read_with(raw_path, std::env::var("HOME").ok().as_deref()).await
+    read_with(raw_path, mx_core::paths::home().as_deref()).await
 }
 
 pub async fn read_with(raw_path: &str, home: Option<&str>) -> Option<CodeWorkspace> {
@@ -38,7 +39,7 @@ pub async fn read_with(raw_path: &str, home: Option<&str>) -> Option<CodeWorkspa
 }
 
 pub fn parse(source: &str, path: &str) -> Option<CodeWorkspace> {
-    parse_with(source, path, std::env::var("HOME").ok().as_deref())
+    parse_with(source, path, mx_core::paths::home().as_deref())
 }
 
 pub fn parse_with(source: &str, path: &str, home: Option<&str>) -> Option<CodeWorkspace> {
@@ -63,22 +64,39 @@ pub fn parse_with(source: &str, path: &str, home: Option<&str>) -> Option<CodeWo
 }
 
 pub fn resolve(raw: &str, from: &str) -> String {
-    resolve_with(raw, from, std::env::var("HOME").ok().as_deref())
+    resolve_with(raw, from, mx_core::paths::home().as_deref())
 }
 
 pub fn resolve_with(raw: &str, from: &str, home: Option<&str>) -> String {
     let expanded = expand_home_with(raw.trim(), home);
-    if expanded.starts_with('/') {
+    if root_of(&expanded).is_some() {
         normalize(&expanded)
     } else {
-        normalize(&format!("{from}/{expanded}"))
+        normalize(&format!("{from}{SEP}{expanded}"))
     }
 }
 
+fn root_of(path: &str) -> Option<(String, &str)> {
+    if cfg!(windows) {
+        let b = path.as_bytes();
+        if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && path[2..].starts_with(SEPARATORS) {
+            return Some((format!("{}{SEP}", &path[..2]), &path[2..]));
+        }
+        if let Some(share) = path.strip_prefix(r"\\") {
+            return Some((r"\\".to_owned(), share));
+        }
+    }
+    path.starts_with(SEPARATORS).then(|| (SEP.to_owned(), path))
+}
+
 pub fn normalize(path: &str) -> String {
-    let absolute = path.starts_with('/');
+    let (root, rest) = match root_of(path) {
+        Some((root, rest)) => (Some(root), rest),
+        None => (None, path),
+    };
+    let absolute = root.is_some();
     let mut out: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
+    for segment in rest.split(SEPARATORS) {
         match segment {
             "" | "." => {}
             ".." => {
@@ -91,9 +109,9 @@ pub fn normalize(path: &str) -> String {
             s => out.push(s),
         }
     }
-    let joined = out.join("/");
-    if absolute {
-        format!("/{joined}")
+    let joined = out.join(SEP);
+    if let Some(root) = root {
+        format!("{root}{joined}")
     } else if joined.is_empty() {
         ".".into()
     } else {
@@ -112,11 +130,7 @@ pub fn name_of(path: &str) -> String {
 }
 
 fn dir_of(path: &str) -> String {
-    match path.rfind('/') {
-        None => ".".into(),
-        Some(0) => "/".into(),
-        Some(i) => path[..i].to_owned(),
-    }
+    crate::paths::dirname(path)
 }
 
 pub fn strip_jsonc(source: &str) -> String {

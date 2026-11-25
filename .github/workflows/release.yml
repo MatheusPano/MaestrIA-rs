@@ -146,8 +146,32 @@ jobs:
           path: packaging/macos/dist/*.dmg
           if-no-files-found: error
 
+  msi:
+    needs: versao
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: '${{ github.event.inputs.tag || github.ref_name }}' }
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.versao.outputs.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+          save-if: false
+      - run: ./packaging/windows/make-msi.ps1
+        shell: pwsh
+        env:
+          MAESTRIA_VERSION: ${{ needs.versao.outputs.versao }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-msi
+          path: packaging/windows/dist/*.msi
+          if-no-files-found: error
+
   publicar:
-    needs: [deb, dmg]
+    needs: [deb, dmg, msi]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -159,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -lh anexos
-          (cd anexos && shopt -s nullglob && sha256sum *.deb *.dmg > SHA256SUMS && cat SHA256SUMS)
+          (cd anexos && shopt -s nullglob && sha256sum *.deb *.dmg *.msi > SHA256SUMS && cat SHA256SUMS)
           : > notas.md
           [ -f "packaging/changelog/$TAG.md" ] && { cat "packaging/changelog/$TAG.md"; echo; } >> notas.md
           sed "s/{TAG}/$TAG/g" packaging/NOTAS-DA-RELEASE.md >> notas.md

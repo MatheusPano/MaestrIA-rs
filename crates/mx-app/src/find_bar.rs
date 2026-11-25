@@ -48,7 +48,7 @@ impl FindBar {
         Self { focus: cx.focus_handle(), text: String::new(), all_selected: false, marked: false, debounce: None, term }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn text(&self) -> &str {
         &self.text
     }

@@ -98,7 +98,7 @@ fn links_open_externally_read_markdown_or_quick_look() {
     rig.s.follow_link("a.md#topo", Some("s"), Some(&dir));
     assert_eq!(readers(&rig).len(), 1);
     rig.s.follow_link("b.png", Some("s"), Some(&dir));
-    assert_eq!(*rig.notifier.looks.lock().unwrap(), [format!("{dir}/b.png")]);
+    assert_eq!(*rig.notifier.looks.lock().unwrap(), [format!("{dir}{}b.png", std::path::MAIN_SEPARATOR)]);
 }
 
 #[test]

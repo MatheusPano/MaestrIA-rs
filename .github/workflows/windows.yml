@@ -1,0 +1,51 @@
+name: windows
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: rust
+        shell: bash
+        run: echo "version=$(sed -n 's/^RUST_VERSION ?= *//p' Makefile)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked --no-fail-fast
+
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: rust
+        shell: bash
+        run: echo "version=$(sed -n 's/^RUST_VERSION ?= *//p' Makefile)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+          save-if: false
+      - run: ./packaging/windows/make-msi.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: maestria-windows
+          path: |
+            target/release/maestria.exe
+            packaging/windows/dist/*.msi
+          if-no-files-found: error
+          retention-days: 7

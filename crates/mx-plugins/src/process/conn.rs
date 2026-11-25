@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io;
-use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -9,8 +8,6 @@ use std::time::Duration;
 
 use mx_core::json::Obj;
 use mx_core::ports::BoxFuture;
-use nix::sys::signal::{Signal, kill, killpg};
-use nix::unistd::Pid;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -55,7 +52,9 @@ impl Connection {
         env: &[(String, String)],
         handlers: ConnHandlers,
     ) -> io::Result<Arc<Connection>> {
-        let mut child = Command::new(exe)
+        let mut command = Command::new(exe);
+        mx_core::proc::isolate(command.as_std_mut());
+        let mut child = command
             .args(args)
             .current_dir(cwd)
             .env_clear()
@@ -63,7 +62,6 @@ impl Connection {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .process_group(0)
             .kill_on_drop(true)
             .spawn()?;
         let pid = child.id().unwrap_or_default();
@@ -209,15 +207,9 @@ impl Connection {
         matches!(tokio::time::timeout(within, rx.wait_for(Option::is_some)).await, Ok(Ok(_)))
     }
 
-    fn signal(&self, sig: Signal) {
-        if self.reaped.load(Ordering::SeqCst) {
-            return;
-        }
-        if let Ok(pid) = i32::try_from(self.pid) {
-            let pid = Pid::from_raw(pid);
-            if killpg(pid, sig).is_err() {
-                let _ = kill(pid, sig);
-            }
+    fn signal(&self, hard: bool) {
+        if !self.reaped.load(Ordering::SeqCst) {
+            mx_core::proc::kill_group(self.pid, hard);
         }
     }
 
@@ -234,9 +226,9 @@ impl Connection {
         self.notify("shutdown", None);
         self.out.lock().unwrap().take();
         if !self.wait_exit(grace).await {
-            self.signal(Signal::SIGTERM);
+            self.signal(false);
             if !self.wait_exit(grace).await {
-                self.signal(Signal::SIGKILL);
+                self.signal(true);
                 self.wait_exit(grace).await;
             }
         }
@@ -245,14 +237,14 @@ impl Connection {
 
     pub fn kill(&self) {
         self.out.lock().unwrap().take();
-        self.signal(Signal::SIGKILL);
+        self.signal(true);
         self.stop_readers();
     }
 }
 
 async fn wait_code(child: &mut Child) -> i32 {
     match child.wait().await {
-        Ok(status) => status.code().or_else(|| status.signal().map(|s| -s)).unwrap_or(-1),
+        Ok(status) => mx_core::proc::exit_code(&status),
         Err(_) => -1,
     }
 }

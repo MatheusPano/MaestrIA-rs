@@ -4,6 +4,8 @@ mod events;
 mod follow;
 mod frames;
 mod ime;
+#[cfg(windows)]
+mod conpty;
 mod io;
 mod keys;
 mod links;

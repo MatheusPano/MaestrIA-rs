@@ -52,7 +52,7 @@ pub fn base36(mut n: u64) -> String {
 }
 
 pub fn last_segment(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
+    path.rsplit(crate::paths::SEPARATORS).next().unwrap_or(path)
 }
 
 pub fn iso8601(at: &Time) -> String {

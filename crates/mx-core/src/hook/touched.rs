@@ -1,3 +1,4 @@
+use std::path::{MAIN_SEPARATOR, Path};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -7,7 +8,7 @@ use crate::json::Obj;
 use crate::model::HookState;
 use crate::model::hook_state::MAX_TOUCHED;
 use crate::model::is_markdown_path;
-use crate::paths::expand_home_with;
+use crate::paths::{SEPARATORS, expand_home_with, native};
 
 static SEGMENTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[|;\n]|&&").expect("valid regex"));
 static REDIRECT: LazyLock<Regex> = LazyLock::new(|| {
@@ -61,18 +62,18 @@ fn remember(st: &mut HookState, path: String) {
 }
 
 pub fn absolute(path: &str, cwd: Option<&str>, home: Option<&str>) -> String {
-    if path.starts_with('/') {
+    if path.starts_with(SEPARATORS) || Path::new(path).is_absolute() {
         return path.to_owned();
     }
-    if path == "~" || path.starts_with("~/") {
+    if path == "~" || path.strip_prefix('~').is_some_and(|rest| rest.starts_with(SEPARATORS)) {
         return expand_home_with(path, home);
     }
     let Some(cwd) = cwd.filter(|c| !c.is_empty()) else {
         return path.to_owned();
     };
-    let rel = path.strip_prefix("./").unwrap_or(path);
-    let base = cwd.strip_suffix('/').unwrap_or(cwd);
-    format!("{base}/{rel}")
+    let rel = path.strip_prefix('.').filter(|rest| rest.starts_with(SEPARATORS)).map_or(path, |rest| &rest[1..]);
+    let base = cwd.strip_suffix(SEPARATORS).unwrap_or(cwd);
+    format!("{base}{MAIN_SEPARATOR}{}", native(rel))
 }
 
 pub fn shell_markdown(command: &str) -> Vec<String> {

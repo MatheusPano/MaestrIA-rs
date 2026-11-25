@@ -16,10 +16,10 @@ pub fn resolve_portrait(image: &Value, plugin_dir: &Path, data_dir: &Path) -> Re
     let real = std::fs::canonicalize(path)
         .map_err(|_| RpcError::invalid("\"image\": o caminho de um .png que existe"))?;
     let inside = |dir: &Path| {
-        std::fs::canonicalize(dir).is_ok_and(|d| real.to_string_lossy().starts_with(&format!("{}/", d.to_string_lossy())))
+        std::fs::canonicalize(dir).is_ok_and(|d| real != d && real.starts_with(&d))
     };
     if !inside(plugin_dir) && !inside(data_dir) {
         return Err(RpcError::forbidden("\"image\" tem que estar na pasta do plugin ou na de dados dele"));
     }
-    Ok(real.to_string_lossy().into_owned())
+    Ok(mx_core::paths::plain(real).to_string_lossy().into_owned())
 }

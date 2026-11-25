@@ -10,12 +10,17 @@ mx-core.workspace = true
 mx-theme.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-nix.workspace = true
 chrono.workspace = true
 regex.workspace = true
 tempfile.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+junction = { version = "2.1", default-features = false }
 
 [lints]
 workspace = true

@@ -1,9 +1,13 @@
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::fs::File;
-use std::io::{self, ErrorKind, Read, Write};
-use std::os::fd::AsFd;
+use std::io::{self, ErrorKind};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
+#[cfg(windows)]
+use uds_windows::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -11,39 +15,31 @@ use std::time::{Duration, Instant};
 
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::term::{Config, Term};
-use alacritty_terminal::tty::{self, ChildEvent, EventedPty, EventedReadWrite, Pty};
 use alacritty_terminal::vte::ansi::Processor;
-use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
+use super::Stream as UnixStream;
 use super::replay::replay;
 use super::wire::{self, Attach, Exit, Failure, Finished, Hibernate, Info, Prune, Ready, Size, Spawn};
 use crate::scrubber::VtScrubber;
 use crate::session::GridSize;
 use crate::signals;
 
-const READ_CHUNK: usize = 0x10000;
-const CHILD_CHECK: Duration = Duration::from_millis(500);
-const HUP_RECHECK: Duration = Duration::from_millis(10);
+#[cfg(unix)]
+#[path = "server_unix.rs"]
+mod platform;
+#[cfg(windows)]
+#[path = "server_windows.rs"]
+mod platform;
+
+use platform::{accept, clients, open_pty, pump, wait_for_client};
+
 const CLIENT_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
-const INPUT_RECHECK: Duration = Duration::from_secs(1);
 const ACCEPT_TICK: Duration = Duration::from_secs(1);
 const IDLE_EXIT: Duration = Duration::from_secs(60);
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(4);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-fn window(size: GridSize) -> alacritty_terminal::event::WindowSize {
-    alacritty_terminal::event::WindowSize {
-        num_lines: size.rows,
-        num_cols: size.cols,
-        cell_width: size.cell_width,
-        cell_height: size.cell_height,
-    }
-}
-
-fn timespec(d: Duration) -> Timespec {
-    Timespec { tv_sec: d.as_secs() as _, tv_nsec: d.subsec_nanos() as _ }
 }
 
 struct Client {
@@ -63,6 +59,8 @@ struct Mirror {
     hibernate_after: Option<Duration>,
     hibernating: bool,
     idle_shell: bool,
+    #[cfg(windows)]
+    cursor_queries: platform::CursorQueries,
 }
 
 impl Mirror {
@@ -104,7 +102,10 @@ struct Session {
     key: String,
     pid: u32,
     done: AtomicBool,
+    #[cfg(unix)]
     pty: Mutex<File>,
+    #[cfg(windows)]
+    pty: crate::conpty::Handle,
     mirror: Mutex<Mirror>,
 }
 
@@ -120,6 +121,8 @@ impl Session {
         m.scrubber.scrub_into(bytes, &mut m.scrubbed);
         m.parser.advance(&mut m.term, &m.scrubbed);
         m.quiet_since = Instant::now();
+        #[cfg(windows)]
+        self.cursor_queries_in(m, bytes);
         m.send(wire::DATA, bytes);
     }
 
@@ -129,7 +132,7 @@ impl Session {
             && !m.hibernating
             && m.exited.is_none()
             && m.hibernate_after.is_some_and(|after| m.quiet_since.elapsed() >= after)
-            && (!m.idle_shell || signals::idle_shell(&*lock(&self.pty), self.pid));
+            && (!m.idle_shell || self.idle_shell());
         if due {
             m.hibernating = true;
         }
@@ -148,21 +151,6 @@ impl Session {
         }
     }
 
-    fn input(&self, mut bytes: &[u8]) {
-        let file = lock(&self.pty);
-        while !bytes.is_empty() && self.alive() {
-            match (&*file).write(bytes) {
-                Ok(0) => return,
-                Ok(n) => bytes = &bytes[n..],
-                Err(e) if e.kind() == ErrorKind::Interrupted => {}
-                Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    let _ = poll(&mut [PollFd::new(&*file, PollFlags::OUT)], Some(&timespec(INPUT_RECHECK)));
-                }
-                Err(_) => return,
-            }
-        }
-    }
-
     fn resize(&self, size: GridSize) {
         let mut m = lock(&self.mirror);
         if m.size == size {
@@ -171,14 +159,7 @@ impl Session {
         m.size = size;
         m.term.resize(size);
         drop(m);
-        let file = lock(&self.pty);
-        let ws = rustix::termios::Winsize {
-            ws_row: size.rows,
-            ws_col: size.cols,
-            ws_xpixel: size.cols.saturating_mul(size.cell_width),
-            ws_ypixel: size.rows.saturating_mul(size.cell_height),
-        };
-        let _ = rustix::termios::tcsetwinsize(file.as_fd(), ws);
+        self.resize_pty(size);
     }
 
     fn detach(&self, client: u64) {
@@ -187,6 +168,8 @@ impl Session {
             m.client = None;
             m.quiet_since = Instant::now();
         }
+        drop(m);
+        self.after_detach();
     }
 }
 
@@ -239,21 +222,21 @@ impl Daemon {
 }
 
 pub fn run(socket: &Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
     let _ = rustix::process::setsid();
     serve(socket)
 }
 
 pub fn serve(socket: &Path) -> anyhow::Result<()> {
     let rev = super::rev();
-    let listener = bind(socket)?;
-    listener.set_nonblocking(true)?;
+    let listener = clients(bind(socket)?)?;
     let daemon = Arc::new(Daemon { rev: rev.clone(), socket: socket.to_owned(), ..Daemon::default() });
     let stop = Arc::new(AtomicBool::new(false));
     let mut idle_since: Option<Instant> = None;
     log::info!("ptyd {rev} listening on {}", socket.display());
     while !stop.load(Ordering::Acquire) {
-        match listener.accept() {
-            Ok((stream, _)) => {
+        match accept(&listener) {
+            Ok(stream) => {
                 if !same_user(&stream) {
                     continue;
                 }
@@ -271,10 +254,8 @@ pub fn serve(socket: &Path) -> anyhow::Result<()> {
                 }
                 continue;
             }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                let _ = poll(&mut [PollFd::new(&listener, PollFlags::IN)], Some(&timespec(ACCEPT_TICK)));
-            }
-            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == ErrorKind::WouldBlock => wait_for_client(&listener),
+            Err(e) if matches!(e.kind(), ErrorKind::Interrupted | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted) => {}
             Err(e) => return Err(e.into()),
         }
         if daemon.idle() {
@@ -284,6 +265,10 @@ pub fn serve(socket: &Path) -> anyhow::Result<()> {
         } else {
             idle_since = None;
         }
+    }
+    let grace = Instant::now() + SHUTDOWN_GRACE;
+    while !lock(&daemon.sessions).is_empty() && Instant::now() < grace {
+        std::thread::sleep(Duration::from_millis(50));
     }
     if !stop.load(Ordering::Acquire) {
         let _ = std::fs::remove_file(socket);
@@ -307,6 +292,7 @@ fn bind(socket: &Path) -> io::Result<UnixListener> {
         }
         Err(e) => return Err(e),
     };
+    #[cfg(unix)]
     std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
 }
@@ -316,7 +302,7 @@ fn same_user(stream: &UnixStream) -> bool {
     rustix::net::sockopt::socket_peercred(stream).is_ok_and(|c| c.uid == rustix::process::getuid())
 }
 
-// macOS has no SO_PEERCRED; there the 0600 socket file is what keeps other users out.
+// macOS has no SO_PEERCRED: the 0600 socket file keeps other users out. On Windows only the state dir ACL does.
 #[cfg(not(target_os = "linux"))]
 fn same_user(_: &UnixStream) -> bool {
     true
@@ -404,15 +390,7 @@ fn spawn(daemon: &Arc<Daemon>, req: Spawn, client: Client) -> anyhow::Result<Arc
         anyhow::bail!("a sessão {} já está viva", req.key);
     }
     let size = GridSize::from(req.size);
-    let options = tty::Options {
-        shell: Some(tty::Shell::new(req.program, req.args)),
-        working_directory: req.cwd,
-        drain_on_exit: true,
-        env: req.env,
-    };
-    let pty = tty::new(&options, window(size), 0)?;
-    let pid = pty.child().id();
-    let file = pty.file().try_clone()?;
+    let (pty, pid, handle) = open_pty(&req, size)?;
     let config = Config { scrolling_history: req.scrollback, ..Config::default() };
     let mirror = Mirror {
         term: Term::new(config, &size, VoidListener),
@@ -426,12 +404,14 @@ fn spawn(daemon: &Arc<Daemon>, req: Spawn, client: Client) -> anyhow::Result<Arc
         hibernate_after: None,
         hibernating: false,
         idle_shell: false,
+        #[cfg(windows)]
+        cursor_queries: platform::CursorQueries::default(),
     };
     let session = Arc::new(Session {
         key: req.key.clone(),
         pid,
         done: AtomicBool::new(false),
-        pty: Mutex::new(file),
+        pty: handle,
         mirror: Mutex::new(mirror),
     });
     lock(&daemon.sessions).insert(req.key, session.clone());
@@ -472,51 +452,11 @@ fn attach(daemon: &Arc<Daemon>, key: &str, client: Client) -> Option<Arc<Session
     m.send_json(wire::READY, &ready);
     m.send(wire::DATA, &screen);
     drop(guard);
-    signals::redraw(&*lock(&session.pty));
+    session.redraw();
     Some(session)
 }
 
-fn pump(daemon: &Arc<Daemon>, session: &Arc<Session>, mut pty: Pty) {
-    let mut buf = vec![0u8; READ_CHUNK];
-    let mut hung_up = false;
-    let mut next_check = Instant::now() + CHILD_CHECK;
-    let mut recheck = HUP_RECHECK;
-    let code = loop {
-        let timeout = if hung_up {
-            recheck
-        } else {
-            session
-                .sync_deadline()
-                .map_or(CHILD_CHECK, |d| d.saturating_duration_since(Instant::now()).min(CHILD_CHECK))
-        };
-        if hung_up {
-            std::thread::sleep(timeout);
-        } else {
-            let mut fds = [PollFd::new(pty.file(), PollFlags::IN)];
-            if poll(&mut fds, Some(&timespec(timeout))).is_ok() {
-                let ev = fds[0].revents();
-                if ev.contains(PollFlags::IN) {
-                    hung_up = read_all(session, &mut pty, &mut buf);
-                } else if ev.intersects(PollFlags::HUP | PollFlags::ERR) {
-                    hung_up = true;
-                }
-            }
-        }
-        session.expire_sync();
-        if hung_up || Instant::now() >= next_check {
-            next_check = Instant::now() + CHILD_CHECK;
-            if session.due_to_hibernate() {
-                log::info!("ptyd hibernating idle session {}", session.key);
-                signals::hang_up(session.pid);
-            }
-            if let Some(ChildEvent::Exited(status)) = pty.next_child_event() {
-                break status.and_then(|s| signals::exit_code(&s));
-            }
-            if hung_up {
-                recheck = (recheck * 2).min(CHILD_CHECK);
-            }
-        }
-    };
+fn finish(daemon: &Arc<Daemon>, session: &Arc<Session>, code: Option<i32>) {
     let mut m = lock(&session.mirror);
     m.exited = Some(code);
     session.done.store(true, Ordering::Release);
@@ -544,20 +484,9 @@ fn save_finished(socket: &Path, key: &str, m: &Mirror, code: Option<i32>) -> io:
     let finished = Finished { code, size: m.size.into(), screen, hibernated: m.hibernating };
     let temp = file.with_extension("tmp");
     std::fs::write(&temp, serde_json::to_vec(&finished).map_err(io::Error::other)?)?;
+    #[cfg(unix)]
     std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o600))?;
     std::fs::rename(&temp, &file)
-}
-
-fn read_all(session: &Session, pty: &mut Pty, buf: &mut [u8]) -> bool {
-    loop {
-        match pty.reader().read(buf) {
-            Ok(0) => return true,
-            Ok(n) => session.output(&buf[..n]),
-            Err(e) if e.kind() == ErrorKind::Interrupted => {}
-            Err(e) if e.kind() == ErrorKind::WouldBlock => return false,
-            Err(_) => return true,
-        }
-    }
 }
 
 pub fn socket_in(state_dir: &Path) -> PathBuf {

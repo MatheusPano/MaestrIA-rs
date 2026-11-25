@@ -62,7 +62,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("PLANO.md"), "x").unwrap();
         let base = dir.path().to_str();
-        let want = format!("{}/PLANO.md", dir.path().display());
+        let want = dir.path().join("PLANO.md").display().to_string();
         assert_eq!(follow_link("PLANO.md", base), LinkFollow::Reader(want));
     }
 
@@ -92,6 +92,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.png"), "x").unwrap();
         let out = follow_link("a.png#frag", dir.path().to_str());
-        assert_eq!(out, LinkFollow::OpenFile(format!("{}/a.png", dir.path().display())));
+        assert_eq!(out, LinkFollow::OpenFile(dir.path().join("a.png").display().to_string()));
     }
 }

@@ -33,6 +33,7 @@ fn y8_folder_at_matches_roots_and_worktrees() {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn y12_a_fresh_chat_resumes_into_the_folder() {
     let mut rig = Rig::new();
@@ -48,6 +49,7 @@ async fn y12_a_fresh_chat_resumes_into_the_folder() {
     assert!(rig.terms.log(&id).commands[0].contains(&format!("--resume '{TITLED}'")));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn y13_without_folder_the_chat_cwd_finds_it() {
     let mut rig = Rig::new();
@@ -57,6 +59,7 @@ async fn y13_without_folder_the_chat_cwd_finds_it() {
     assert_eq!(rig.t(&id).folder_root, "/tmp");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn y14_without_folders_it_lands_in_the_tray() {
     let mut rig = Rig::new();
@@ -66,6 +69,7 @@ async fn y14_without_folders_it_lands_in_the_tray() {
     assert_eq!(rig.t(&id).cwd, "/tmp");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn y15_a_chat_on_screen_is_selected_not_reopened() {
     let mut rig = Rig::new();
@@ -147,6 +151,7 @@ async fn a_background_row_without_a_job_id_is_live() {
     assert_eq!(rig.s.standing_of(&c), ChatStanding::Live);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_tab_that_moved_to_a_new_session_holds_the_new_one_and_frees_the_old() {
     let mut rig = Rig::new();

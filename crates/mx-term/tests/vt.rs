@@ -236,7 +236,7 @@ fn clicking_a_bare_markdown_name_resolves_against_cwd() {
     let t = term(80, 5, 100);
     t.feed(b"escrevi PLANO.md agora");
     let href = t.link_at(8, 0, dir.path().to_str()).unwrap();
-    let want = format!("{}/PLANO.md", dir.path().display());
+    let want = dir.path().join("PLANO.md").display().to_string();
     assert_eq!(mx_term::follow_link(&href, dir.path().to_str()), mx_term::LinkFollow::Reader(want));
     assert_eq!(t.link_at(2, 0, dir.path().to_str()), None);
 }
@@ -258,6 +258,7 @@ fn the_default_cursor_shape_yields_to_the_program() {
     assert_eq!(kind(&t), Some(CursorKind::Underline));
 }
 
+#[cfg(unix)]
 const SCRATCHPAD_PNG: &str =
     "/tmp/claude-1000/-home-usuario/00000000-0000-4000-8000-000000000000/scratchpad/cefis-crawler-11-13-vs-11-16.png";
 
@@ -281,6 +282,7 @@ fn deep_file(dir: &tempfile::TempDir, name: &str) -> String {
     file.display().to_string()
 }
 
+#[cfg(unix)]
 #[test]
 fn path_cut_by_claude_is_one_link_from_either_row() {
     let t = hard_wrapped(80, SCRATCHPAD_PNG);

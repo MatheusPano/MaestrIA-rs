@@ -41,7 +41,7 @@ pub fn path_of(root: &str, rel: &str) -> String {
 }
 
 fn base_name(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
+    mx_core::text::last_segment(path)
 }
 
 pub fn scan(root: &str) -> Vec<SetupSlot> {

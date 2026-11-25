@@ -27,6 +27,18 @@ pub fn show_items_command(path: &str) -> String {
     )
 }
 
+pub fn windows_path(path: &str) -> String {
+    path.replace('/', "\\")
+}
+
+pub fn windows_select_command(path: &str) -> String {
+    format!("MSYS_NO_PATHCONV=1 explorer.exe {}; true", q(&format!("/select,{}", windows_path(path))))
+}
+
+pub fn windows_open_command(target: &str) -> String {
+    format!("MSYS_NO_PATHCONV=1 rundll32.exe url.dll,FileProtocolHandler {}", q(target))
+}
+
 pub async fn reveal(runner: &dyn CommandRunner, path: &str) -> bool {
     reveal_on(runner, Platform::current(), path).await
 }
@@ -40,6 +52,7 @@ pub async fn reveal_on(runner: &dyn CommandRunner, platform: Platform, path: &st
             runner.run(format!("xdg-open {}", q_operand(&dirname(path))), None).await.ok()
         }
         Platform::MacOs => runner.run(format!("open -R {}", q_operand(path)), None).await.ok(),
+        Platform::Windows => runner.run(windows_select_command(path), None).await.ok(),
     }
 }
 
@@ -67,6 +80,7 @@ pub async fn open_link_on(runner: &dyn CommandRunner, platform: Platform, url: &
     let opener = match platform {
         Platform::Linux => "xdg-open",
         Platform::MacOs => "open",
+        Platform::Windows => return runner.run(windows_open_command(url), None).await.ok(),
     };
     runner.run(format!("{opener} {}", q_operand(url)), None).await.ok()
 }

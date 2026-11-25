@@ -62,7 +62,9 @@ impl Fake {
         let folder = src.join(id.trim_start_matches("mx."));
         write_manifest(&folder, id, version, permissions);
         let zip = self.tmp.path().join(format!("{id}-{version}.zip"));
-        let ok = Command::new("zip").arg("-qr").arg(&zip).arg(folder.file_name().unwrap()).current_dir(&src).status().unwrap();
+        let mut zipper = if cfg!(windows) { Command::new("tar") } else { Command::new("zip") };
+        zipper.args(if cfg!(windows) { ["-a", "-cf"] } else { ["-q", "-r"] });
+        let ok = zipper.arg(&zip).arg(folder.file_name().unwrap()).current_dir(&src).status().unwrap();
         assert!(ok.success());
         let bytes = std::fs::read(&zip).unwrap();
         let name = format!("/{id}-{version}.zip");

@@ -20,7 +20,7 @@ pub struct ChatLister {
 impl ChatLister {
     pub async fn list(self, day: NaiveDate) -> Vec<ChatJson> {
         let opts = ReadOptions { cwds: None, on: Some(day), limit: usize::MAX };
-        let inside = |cwd: &str, root: &str| cwd == root || cwd.starts_with(&format!("{root}/"));
+        let inside = |cwd: &str, root: &str| mx_core::paths::is_within(cwd, root);
         history::read(&self.home, &opts)
             .await
             .into_iter()

@@ -1,3 +1,6 @@
+#![cfg(unix)]
+#![cfg_attr(not(target_os = "linux"), allow(dead_code, unused_imports))]
+
 mod common;
 
 use std::fs;

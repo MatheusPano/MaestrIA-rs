@@ -32,5 +32,30 @@ pub async fn open_on(
             let cmd = format!("open -a {} {}", q(MAC_APP), q_operand(path));
             runner.run(cmd, None).await.ok()
         }
+        Platform::Windows => {
+            let Ok(meta) = tokio::fs::metadata(path).await else { return false };
+            if meta.is_dir() || is_document(path) {
+                let target = crate::reveal::windows_path(path);
+                return runner.run(crate::reveal::windows_open_command(&target), None).await.ok();
+            }
+            runner.run(crate::reveal::windows_select_command(path), None).await;
+            false
+        }
     }
+}
+
+const DOCUMENTS: &[&str] = &[
+    "bmp", "cfg", "code-workspace", "conf", "css", "csv", "diff", "docx", "gif", "go", "htm", "html", "ico", "ini",
+    "jpeg", "jpg", "json", "jsonc", "log", "markdown", "md", "mp3", "mp4", "odt", "ods", "patch", "pdf", "png", "pptx",
+    "rs", "rtf", "sql", "svg", "toml", "ts", "tsv", "txt", "wav", "webp", "xlsx", "xml", "yaml", "yml",
+];
+
+// Windows' default verb runs scripts and programs, so without VS Code only known documents are opened with it.
+pub fn is_document(path: &str) -> bool {
+    let name = mx_core::text::last_segment(path);
+    if name.contains(':') || name.ends_with(['.', ' ']) {
+        return false;
+    }
+    let ext = name.rsplit_once('.').map_or("", |(_, ext)| ext);
+    DOCUMENTS.contains(&ext.to_ascii_lowercase().as_str())
 }

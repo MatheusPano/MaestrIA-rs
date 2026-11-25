@@ -50,6 +50,7 @@ async fn without_title_or_speech_the_session_name_remains() {
     assert_eq!(by_id(&chats, MUTE).title, "maestria_v2");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn each_entry_knows_id_cwd_size_and_when() {
     let chats = read(&fixtures(), &cwds(&["/tmp"])).await;

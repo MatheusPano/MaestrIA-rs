@@ -70,7 +70,9 @@ fn manifest_dir(dir: &Path) -> Option<PathBuf> {
 impl Plugins {
     async fn run_tool(&self, program: &str, args: &[&str]) -> Result<(), InstallError> {
         let env = self.inner.env.read().unwrap().clone();
-        let out = Command::new(program)
+        let mut command = Command::new(program);
+        mx_core::proc::hide_window(command.as_std_mut());
+        let out = command
             .args(args)
             .env_clear()
             .envs(env)
@@ -135,11 +137,22 @@ impl Plugins {
         } else if src.to_lowercase().ends_with(".zip") && Path::new(src).is_file() {
             if cfg!(target_os = "macos") {
                 self.run_tool("ditto", &["-x", "-k", src, &into_s]).await?;
+            } else if cfg!(windows) {
+                fs::create_dir_all(&into).map_err(|e| err(e.to_string()))?;
+                self.run_tool(&windows_tar(), &["-xf", src, "-C", &into_s]).await?;
             } else {
                 self.run_tool("unzip", &["-q", src, "-d", &into_s]).await?;
             }
         } else if Path::new(src).is_dir() {
-            self.run_tool("cp", &["-R", src, &into_s]).await?;
+            if cfg!(windows) {
+                let (from, to) = (PathBuf::from(src), into.clone());
+                tokio::task::spawn_blocking(move || copy_dir(&from, &to))
+                    .await
+                    .map_err(|e| err(e.to_string()))?
+                    .map_err(|e| err(e.to_string()))?;
+            } else {
+                self.run_tool("cp", &["-R", src, &into_s]).await?;
+            }
         } else {
             return Err(err(format!("\"{source}\" não é uma URL de git, um .zip nem uma pasta que exista")));
         }
@@ -164,7 +177,7 @@ impl Plugins {
         self.stop(&p.id).await;
         let is_link = fs::symlink_metadata(&p.dir).is_ok_and(|m| m.file_type().is_symlink());
         if is_link {
-            let _ = fs::remove_file(&p.dir);
+            let _ = unlink_dir(&p.dir);
         } else {
             rm(&p.dir);
         }
@@ -225,8 +238,7 @@ impl Plugins {
         }
         fs::create_dir_all(&self.inner.root).map_err(|e| err(e.to_string()))?;
         let absolute = std::path::absolute(src_path).map_err(|e| err(e.to_string()))?;
-        std::os::unix::fs::symlink(&absolute, self.inner.root.join(&manifest.id))
-            .map_err(|e| err(e.to_string()))?;
+        link_dir(&absolute, &self.inner.root.join(&manifest.id)).map_err(|e| err(e.to_string()))?;
         self.reg().origins.remove(&manifest.id);
         self.scan();
         let plugin = self.get(&manifest.id).ok_or_else(|| err(format!("\"{path}\" não é uma pasta")))?;
@@ -294,5 +306,110 @@ pub fn installed_banner(name: &str, version: &str, replacing: Option<&str>) -> S
     match replacing {
         None => format!("{name} {version} instalado"),
         Some(old) => format!("{name} atualizado de {old} pra {version}"),
+    }
+}
+
+#[cfg(unix)]
+fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+    let Err(symlink) = std::os::windows::fs::symlink_dir(target, link) else { return Ok(()) };
+    let existed = link.exists();
+    junction::create(target, link).map_err(|err| {
+        if !existed {
+            let _ = fs::remove_dir(link);
+        }
+        std::io::Error::new(err.kind(), format!("symlink: {symlink}; junction: {err}"))
+    })
+}
+
+#[cfg(unix)]
+fn unlink_dir(link: &Path) -> std::io::Result<()> {
+    fs::remove_file(link)
+}
+
+#[cfg(windows)]
+fn unlink_dir(link: &Path) -> std::io::Result<()> {
+    fs::remove_dir(link)
+}
+
+fn windows_tar() -> String {
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    format!(r"{root}\System32\tar.exe")
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    let source = fs::canonicalize(from)?;
+    let existed = to.exists();
+    fs::create_dir_all(to)?;
+    let dest = fs::canonicalize(to).or_else(|_| std::path::absolute(to))?;
+    if dest.starts_with(&source) {
+        if !existed {
+            let _ = fs::remove_dir(to);
+        }
+        return Err(std::io::Error::other("A pasta do plugin contém a pasta de plugins do Maestria"));
+    }
+    copy_dir_once(from, to, &dest, &mut Vec::new())
+}
+
+fn copy_dir_once(from: &Path, to: &Path, dest: &Path, ancestors: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    let real = fs::canonicalize(from)?;
+    if ancestors.contains(&real) {
+        return Ok(());
+    }
+    ancestors.push(real);
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        if fs::canonicalize(entry.path()).is_ok_and(|real| real.starts_with(dest)) {
+            continue;
+        }
+        let target = to.join(entry.file_name());
+        let Ok(meta) = fs::metadata(entry.path()) else { continue };
+        if meta.is_dir() {
+            copy_dir_once(&entry.path(), &target, dest, ancestors)?;
+        } else {
+            fs::copy(entry.path(), target)?;
+        }
+    }
+    ancestors.pop();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_is_copied_but_never_into_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("plugin");
+        fs::create_dir_all(src.join("sub")).unwrap();
+        fs::write(src.join("sub").join("a.txt"), "a").unwrap();
+        let out = dir.path().join("out");
+        copy_dir(&src, &out).unwrap();
+        assert_eq!(fs::read_to_string(out.join("sub").join("a.txt")).unwrap(), "a");
+        let staging = src.join(".staging");
+        fs::create_dir(&staging).unwrap();
+        assert!(copy_dir(&src, &staging.join("p1")).is_err());
+        assert!(!staging.join("p1").exists());
+        assert!(copy_dir(&src, &src).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_back_into_the_destination_are_not_copied() {
+        let dir = tempfile::tempdir().unwrap();
+        let (src, out) = (dir.path().join("plugin"), dir.path().join("data"));
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("a.txt"), "a").unwrap();
+        std::os::unix::fs::symlink(&out, src.join("data")).unwrap();
+        std::os::unix::fs::symlink(out.join("a.txt"), src.join("z.txt")).unwrap();
+        copy_dir(&src, &out).unwrap();
+        assert!(out.join("a.txt").exists());
+        assert!(!out.join("data").exists() && !out.join("z.txt").exists());
     }
 }
