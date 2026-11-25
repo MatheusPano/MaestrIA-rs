@@ -312,7 +312,14 @@ fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
 
 #[cfg(windows)]
 fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
-    std::os::windows::fs::symlink_dir(target, link).or_else(|_| junction(target, link))
+    let Err(symlink) = std::os::windows::fs::symlink_dir(target, link) else { return Ok(()) };
+    let existed = link.exists();
+    junction::create(target, link).map_err(|err| {
+        if !existed {
+            let _ = fs::remove_dir(link);
+        }
+        std::io::Error::new(err.kind(), format!("symlink: {symlink}; junction: {err}"))
+    })
 }
 
 #[cfg(unix)]
@@ -323,14 +330,6 @@ fn unlink_dir(link: &Path) -> std::io::Result<()> {
 #[cfg(windows)]
 fn unlink_dir(link: &Path) -> std::io::Result<()> {
     fs::remove_dir(link)
-}
-
-#[cfg(windows)]
-fn junction(target: &Path, link: &Path) -> std::io::Result<()> {
-    let mut cmd = std::process::Command::new("cmd.exe");
-    mx_core::proc::hide_window(&mut cmd);
-    let status = cmd.arg("/C").arg("mklink").arg("/J").arg(link).arg(target).status()?;
-    if status.success() { Ok(()) } else { Err(std::io::Error::other("mklink /J falhou")) }
 }
 
 fn windows_tar() -> String {
