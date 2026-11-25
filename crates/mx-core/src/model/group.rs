@@ -28,7 +28,7 @@ impl PaneGroup {
             } else {
                 str_of(p, "folderRoot").unwrap_or("")
             };
-            let Some(seg) = root.split('/').rev().find(|s| !s.is_empty()) else {
+            let Some(seg) = root.split(crate::paths::SEPARATORS).rev().find(|s| !s.is_empty()) else {
                 continue;
             };
             if !seen.contains(&seg) {

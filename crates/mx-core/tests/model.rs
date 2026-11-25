@@ -432,3 +432,14 @@ fn context_usage_reads_a_full_claude_code_statusline_payload() {
         "remaining_percentage": null, "current_usage": null}});
     assert_eq!(ContextUsage::from_statusline(&fresh), None);
 }
+
+#[cfg(windows)]
+#[test]
+fn a_group_in_windows_folders_is_labeled_with_the_folder_names() {
+    let panes = [r"C:\Users\a\api", r"C:\Users\a\web\"]
+        .iter()
+        .map(|root| json!({"folderRoot": root}).as_object().unwrap().clone())
+        .collect();
+    let g = PaneGroup { id: "w".into(), name: "n".into(), panes, tree: None };
+    assert_eq!(g.where_(), "api · web");
+}
