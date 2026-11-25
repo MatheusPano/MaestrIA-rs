@@ -147,3 +147,17 @@ fn a_path_is_within_its_root_even_when_the_root_ends_with_a_separator() {
     assert!(is_within("/a/b", "/a/"));
     assert!(is_within("/home/x", "/"));
 }
+
+#[cfg(windows)]
+#[test]
+fn a_windows_root_matches_whatever_separators_and_case_the_path_uses() {
+    use mx_core::paths::is_within;
+    assert!(is_within(r"C:\Users\a\notes\x", "C:/Users/a/notes"));
+    assert!(is_within("c:/users/A/notes", r"C:\Users\a\notes\"));
+    assert!(!is_within(r"C:\Users\a\notesx", "C:/Users/a/notes"));
+    assert!(is_within(r"c:\users\Ärger\proj", r"C:\Users\ärger"));
+    assert!(is_within("c:/x", r"C:\"));
+    assert!(is_within("//srv/share/x", r"\\srv\share"));
+    assert!(!is_within(r"C:\Users\İ\proj", r"C:\Users\i"));
+    assert!(!is_within("C:/\u{212A}/proj", "C:/k"));
+}

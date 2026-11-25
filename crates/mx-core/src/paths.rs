@@ -4,10 +4,31 @@ pub const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] 
 
 pub fn is_within(path: &str, root: &str) -> bool {
     let bare = root.trim_end_matches(SEPARATORS);
-    let Some(head) = path.get(..bare.len()) else { return false };
-    let same = if cfg!(windows) { head.eq_ignore_ascii_case(bare) } else { head == bare };
-    let rest = &path[bare.len()..];
-    same && (rest.is_empty() || rest.starts_with(SEPARATORS))
+    let rest = if cfg!(windows) {
+        let mut chars = path.char_indices();
+        if !bare.chars().all(|b| chars.next().is_some_and(|(_, c)| fold(c) == fold(b))) {
+            return false;
+        }
+        chars.next().map_or("", |(at, _)| &path[at..])
+    } else {
+        match path.strip_prefix(bare) {
+            Some(rest) => rest,
+            None => return false,
+        }
+    };
+    rest.is_empty() || rest.starts_with(SEPARATORS)
+}
+
+// Upper case one char to one char, like the NTFS upcase table: `İ` and the Kelvin sign stay apart from `i` and `k`.
+fn fold(c: char) -> char {
+    if c == '/' {
+        return '\\';
+    }
+    let mut upper = c.to_uppercase();
+    match (upper.next(), upper.next()) {
+        (Some(one), None) => one,
+        _ => c,
+    }
 }
 
 pub fn native(path: &str) -> String {
