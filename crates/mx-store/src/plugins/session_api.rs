@@ -28,6 +28,7 @@ impl Store {
     }
 
     fn known_tab(&self, id: String) -> Result<String, RpcError> {
+        let id = self.canonical_tab(&id);
         if self.has_tab(&id) { Ok(id) } else { Err(RpcError::no_tab(&id)) }
     }
 

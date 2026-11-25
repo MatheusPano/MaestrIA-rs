@@ -14,13 +14,15 @@ pub(crate) struct StoreTools {
 }
 
 impl StoreTools {
-    async fn cwd_of(&self, tab_id: &str) -> Option<String> {
+    async fn caller(&self, tab_id: String) -> (String, Option<String>) {
         let (reply, answer) = oneshot::channel();
-        let id = tab_id.to_owned();
+        let fallback = tab_id.clone();
         self.sender.send(StoreMsg::Run(Box::new(move |s: &mut Store| {
-            let _ = reply.send(s.tab(&id).map(|t| t.cwd.clone()));
+            let id = s.canonical_tab(&tab_id);
+            let cwd = s.tab(&id).map(|t| t.cwd.clone());
+            let _ = reply.send((id, cwd));
         })));
-        answer.await.ok().flatten()
+        answer.await.unwrap_or((fallback, None))
     }
 }
 
@@ -38,7 +40,7 @@ impl PluginTools for StoreTools {
             if !self.plugins.tools().iter().any(|t| t.name == name) {
                 return None;
             }
-            let cwd = self.cwd_of(&tab_id).await;
+            let (tab_id, cwd) = self.caller(tab_id).await;
             Some(match self.plugins.call_tool(&tab_id, cwd.as_deref(), &name, args).await {
                 Ok(answer) => answer,
                 Err(e) => tool_error(e.message),

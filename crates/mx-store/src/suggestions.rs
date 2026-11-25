@@ -29,7 +29,8 @@ fn wire(end: SuggestionEnd) -> mcp::SuggestionEnd {
 }
 
 impl Store {
-    pub fn suggest(&mut self, s: NewSuggestion) -> Option<SuggestionQueued> {
+    pub fn suggest(&mut self, mut s: NewSuggestion) -> Option<SuggestionQueued> {
+        s.tab_id = self.canonical_tab(&s.tab_id);
         let tab = self.tab(&s.tab_id)?;
         if tab.kind != TabKind::Claude {
             return None;
@@ -63,6 +64,7 @@ impl Store {
     }
 
     pub fn withdraw(&mut self, tab: &str, task: &str) -> Withdrawal {
+        let tab = &self.canonical_tab(tab);
         if self.pending_suggestion(tab, task).is_none() {
             return Withdrawal {
                 withdrawn: false,

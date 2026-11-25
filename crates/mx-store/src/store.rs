@@ -51,6 +51,7 @@ pub struct Store {
     pub(crate) badge: Option<Option<String>>,
     pub(crate) settled: HashMap<String, SuggestionEnd>,
     pub(crate) tracking: HashMap<String, Tracking>,
+    pub(crate) tab_aliases: HashMap<String, String>,
     pub(crate) installed_plugins: Vec<String>,
     pub(crate) last_import: Option<WorkspaceImport<String>>,
     pub(crate) ages: Vec<(String, String)>,
@@ -104,6 +105,7 @@ impl Store {
             badge: None,
             settled: HashMap::new(),
             tracking: HashMap::new(),
+            tab_aliases: HashMap::new(),
             installed_plugins: Vec::new(),
             last_import: None,
             ages: Vec::new(),
@@ -179,6 +181,30 @@ impl Store {
 
     pub(crate) fn tab_mut(&mut self, id: &str) -> Option<&mut Tab> {
         self.tabs.iter_mut().find(|t| t.id == id)
+    }
+
+    pub(crate) fn canonical_tab(&self, id: &str) -> String {
+        match self.tab_aliases.get(id) {
+            Some(alias) if !self.has_tab(id) => alias.clone(),
+            _ => id.to_owned(),
+        }
+    }
+
+    pub(crate) fn hook_tab(&mut self, id: &str, session_id: Option<&str>) -> Option<String> {
+        let known = self.canonical_tab(id);
+        if self.has_tab(&known) {
+            return Some(known);
+        }
+        let sid = session_id?;
+        let tab = self
+            .tabs
+            .iter()
+            .filter(|t| t.session_id.as_deref() == Some(sid))
+            .min_by_key(|t| t.hibernated)?
+            .id
+            .clone();
+        self.tab_aliases.insert(id.to_owned(), tab.clone());
+        Some(tab)
     }
 
     pub(crate) fn pos(&self, id: &str) -> Option<usize> {
