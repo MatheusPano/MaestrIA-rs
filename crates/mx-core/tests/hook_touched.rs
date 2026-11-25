@@ -138,7 +138,7 @@ fn bash_tee_sed_in_place_and_cp_target_markdown_are_touched() {
     assert_eq!(bash_touched("cat x | tee resumo.md"), [at("resumo.md")]);
     assert_eq!(
         bash_touched("sed -i '' 's/a/b/' LEIAME.md"),
-        ["/repo/LEIAME.md"]
+        [at("LEIAME.md")]
     );
     assert_eq!(
         bash_touched("cp modelo.md /tmp/copia.md"),
@@ -150,7 +150,7 @@ fn bash_tee_sed_in_place_and_cp_target_markdown_are_touched() {
 fn heredoc_bodies_are_not_read_as_commands() {
     assert_eq!(
         bash_touched("cat > nota.md <<'MD'\n> veja o inexistente.md\nMD"),
-        ["/repo/nota.md"]
+        [at("nota.md")]
     );
 }
 
@@ -240,8 +240,8 @@ fn touched_is_capped_at_200_dropping_the_oldest() {
         );
     }
     assert_eq!(s.touched.len(), 200);
-    assert_eq!(s.touched.first().unwrap(), "/repo/f5");
-    assert_eq!(s.touched.last().unwrap(), "/repo/f204");
+    assert_eq!(*s.touched.first().unwrap(), at("f5"));
+    assert_eq!(*s.touched.last().unwrap(), at("f204"));
 }
 
 #[test]
