@@ -151,3 +151,33 @@ async fn a_rebound_host_name_is_refused() {
     assert_eq!(raw_post(port, "/hook/tab1", &[("host", &local)], hook).await, 200);
     assert!(matches!(rx.recv().await, Some(ServerEvent::Hook { .. })));
 }
+
+#[tokio::test]
+async fn claude_gets_its_settings_and_mcp_config_inline_or_as_files_on_windows() {
+    let state = tempfile::tempdir().unwrap();
+    let (server, _rx) = start(state.path()).await;
+    for (arg, key) in [(server.settings_for("tab1", None, None), "hooks"), (server.mcp_config_for("tab1"), "mcpServers")] {
+        let json = if cfg!(windows) { std::fs::read_to_string(&arg).unwrap() } else { arg };
+        assert!(serde_json::from_str::<serde_json::Value>(&json).unwrap().get(key).is_some());
+    }
+}
+
+#[test]
+fn a_launch_file_is_named_after_a_sanitized_tab_and_holds_the_json() {
+    let state = tempfile::tempdir().unwrap();
+    let path = mx_claude::launch_file(state.path(), "a/b c", "settings", "{}").unwrap();
+    assert!(path.ends_with("a_b_c-settings.json"));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "{}");
+}
+
+#[test]
+fn launch_files_older_than_a_month_are_pruned_and_recent_ones_stay() {
+    let state = tempfile::tempdir().unwrap();
+    let old = mx_claude::launch_file(state.path(), "old", "mcp", "{}").unwrap();
+    let new = mx_claude::launch_file(state.path(), "new", "mcp", "{}").unwrap();
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(31 * 24 * 3600);
+    std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
+    mx_claude::prune_launch_files(state.path());
+    assert!(!std::path::Path::new(&old).exists());
+    assert!(std::path::Path::new(&new).exists());
+}
