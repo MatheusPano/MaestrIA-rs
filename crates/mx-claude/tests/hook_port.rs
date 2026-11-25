@@ -2,7 +2,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{post, start, stop_url_port};
+use common::{launch_json, post, start, stop_url_port};
 use mx_claude::{ServerEvent, port_file};
 
 #[tokio::test]
@@ -15,7 +15,7 @@ async fn second_run_binds_the_same_port_as_the_first() {
 
     let (again, _rx2) = start(state.path()).await;
     assert_eq!(again.port(), was);
-    assert_eq!(stop_url_port(&again.settings_for("tab2", None, None)), was);
+    assert_eq!(stop_url_port(again.settings_for("tab2", None, None)), was);
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn unreadable_port_file_does_not_stop_the_server() {
 async fn hook_reaches_the_panel_through_the_announced_port() {
     let state = tempfile::tempdir().unwrap();
     let (server, mut rx) = start(state.path()).await;
-    let port = stop_url_port(&server.settings_for("tab7", None, None));
+    let port = stop_url_port(server.settings_for("tab7", None, None));
     assert_eq!(port, server.port());
 
     let (status, body) = post(
@@ -177,9 +177,13 @@ async fn a_rebound_host_name_is_refused() {
 async fn claude_gets_its_settings_and_mcp_config_inline_or_as_files_on_windows() {
     let state = tempfile::tempdir().unwrap();
     let (server, _rx) = start(state.path()).await;
-    for (arg, key) in [(server.settings_for("tab1", None, None), "hooks"), (server.mcp_config_for("tab1"), "mcpServers")] {
-        let json = if cfg!(windows) { std::fs::read_to_string(&arg).unwrap() } else { arg };
-        assert!(serde_json::from_str::<serde_json::Value>(&json).unwrap().get(key).is_some());
+    let settings = server.settings_for("tab1", None, None);
+    let mcp = server.mcp_config_for("tab1");
+    if cfg!(windows) {
+        assert!(settings.ends_with("tab1-settings.json") && mcp.ends_with("tab1-mcp.json"));
+    }
+    for (arg, key) in [(settings, "hooks"), (mcp, "mcpServers")] {
+        assert!(serde_json::from_str::<serde_json::Value>(&launch_json(arg)).unwrap().get(key).is_some());
     }
 }
 

@@ -29,8 +29,16 @@ pub async fn post(port: u16, path: &str, body: &str) -> (u16, String) {
     (status, res.text().await.expect("body"))
 }
 
-pub fn stop_url_port(settings: &str) -> u16 {
-    let json: Value = serde_json::from_str(settings).unwrap();
+pub fn launch_json(arg: String) -> String {
+    if !cfg!(windows) {
+        return arg;
+    }
+    assert!(!arg.starts_with('{'), "the launch file could not be written, so the JSON stayed inline");
+    std::fs::read_to_string(arg).unwrap()
+}
+
+pub fn stop_url_port(settings: String) -> u16 {
+    let json: Value = serde_json::from_str(&launch_json(settings)).unwrap();
     let url = json["hooks"]["Stop"][0]["hooks"][0]["url"]
         .as_str()
         .unwrap();

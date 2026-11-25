@@ -2,7 +2,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{Desk, post, start};
+use common::{Desk, launch_json, post, start};
 use mx_claude::mcp::{self, BoxFuture, NoSink, PluginTools, SuggestionSink, is_task_id, new_task_id};
 use serde_json::{Value, json};
 
@@ -264,14 +264,14 @@ async fn mcp_config_and_permission_point_at_the_same_server() {
     let state = tempfile::tempdir().unwrap();
     let (server, _rx) = start(state.path()).await;
     let port = server.port();
-    let config = server.mcp_config_for("tab1");
+    let config = launch_json(server.mcp_config_for("tab1"));
     assert_eq!(
         config,
         format!(
             r#"{{"mcpServers":{{"maestria":{{"type":"http","url":"http://127.0.0.1:{port}/mcp/tab1","alwaysLoad":true}}}}}}"#
         )
     );
-    let settings: Value = serde_json::from_str(&server.settings_for("tab1", None, None)).unwrap();
+    let settings: Value = serde_json::from_str(&launch_json(server.settings_for("tab1", None, None))).unwrap();
     assert_eq!(
         settings["permissions"]["allow"],
         json!(["mcp__maestria__suggest_task", "mcp__maestria__dismiss_task"])
@@ -372,7 +372,7 @@ async fn the_server_offers_the_plugin_tools_and_allows_them_in_the_settings() {
     let (_, text) = post(server.port(), "/mcp/tab1", &call("design_open", json!({})).to_string()).await;
     let answer: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(answer["result"]["content"][1]["type"], "image");
-    let settings: Value = serde_json::from_str(&server.settings_for("tab1", None, None)).unwrap();
+    let settings: Value = serde_json::from_str(&launch_json(server.settings_for("tab1", None, None))).unwrap();
     assert_eq!(
         settings["permissions"]["allow"],
         json!(["mcp__maestria__suggest_task", "mcp__maestria__dismiss_task", "mcp__maestria__design_open"])
