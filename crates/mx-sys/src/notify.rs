@@ -34,8 +34,19 @@ const POWERSHELL_AUMID: &str = r"{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsP
 
 use crate::shell::ps_quote as ps_string;
 
+fn xml_char(c: char) -> bool {
+    (!c.is_control() || matches!(c, '\t' | '\n' | '\r')) && !matches!(c, '\u{FFFE}' | '\u{FFFF}')
+}
+
+// A toast shows a few lines; the cap keeps the encoded command under Windows' 32,767-character limit.
+const TOAST_CHARS: usize = 500;
+
 fn xml_text(value: &str) -> String {
-    let allowed: String = value.chars().filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r')).collect();
+    let mut allowed: String = value.chars().filter(|c| xml_char(*c)).collect();
+    if let Some((cut, _)) = allowed.char_indices().nth(TOAST_CHARS) {
+        allowed.truncate(cut);
+        allowed.push('…');
+    }
     allowed.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
@@ -113,13 +124,21 @@ mod tests {
 
     #[test]
     fn windows_toast_escapes_xml_and_powershell_quotes() {
-        let script = windows_toast_script("it's <a>", "x & y");
+        let script = windows_toast_script("it's <a>\u{FFFF}", "x & y\u{1}");
         assert!(script.contains("<text>it''s &lt;a&gt;</text><text>x &amp; y</text>"));
     }
 
     #[test]
     fn windows_toast_runs_powershell_with_an_encoded_command() {
         assert!(alert_command(Platform::Windows, "t", "b").starts_with("powershell.exe -NoProfile -NonInteractive -EncodedCommand "));
+    }
+
+    #[test]
+    fn a_huge_windows_toast_is_clipped_to_fit_one_command_line() {
+        let huge = "'&\"".repeat(20_000);
+        let command = alert_command(Platform::Windows, &huge, &huge);
+        assert!(command.len() < 32_767, "{} characters", command.len());
+        assert!(windows_toast_script("t", &"a".repeat(600)).contains(&format!("{}…</text>", "a".repeat(500))));
     }
 
     #[test]
