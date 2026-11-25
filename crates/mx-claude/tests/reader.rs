@@ -1,3 +1,5 @@
+use std::path::MAIN_SEPARATOR;
+
 use mx_claude::docs::{DocSource, LinkAction, MxDoc, decode_href, follow_link, is_markdown_path};
 use mx_claude::markdown::{MdKind, MdNode, parse_markdown};
 
@@ -99,19 +101,40 @@ fn links_resolve_to_external_reader_quick_look_or_missing() {
     assert_eq!(decoded, "decisões.md#topo");
     assert_eq!(
         follow_link(&decoded, Some(&base), None),
-        LinkAction::Read(format!("{base}/decisões.md"))
+        LinkAction::Read(format!("{base}{MAIN_SEPARATOR}decisões.md"))
     );
     assert_eq!(
         follow_link("dados.csv", Some(&base), None),
-        LinkAction::QuickLook(format!("{base}/dados.csv"))
+        LinkAction::QuickLook(format!("{base}{MAIN_SEPARATOR}dados.csv"))
     );
     let missing = follow_link("~/sumiu.md", Some(&base), Some("/home/x/"));
-    assert_eq!(missing, LinkAction::Missing("/home/x/sumiu.md".into()));
+    let gone = format!("/home/x{MAIN_SEPARATOR}sumiu.md");
+    assert_eq!(missing, LinkAction::Missing(gone.clone()));
     assert_eq!(
-        missing.problem().as_deref(),
-        Some("Esse link aponta pra um arquivo que não existe: /home/x/sumiu.md")
+        missing.problem(),
+        Some(format!("Esse link aponta pra um arquivo que não existe: {gone}"))
     );
     assert_eq!(decode_href("mailto:a%40b"), "mailto:a%40b");
+}
+
+#[test]
+fn an_absolute_link_ignores_the_base_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("plano.md");
+    std::fs::write(&file, "x").unwrap();
+    let path = file.to_string_lossy().into_owned();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let base = elsewhere.path().to_string_lossy().into_owned();
+    assert_eq!(follow_link(&path, Some(&base), None), LinkAction::Read(path.clone()));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_tilde_with_a_backslash_is_the_home_folder() {
+    let missing = follow_link(r"~\sumiu.md", Some(r"C:\repo"), Some(r"C:\Users\x\"));
+    assert_eq!(missing, LinkAction::Missing(r"C:\Users\x\sumiu.md".into()));
+    let nested = follow_link("docs/a.md", Some(r"C:\repo\"), None);
+    assert_eq!(nested, LinkAction::Missing(r"C:\repo\docs\a.md".into()));
 }
 
 fn find<'a>(node: &'a MdNode, pred: &dyn Fn(&MdKind) -> bool, out: &mut Vec<&'a MdNode>) {

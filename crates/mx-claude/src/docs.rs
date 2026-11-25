@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use chrono::{DateTime, Local, NaiveDateTime, Timelike};
+use mx_core::paths::{SEPARATORS, native};
 use mx_core::text::{clip_utf16, utf16_len};
 use percent_encoding::percent_decode_str;
 use regex::Regex;
@@ -209,21 +210,16 @@ pub fn is_markdown_path(path: &str) -> bool {
 }
 
 pub fn expand_home(path: &str, home: Option<&str>) -> String {
-    if path != "~" && !path.starts_with("~/") {
-        return path.to_owned();
-    }
-    let Some(home) = home.filter(|h| !h.is_empty()) else {
-        return path.to_owned();
-    };
-    let home = home.strip_suffix('/').unwrap_or(home);
-    format!("{home}{}", &path[1..])
+    mx_core::paths::expand_home_with(path, home)
 }
 
 pub fn resolve_link_path(path: &str, base: Option<&str>, home: Option<&str>) -> String {
     let expanded = expand_home(path, home);
     match base {
-        _ if expanded.starts_with('/') => expanded,
-        Some(base) if !base.is_empty() => format!("{base}/{expanded}"),
+        _ if expanded.starts_with(SEPARATORS) || Path::new(&expanded).is_absolute() => expanded,
+        Some(base) if !base.is_empty() => {
+            format!("{}{}{}", base.trim_end_matches(SEPARATORS), std::path::MAIN_SEPARATOR, native(&expanded))
+        }
         _ => expanded,
     }
 }

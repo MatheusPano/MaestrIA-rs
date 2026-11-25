@@ -24,6 +24,10 @@ fn tool(s: &mut HookState, event: &str, name: &str, input: Value) {
     fire(s, event, json!({"tool_name": name, "tool_input": input}));
 }
 
+fn at(rel: &str) -> String {
+    format!("/repo{}{}", std::path::MAIN_SEPARATOR, mx_core::paths::native(rel))
+}
+
 fn bash_touched(command: &str) -> Vec<String> {
     let mut s = HookState::new();
     tool(&mut s, "PostToolUse", "Bash", json!({"command": command}));
@@ -117,21 +121,21 @@ fn post_tool_use_records_writes_but_not_reads() {
 fn bash_redirects_and_heredocs_into_markdown_are_touched() {
     assert_eq!(
         bash_touched("printf \"# oi\\n\" > notas.md"),
-        ["/repo/notas.md"]
+        [at("notas.md")]
     );
     assert_eq!(
         bash_touched("echo linha >> docs/DIARIO.md"),
-        ["/repo/docs/DIARIO.md"]
+        [at("docs/DIARIO.md")]
     );
     assert_eq!(
         bash_touched("cat > 'meu plano.md' <<'EOF'\n# plano\nEOF"),
-        ["/repo/meu plano.md"]
+        [at("meu plano.md")]
     );
 }
 
 #[test]
 fn bash_tee_sed_in_place_and_cp_target_markdown_are_touched() {
-    assert_eq!(bash_touched("cat x | tee resumo.md"), ["/repo/resumo.md"]);
+    assert_eq!(bash_touched("cat x | tee resumo.md"), [at("resumo.md")]);
     assert_eq!(
         bash_touched("sed -i '' 's/a/b/' LEIAME.md"),
         ["/repo/LEIAME.md"]
@@ -197,7 +201,7 @@ fn relative_writes_resolve_against_cwd() {
         "Write",
         json!({"file_path": "notas.md"}),
     );
-    assert_eq!(s.touched, ["/repo/saida/lista.csv", "/repo/notas.md"]);
+    assert_eq!(s.touched, [at("saida/lista.csv"), at("notas.md")]);
 }
 
 #[test]
@@ -285,4 +289,16 @@ fn shell_markdown_tilde_targets_expand_home() {
     );
     assert_eq!(s.touched, ["/home/u/notas.md"]);
     assert_eq!(shell_markdown("A=1 B=2 tee a.md b.txt"), ["a.md"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_paths_from_claude_stay_absolute_and_tilde_takes_a_backslash() {
+    use mx_core::hook::absolute;
+    let home = Some(r"C:\Users\u");
+    assert_eq!(absolute(r"C:\repo\NOTES.md", Some(r"C:\repo"), home), r"C:\repo\NOTES.md");
+    assert_eq!(absolute(r"~\notas.md", Some(r"C:\repo"), home), r"C:\Users\u\notas.md");
+    assert_eq!(absolute(r".\a.md", Some(r"C:\repo\"), home), r"C:\repo\a.md");
+    assert_eq!(absolute("docs/a.md", Some(r"C:\repo"), home), r"C:\repo\docs\a.md");
+    assert_eq!(absolute(r"\docs\a.md", Some(r"C:\repo"), home), r"\docs\a.md");
 }
