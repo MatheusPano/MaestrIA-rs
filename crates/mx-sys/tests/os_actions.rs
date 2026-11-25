@@ -127,6 +127,49 @@ async fn editor_on_mac_falls_back_to_open_dash_a() {
 }
 
 #[tokio::test]
+async fn editor_on_windows_without_code_opens_documents_and_folders_and_only_shows_the_rest_in_explorer() {
+    let fake = FakeRunner::new();
+    fake.respond("MSYS_NO_PATHCONV=1", ok());
+    let dir = tempfile::tempdir().unwrap();
+    let make = |name: &str| {
+        let path = dir.path().join(name);
+        std::fs::write(&path, "x").unwrap();
+        path.to_str().unwrap().to_owned()
+    };
+    let (doc, script) = (make("notas.md"), make("deploy.JS"));
+    let folder = dir.path().join("three.js");
+    std::fs::create_dir(&folder).unwrap();
+    let folder = folder.to_str().unwrap();
+    assert!(editor::open_on(&fake, Platform::Windows, &doc, None).await);
+    assert!(!editor::open_on(&fake, Platform::Windows, "C:/sumiu/notas.md", None).await);
+    assert!(!editor::open_on(&fake, Platform::Windows, &script, None).await);
+    assert!(editor::open_on(&fake, Platform::Windows, folder, None).await);
+    let open = |p: &str| mx_sys::reveal::windows_open_command(&mx_sys::reveal::windows_path(p));
+    assert_eq!(
+        fake.commands(),
+        [
+            format!("code -- '{doc}'"),
+            open(&doc),
+            "code -- 'C:/sumiu/notas.md'".to_owned(),
+            format!("code -- '{script}'"),
+            mx_sys::reveal::windows_select_command(&script),
+            format!("code -- '{folder}'"),
+            open(folder),
+        ]
+    );
+}
+
+#[test]
+fn only_known_documents_go_to_the_windows_default_handler() {
+    for doc in ["a.md", "C:/r/b.PDF", "x.code-workspace", "c.yml", "pom.xml"] {
+        assert!(editor::is_document(doc), "{doc}");
+    }
+    for other in ["a.bat", "a.py", "evil.bat.", "evil.md ", "x.md::$DATA", "Makefile", "C:/r/a.bat"] {
+        assert!(!editor::is_document(other), "{other}");
+    }
+}
+
+#[tokio::test]
 async fn operands_that_look_like_options_are_never_read_as_options() {
     assert_eq!(
         alert_command(Platform::Linux, "-t 1", "--help"),
