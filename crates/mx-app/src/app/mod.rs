@@ -74,7 +74,7 @@ pub fn open_main_window(cx: &mut App) -> anyhow::Result<()> {
     .detach();
     let bounds = Bounds::centered(None, size(px(1280.), px(720.)), cx);
     let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_bounds: Some(WindowBounds::Maximized(bounds)),
         titlebar: Some(TitlebarOptions {
             title: Some("MaestrIA".into()),
             ..Default::default()

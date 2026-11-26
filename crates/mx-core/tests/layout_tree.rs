@@ -72,12 +72,49 @@ fn inserting_next_to_a_missing_target_changes_nothing() {
 }
 
 #[test]
-fn removing_spreads_the_freed_weight_proportionally() {
+fn removing_the_last_gives_its_weight_to_the_one_beside_it() {
+    let n = row(vec![leaf("a"), leaf("b"), leaf("c")], vec![0.5, 0.25, 0.25])
+        .remove("c")
+        .unwrap();
+    assert_eq!(n.order(), ["a", "b"]);
+    assert!(close(&weights(&n), &[0.5, 0.5]));
+}
+
+#[test]
+fn removing_the_first_gives_its_weight_to_the_one_beside_it() {
     let n = row(vec![leaf("a"), leaf("b"), leaf("c")], vec![0.5, 0.25, 0.25])
         .remove("a")
         .unwrap();
     assert_eq!(n.order(), ["b", "c"]);
+    assert!(close(&weights(&n), &[0.75, 0.25]));
+}
+
+#[test]
+fn removing_a_middle_one_splits_its_weight_between_both_neighbors() {
+    let n = row(vec![leaf("a"), leaf("b"), leaf("c"), leaf("d")], vec![0.4, 0.2, 0.2, 0.2])
+        .remove("b")
+        .unwrap();
+    assert!(close(&weights(&n), &[0.5, 0.3, 0.2]));
+}
+
+#[test]
+fn moving_a_pane_below_its_neighbor_leaves_the_other_columns_alone() {
+    let n = row(vec![leaf("a"), leaf("b"), leaf("c")], vec![0.5, 0.25, 0.25])
+        .remove("c")
+        .unwrap()
+        .insert("c", "b", DropSide::Bottom);
     assert!(close(&weights(&n), &[0.5, 0.5]));
+    assert_eq!(n.as_split().unwrap().children[1].order(), ["b", "c"]);
+}
+
+#[test]
+fn moving_a_middle_pane_gives_its_weight_only_to_the_drop_target() {
+    let n = row(vec![leaf("a"), leaf("b"), leaf("c")], vec![0.25, 0.5, 0.25])
+        .remove_toward("b", Some("c"))
+        .unwrap()
+        .insert("b", "c", DropSide::Bottom);
+    assert!(close(&weights(&n), &[0.25, 0.75]));
+    assert_eq!(n.as_split().unwrap().children[1].order(), ["c", "b"]);
 }
 
 #[test]

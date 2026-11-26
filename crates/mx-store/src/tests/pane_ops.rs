@@ -32,6 +32,16 @@ fn a_swap_drop_trades_places_and_keeps_both_panes() {
 }
 
 #[test]
+fn dropping_a_pane_below_another_keeps_the_untouched_column_width() {
+    let mut rig = rig(&["a", "b", "c"]);
+    rig.s.set_panes(Some(row(&["a", "b", "c"])), Some("b"));
+    rig.s.drop_tab("b", "c", PaneDrop::Split(DropSide::Bottom));
+    let w = weights(&rig);
+    assert!((w[0] - 1. / 3.).abs() < 1e-9 && (w[1] - 2. / 3.).abs() < 1e-9, "{w:?}");
+    assert_eq!(rig.s.order(), ["a", "c", "b"]);
+}
+
+#[test]
 fn a_swap_keeps_each_pane_with_its_own_pin() {
     let mut rig = rig(&["fixo", "solto"]);
     rig.s.set_panes(Some(row(&["fixo", "solto"])), Some("solto"));
