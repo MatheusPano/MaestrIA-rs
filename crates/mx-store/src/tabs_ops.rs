@@ -182,7 +182,7 @@ impl Store {
         }
         let swapped = drop == PaneDrop::Swap && self.panes.as_mut().is_some_and(|p| p.swap_leaves(target, id));
         if !swapped {
-            self.drop_from_tree(id);
+            self.drop_from_tree_toward(id, Some(target));
             match drop {
                 PaneDrop::Split(side) if side != DropSide::Center => {
                     self.panes = self.panes.take().map(|p| p.insert(id, target, side));

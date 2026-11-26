@@ -263,15 +263,19 @@ impl PaneNode {
     }
 
     pub fn remove(self, tab_id: &str) -> Option<PaneNode> {
+        self.remove_toward(tab_id, None)
+    }
+
+    pub fn remove_toward(self, tab_id: &str, heir: Option<&str>) -> Option<PaneNode> {
         let mut root = self;
-        match root.remove_in(tab_id) {
+        match root.remove_in(tab_id, heir) {
             Removal::Gone => None,
             Removal::Replaced(n) => Some(n),
             Removal::Untouched => Some(root),
         }
     }
 
-    fn remove_in(&mut self, tab_id: &str) -> Removal {
+    fn remove_in(&mut self, tab_id: &str, heir: Option<&str>) -> Removal {
         let s = match self {
             PaneNode::Leaf(id) => {
                 return if id == tab_id {
@@ -283,12 +287,15 @@ impl PaneNode {
             PaneNode::Split(s) => s,
         };
         for i in 0..s.children.len() {
-            match s.children[i].remove_in(tab_id) {
+            match s.children[i].remove_in(tab_id, heir) {
                 Removal::Untouched => continue,
                 Removal::Gone => {
                     s.children.remove(i);
                     let freed = s.weights.remove(i);
-                    spread(&mut s.weights, freed);
+                    match heir.and_then(|h| s.children.iter().position(|c| c.has(h))) {
+                        Some(j) => s.weights[j] += freed,
+                        None => give_to_neighbors(&mut s.weights, i, freed),
+                    }
                 }
                 Removal::Replaced(n) => {
                     s.children[i] = n;
@@ -406,17 +413,18 @@ impl PaneSplit {
     }
 }
 
-fn spread(weights: &mut [f64], freed: f64) {
-    if weights.is_empty() {
-        return;
-    }
-    let sum: f64 = weights.iter().sum();
-    if sum <= 0.0 {
+fn give_to_neighbors(weights: &mut [f64], gap: usize, freed: f64) {
+    if weights.iter().sum::<f64>() <= 0.0 {
         let n = weights.len() as f64;
         weights.iter_mut().for_each(|w| *w = 1.0 / n);
         return;
     }
-    weights.iter_mut().for_each(|w| *w += freed * *w / sum);
+    let neighbors: Vec<usize> = [gap.checked_sub(1), Some(gap).filter(|&g| g < weights.len())]
+        .into_iter()
+        .flatten()
+        .collect();
+    let share = freed / neighbors.len() as f64;
+    neighbors.into_iter().for_each(|k| weights[k] += share);
 }
 
 pub(crate) fn normalize(weights: &mut [f64]) {

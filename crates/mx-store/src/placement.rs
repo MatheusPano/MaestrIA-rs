@@ -253,12 +253,16 @@ impl Store {
     }
 
     pub(crate) fn drop_from_tree(&mut self, id: &str) {
+        self.drop_from_tree_toward(id, None);
+    }
+
+    pub(crate) fn drop_from_tree_toward(&mut self, id: &str, heir: Option<&str>) {
         self.drop_parked(id);
         let loose = self.is_open(id) && !self.is_pinned(id);
         let tree = if loose { self.panes.clone() } else { None };
         let before = self.order();
         let at = before.iter().position(|t| t == id);
-        self.panes = self.panes.take().and_then(|p| p.remove(id));
+        self.panes = self.panes.take().and_then(|p| p.remove_toward(id, heir));
         if let Some(tree) = tree
             && self.open_pane_ids().iter().any(|t| self.is_pinned(t))
         {
